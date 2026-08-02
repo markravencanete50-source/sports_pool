@@ -1,0 +1,85 @@
+import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
+
+export async function POST(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: invitationId } = await params;
+    const supabase = await createClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: invitation, error: invError } = await supabase
+      .from("pool_invitations")
+      .select("id, pool_id, invited_user_id, status")
+      .eq("id", invitationId)
+      .single();
+
+    if (invError || !invitation) {
+      return NextResponse.json(
+        { error: "Invitation not found" },
+        { status: 404 }
+      );
+    }
+
+    if (invitation.invited_user_id !== user.id) {
+      return NextResponse.json(
+        { error: "You can only accept your own invitations" },
+        { status: 403 }
+      );
+    }
+
+    if (invitation.status !== "pending") {
+      return NextResponse.json(
+        { error: "Invitation is no longer pending" },
+        { status: 400 }
+      );
+    }
+
+    const { error: participantError } = await supabase
+      .from("pool_participants")
+      .insert({
+        pool_id: invitation.pool_id,
+        user_id: user.id,
+      });
+
+    if (participantError) {
+      if (participantError.code === "23505") {
+        await supabase
+          .from("pool_invitations")
+          .update({ status: "accepted" })
+          .eq("id", invitationId);
+        return NextResponse.json({ success: true, alreadyJoined: true });
+      }
+      return NextResponse.json(
+        { error: participantError.message },
+        { status: 400 }
+      );
+    }
+
+    const { error: updateError } = await supabase
+      .from("pool_invitations")
+      .update({ status: "accepted" })
+      .eq("id", invitationId);
+
+    if (updateError) {
+      return NextResponse.json(
+        { error: updateError.message },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Accept invitation error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

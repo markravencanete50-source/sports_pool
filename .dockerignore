@@ -1,0 +1,7 @@
+volumes/
+.git/
+node_modules/
+supabase/dumps/
+.env.local
+.env.docker
+*.log

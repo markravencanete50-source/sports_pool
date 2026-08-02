@@ -1,0 +1,1 @@
+-- Seed data runs after migrations during `supabase db reset`
