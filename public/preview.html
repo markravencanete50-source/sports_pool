@@ -76,6 +76,10 @@
 
 /* ══════════ BASE ══════════ */
 *{box-sizing:border-box;margin:0;padding:0}
+/* MUST come before any display: rule. An author `display:flex` on .nav beats the
+   UA stylesheet's [hidden]{display:none}, which would leave the whole app chrome
+   visible behind the age gate — the exact bypass this rebuild exists to fix. */
+[hidden]{display:none!important}
 html{scroll-behavior:smooth;scroll-padding-top:calc(var(--nav-h) + 16px)}
 body{
   background:radial-gradient(1200px 600px at 80% -10%, var(--primary-22), transparent 60%),
@@ -534,9 +538,1600 @@ footer .f21{color:var(--accent-text);font-weight:700;border:1px solid var(--acce
     <div class="avatar" aria-hidden="true">MC</div>
   </div>
 </nav>
-<!--VIEWS-->
-<!--DIALOGS-->
+<main id="main">
+
+<!-- ══════════ SIGN UP — a ROUTE, not a dismissible scrim ══════════ -->
+<section class="view on" id="v-signup" tabindex="-1" aria-labelledby="su-h">
+  <div class="authwrap">
+    <div class="ag-badge" aria-hidden="true">21+</div>
+    <h1 id="su-h" style="text-align:center">Create your SportsPool account</h1>
+    <p class="sub" style="text-align:center;margin:10px auto 24px">
+      Real-money play. We verify your date of birth — accounts under 21 cannot be created.
+    </p>
+
+    <div class="card" style="padding:24px">
+      <form id="su-form" novalidate>
+        <div class="field">
+          <label for="su-email">Email address</label>
+          <input class="inp" type="email" id="su-email" autocomplete="email" required>
+          <p class="err" id="su-email-err" role="alert"></p>
+        </div>
+
+        <fieldset>
+          <legend>Date of birth</legend>
+          <div class="dobgrid">
+            <div>
+              <label class="sr-only" for="su-d">Day</label>
+              <select class="inp" id="su-d" autocomplete="bday-day"><option value="">Day</option></select>
+            </div>
+            <div>
+              <label class="sr-only" for="su-m">Month</label>
+              <select class="inp" id="su-m" autocomplete="bday-month"><option value="">Month</option></select>
+            </div>
+            <div>
+              <label class="sr-only" for="su-y">Year</label>
+              <select class="inp" id="su-y" autocomplete="bday-year"><option value="">Year</option></select>
+            </div>
+          </div>
+          <p class="agecheck" id="su-age" role="status">Enter your date of birth.</p>
+        </fieldset>
+
+        <div class="field">
+          <label for="su-region">Where do you play from?</label>
+          <select class="inp" id="su-region">
+            <option value="TX">Texas</option>
+            <option value="WA">Washington</option>
+            <option value="XX">Outside the US</option>
+          </select>
+          <p class="hint">Eligibility varies by jurisdiction. Checked against IP and billing address at signup.</p>
+        </div>
+
+        <fieldset>
+          <legend>Confirmations</legend>
+          <div class="checkrow">
+            <input type="checkbox" id="su-c1">
+            <label for="su-c1">I confirm I am 21 or over.</label>
+          </div>
+          <div class="checkrow">
+            <input type="checkbox" id="su-c2">
+            <label for="su-c2">I accept the <a href="#" data-go="terms">Terms &amp; Conditions</a>, including that
+              accounts found to be under 21 may be banned and that SportsPool may withhold funds held in an
+              underage account.</label>
+          </div>
+        </fieldset>
+
+        <button class="btn btn-red" id="su-submit" style="width:100%" type="submit" disabled>Create account</button>
+        <p class="hint" id="su-why" role="status" style="margin-top:10px;text-align:center"></p>
+      </form>
+    </div>
+    <p class="hint" style="text-align:center;margin-top:16px">
+      Already have an account? <a href="#" data-go="market">Sign in</a>
+    </p>
+  </div>
+</section>
+
+<!-- ══════════ BLOCKED — terminal, survives reload ══════════ -->
+<section class="view" id="v-blocked" tabindex="-1" aria-labelledby="bl-h">
+  <div class="authwrap">
+    <div class="card" style="padding:28px">
+      <h1 id="bl-h" style="margin-bottom:12px">This account can't be created</h1>
+      <div id="bl-body"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ MARKETPLACE ══════════ -->
+<section class="view" id="v-market" tabindex="-1" aria-labelledby="mk-h">
+  <div class="wrap">
+    <div class="featured">
+      <div class="f-top">
+        <span class="f-flag">★ FEATURED MAIN POOL</span>
+        <span class="pill pub">Public</span>
+        <span class="pill live">Live</span>
+      </div>
+      <h2>SportsPool Sunday Main</h2>
+      <p class="f-meta">Full Sunday slate · 14 games · Win / Loss / Tie with total-score tiebreaker ·
+        <span data-window="main"></span> · Entries close Sun 12:55 PM ET</p>
+      <div class="f-stats">
+        <div class="f-stat"><div class="n">$<em>4,180</em></div><div class="l">Current pot</div></div>
+        <div class="f-stat"><div class="n">209</div><div class="l">Players in</div></div>
+        <div class="f-stat"><div class="n">$20</div><div class="l">Per card</div></div>
+        <div class="f-stat"><div class="n">3</div><div class="l">Max cards each</div></div>
+      </div>
+      <div class="f-cta">
+        <button class="btn btn-red" data-pool="main">Enter pool — $20</button>
+        <button class="btn btn-ghost" data-pool="main">View games</button>
+        <span class="hint">Winner takes the pot, less platform fee</span>
+      </div>
+    </div>
+
+    <h2 class="sec" id="mk-h">Pool Marketplace</h2>
+    <p class="sub">Browse public pools or join a private one with a link, QR code, or password.</p>
+
+    <div class="filters">
+      <button class="chip" data-filter="sport" data-val="nfl" aria-pressed="true">NFL</button>
+      <button class="chip" aria-disabled="true">NBA <span>SOON</span></button>
+      <button class="chip" aria-disabled="true">MLB <span>SOON</span></button>
+      <button class="chip" data-filter="vis" data-val="public" aria-pressed="false">Public only</button>
+      <button class="chip" data-filter="fee" data-val="50" aria-pressed="false">Under $50 entry</button>
+      <div class="searchwrap">
+        <label class="sr-only" for="mk-search">Search pools</label>
+        <input class="inp" id="mk-search" type="search" placeholder="Search pools…" style="width:220px">
+      </div>
+    </div>
+
+    <div class="grid" id="mk-grid"></div>
+    <div class="empty" id="mk-empty" hidden>
+      <strong>No pools match</strong>
+      Try clearing a filter or searching a different name.
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ PRIVATE POOL JOIN ══════════ -->
+<section class="view" id="v-join" tabindex="-1" aria-labelledby="jn-h">
+  <div class="authwrap">
+    <div class="card" style="padding:26px">
+      <span class="pill priv">Private pool</span>
+      <h1 id="jn-h" style="margin:12px 0 6px" data-join="name">—</h1>
+      <p class="sub" data-join="desc">—</p>
+      <div class="mc-row"><span>Entry</span><span data-join="fee">—</span></div>
+      <div class="mc-row"><span>Window</span><span data-join="window">—</span></div>
+      <div class="mc-row"><span>Players</span><span data-join="players">—</span></div>
+      <form id="jn-form" style="margin-top:20px" novalidate>
+        <div class="field">
+          <label for="jn-pass">Pool password</label>
+          <input class="inp" type="password" id="jn-pass" autocomplete="off">
+          <p class="hint">Ask the pool owner. The demo password is <code>letmein</code>.</p>
+          <p class="err" id="jn-err" role="alert"></p>
+        </div>
+        <div class="m-actions">
+          <button class="btn btn-ghost" type="button" data-go="market">Back</button>
+          <button class="btn btn-cob" type="submit">Join pool</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ POOL DETAIL ══════════ -->
+<section class="view" id="v-pool" tabindex="-1" aria-labelledby="pd-h">
+  <div class="wrap">
+    <div class="detail-head">
+      <div>
+        <h1 id="pd-h" data-pd="name">—</h1>
+        <p class="dh-meta" data-pd="meta">—</p>
+      </div>
+      <div class="dh-actions">
+        <button class="btn btn-ghost" data-dlg="dlg-share"><span aria-hidden="true">↗</span> Share</button>
+        <button class="btn btn-red" data-pd="buy">Buy card</button>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div>
+        <!-- live panel -->
+        <div class="card fieldbox">
+          <div class="fp-head">
+            <h2 class="t" style="font-size:17px">Live game</h2>
+            <span class="pill live" id="lv-q">Q2</span>
+            <span class="fp-note">Simulated preview data · production syncs from ESPN every 2 min on game days</span>
+            <button class="btn btn-ghost" id="lv-pause" style="padding:8px 12px;min-height:36px;font-size:12px">Pause live updates</button>
+          </div>
+          <p class="sr-only" id="lv-announce" aria-live="polite" aria-atomic="true"></p>
+          <div class="scorebug">
+            <div class="team">
+              <span class="tlogo" style="background:var(--team-kc)">KC</span>
+              <div><div class="tname">Kansas City <span class="poss" id="lv-poss-a" role="img" aria-label="has possession"></span></div><div class="trec">Away</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px">
+              <span class="tscore" id="s-away">14</span>
+              <div class="clockbox">
+                <div class="q" id="lv-qlabel">2ND QTR</div>
+                <div class="c" id="gclock" aria-live="off">07:42</div>
+                <div class="dd" id="downdist">2nd &amp; 6 · KC 44</div>
+              </div>
+              <span class="tscore" id="s-home">10</span>
+            </div>
+            <div class="team right">
+              <div style="text-align:right"><div class="tname">Buffalo <span class="poss" id="lv-poss-h" role="img" aria-label="has possession" hidden></span></div><div class="trec">Home</div></div>
+              <span class="tlogo" style="background:var(--team-buf)">BUF</span>
+            </div>
+          </div>
+          <div class="fieldwrap">
+            <svg viewBox="0 0 640 150" width="100%" aria-hidden="true" focusable="false">
+              <defs><linearGradient id="turf" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="var(--field-turf-a)"/><stop offset="1" stop-color="var(--field-turf-b)"/>
+              </linearGradient></defs>
+              <rect x="0" y="10" width="640" height="130" rx="10" fill="url(#turf)"/>
+              <rect x="0" y="10" width="56" height="130" rx="10" fill="var(--team-kc)" opacity=".85"/>
+              <rect x="584" y="10" width="56" height="130" rx="10" fill="var(--team-buf)" opacity=".9"/>
+              <g stroke="#ffffff" stroke-opacity=".35" stroke-width="1.5">
+                <line x1="109" y1="12" x2="109" y2="138"/><line x1="162" y1="12" x2="162" y2="138"/>
+                <line x1="214" y1="12" x2="214" y2="138"/><line x1="267" y1="12" x2="267" y2="138"/>
+                <line x1="320" y1="12" x2="320" y2="138"/><line x1="373" y1="12" x2="373" y2="138"/>
+                <line x1="426" y1="12" x2="426" y2="138"/><line x1="478" y1="12" x2="478" y2="138"/>
+                <line x1="531" y1="12" x2="531" y2="138"/>
+              </g>
+              <g fill="#ffffff" fill-opacity=".55" font-size="9" text-anchor="middle" font-family="Arial">
+                <text x="109" y="28">10</text><text x="162" y="28">20</text><text x="214" y="28">30</text>
+                <text x="267" y="28">40</text><text x="320" y="28">50</text><text x="373" y="28">40</text>
+                <text x="426" y="28">30</text><text x="478" y="28">20</text><text x="531" y="28">10</text>
+              </g>
+              <line id="firstdown" x1="411" y1="12" x2="411" y2="138" stroke="var(--warn)" stroke-width="2.5"/>
+              <line id="scrimmage" x1="380" y1="12" x2="380" y2="138" stroke="var(--focus)" stroke-width="2" stroke-dasharray="4 4"/>
+              <g id="ball" transform="translate(380 75)">
+                <ellipse rx="10" ry="6.5" fill="var(--field-ball)" stroke="#fff" stroke-width="1.2"/>
+                <line x1="-4" y1="0" x2="4" y2="0" stroke="#fff" stroke-width="1.2"/>
+              </g>
+              <g id="drivearrow" transform="translate(380 122)">
+                <path d="M0 0 h26 l-6 -5 m6 5 l-6 5" stroke="var(--warn)" stroke-width="2" fill="none"/>
+              </g>
+            </svg>
+          </div>
+          <div class="driveline"><span>Drive: <b id="lv-drive">7 plays · 38 yds · 3:12</b></span><span>Timeouts — KC <b>3</b> · BUF <b>2</b></span></div>
+        </div>
+
+        <!-- games -->
+        <div class="card games">
+          <div class="fp-head">
+            <h2 class="t" style="font-size:17px">This pool's games</h2>
+            <span class="fp-note">Pick W / L / T for every game</span>
+          </div>
+          <div id="pd-games"></div>
+        </div>
+
+        <!-- chat -->
+        <div class="card chat">
+          <div class="chat-head">
+            <h2 class="t" style="font-size:17px">Pool chat</h2>
+            <span class="slowmode"><span aria-hidden="true">⏱</span> Slow mode · 1 message / 15s · filtered</span>
+          </div>
+          <div class="msgs" id="msgs" role="log" aria-live="polite" aria-relevant="additions" tabindex="0" aria-label="Pool chat messages">
+            <p class="msg sys">Cards are private. Discussing your specific picks breaks pool rules and messages are filtered.</p>
+          </div>
+          <p class="err" id="chat-err" role="alert" style="padding:0 18px"></p>
+          <div class="chat-in">
+            <label class="sr-only" for="chatinput">Message the pool</label>
+            <input class="inp" id="chatinput" aria-describedby="chat-hint" disabled>
+            <span class="cooldown" id="cooldown" aria-live="polite"></span>
+            <button class="btn btn-cob" id="chatbtn">Join chat</button>
+          </div>
+          <p class="hint" id="chat-hint" style="padding:0 18px 14px">Accept the chat agreement to post. No pick talk while the pool is open.</p>
+        </div>
+      </div>
+
+      <!-- slip -->
+      <div class="slip">
+        <div class="card slip-in">
+          <h2><span aria-hidden="true">🎟</span> Parlay Card <span class="cardsleft" id="sl-left">Card 1 · 2 more allowed</span></h2>
+          <div class="slip-picks" id="slippicks">
+            <div class="empty" id="spempty">Tap W / L / T on any open game. Every game needs a pick.</div>
+          </div>
+          <div class="field">
+            <label for="tiebreak">Tiebreaker — total points in the final game</label>
+            <input class="inp" type="number" id="tiebreak" min="0" max="120" placeholder="e.g. 47" inputmode="numeric">
+            <p class="err" id="tb-err" role="alert"></p>
+          </div>
+          <div class="slip-total"><span>Card price</span><b id="sl-price">$20.00</b></div>
+          <button class="btn btn-red" style="width:100%" id="sl-buy" disabled>Purchase card</button>
+          <p class="hint" id="sl-status" role="status" style="margin-top:8px;text-align:center"></p>
+          <p class="priv-note"><span class="lock" aria-hidden="true">🔒</span><span>Your card is private. No other player —
+            including the pool owner — can see your picks. Enforced by row-level security at the database.</span></p>
+        </div>
+        <div class="card slip-in" style="margin-top:14px">
+          <h2><span aria-hidden="true">🏆</span> Payout</h2>
+          <div class="mc-row"><span>Pot (209 cards × $20)</span><span class="num">$4,180.00</span></div>
+          <div class="mc-row"><span>Platform fee (10%)</span><span class="num">– $418.00</span></div>
+          <div class="mc-row"><span><b>Winner takes</b></span><span class="ok num">$3,762.00</span></div>
+          <p class="hint" style="margin-top:10px">Best-scoring card wins. Ties split the prize. Total-score tiebreaker applies first.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ CREATE POOL ══════════ -->
+<section class="view" id="v-create" tabindex="-1" aria-labelledby="cp-h">
+  <div class="wrap" style="max-width:820px">
+    <h1 id="cp-h">Create a pool</h1>
+    <p class="sub">Name it, set the stake, choose the window, pick who's in.</p>
+    <ol class="steps" id="cp-steps">
+      <li aria-current="step">1 · Identity</li><li>2 · Money</li><li>3 · Duration &amp; access</li><li>4 · Games</li>
+    </ol>
+
+    <form id="cp-form" novalidate>
+      <!-- step 1 -->
+      <div class="card" data-step="1" style="padding:22px">
+        <div class="field">
+          <label for="cp-name">Pool name</label>
+          <input class="inp" id="cp-name" maxlength="40" required>
+          <p class="hint"><span id="cp-name-count">0</span>/40 · link preview: <code id="cp-slug">sportspool.app/p/…</code></p>
+          <p class="err" id="cp-name-err" role="alert"></p>
+        </div>
+        <div class="field">
+          <label for="cp-desc">Description <span class="hint">(optional)</span></label>
+          <textarea class="inp" id="cp-desc" rows="2" maxlength="140"></textarea>
+          <p class="hint"><span id="cp-desc-count">0</span>/140</p>
+        </div>
+        <div class="field">
+          <label for="cp-sport">Sport</label>
+          <select class="inp" id="cp-sport">
+            <option value="nfl" selected>NFL</option>
+            <option value="nba" disabled>NBA (coming soon)</option>
+            <option value="mlb" disabled>MLB (coming soon)</option>
+          </select>
+          <p class="hint">The data model is sport-agnostic — NFL is simply the only one enabled at launch.</p>
+        </div>
+        <div class="m-actions"><button class="btn btn-cob" type="button" data-next="2">Continue</button></div>
+      </div>
+
+      <!-- step 2 -->
+      <div class="card" data-step="2" hidden style="padding:22px">
+        <div class="field">
+          <label for="cp-fee">Entry fee per card (USD)</label>
+          <input class="inp" type="number" id="cp-fee" min="20" step="1" inputmode="numeric" placeholder="20">
+          <p class="hint">Minimum $20. No maximum.</p>
+          <p class="err" id="cp-fee-err" role="alert"></p>
+        </div>
+        <div class="field">
+          <span class="lg" id="cp-max-lbl">Max cards per player</span>
+          <div class="seg" role="group" aria-labelledby="cp-max-lbl">
+            <button type="button" data-max="1" aria-pressed="false">1</button>
+            <button type="button" data-max="2" aria-pressed="false">2</button>
+            <button type="button" data-max="3" aria-pressed="true">3</button>
+          </div>
+        </div>
+        <p class="banner" id="cp-math"><span class="bi" aria-hidden="true">≡</span><span>Enter a fee to see the pot maths.</span></p>
+        <div class="m-actions">
+          <button class="btn btn-ghost" type="button" data-next="1">Back</button>
+          <button class="btn btn-cob" type="button" data-next="3">Continue</button>
+        </div>
+      </div>
+
+      <!-- step 3 -->
+      <div class="card" data-step="3" hidden style="padding:22px">
+        <div class="field">
+          <label for="cp-start">Starts</label>
+          <input class="inp" type="date" id="cp-start">
+        </div>
+        <div class="field">
+          <label for="cp-end">Ends</label>
+          <input class="inp" type="date" id="cp-end">
+          <p class="hint">Pools run for a maximum of 7 days.</p>
+          <p class="err" id="cp-date-err" role="alert"></p>
+        </div>
+        <p class="banner" id="cp-window"><span class="bi" aria-hidden="true">◷</span><span>Choose a start and end date.</span></p>
+
+        <fieldset>
+          <legend>Visibility</legend>
+          <div class="radiocards">
+            <label class="radiocard">
+              <input type="radio" name="cp-vis" value="public" checked class="sr-only">
+              <span class="rc-t">Public <span class="rc-sel">✓ SELECTED</span></span>
+              <span class="rc-d">Listed in the marketplace. Uses the standard slate for the sport.</span>
+            </label>
+            <label class="radiocard">
+              <input type="radio" name="cp-vis" value="private" class="sr-only">
+              <span class="rc-t">Private <span class="rc-sel">✓ SELECTED</span></span>
+              <span class="rc-d">Unlisted. Players join with a link, QR code, or password. You choose which games are included.</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div id="cp-access" hidden>
+          <div class="field">
+            <label for="cp-pass">Pool password</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input class="inp" type="password" id="cp-pass" style="flex:1;min-width:160px" minlength="6">
+              <button class="btn btn-ghost" type="button" id="cp-pass-show">Show</button>
+              <button class="btn btn-ghost" type="button" id="cp-pass-gen">Generate</button>
+            </div>
+            <p class="hint">Minimum 6 characters. Hashed at rest — never stored in plain text.</p>
+            <p class="err" id="cp-pass-err" role="alert"></p>
+          </div>
+          <p class="banner"><span class="bi" aria-hidden="true">↗</span><span>Players can join by <b>share link</b>, <b>QR code</b> or <b>password</b>. All three are enabled for private pools.</span></p>
+        </div>
+
+        <div class="m-actions">
+          <button class="btn btn-ghost" type="button" data-next="2">Back</button>
+          <button class="btn btn-cob" type="button" data-next="4">Continue</button>
+        </div>
+      </div>
+
+      <!-- step 4 -->
+      <div class="card" data-step="4" hidden style="padding:22px">
+        <div id="cp-public-slate">
+          <p class="banner"><span class="bi" aria-hidden="true">≡</span><span>Public pools use the full standard slate — <b>14 games</b>. Switch to Private in step 3 to hand-pick.</span></p>
+        </div>
+        <div id="cp-private-slate" hidden>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+            <button class="btn btn-ghost" type="button" data-slate="all">Select all</button>
+            <button class="btn btn-ghost" type="button" data-slate="none">Clear</button>
+            <button class="btn btn-ghost" type="button" data-slate="prime">Primetime only</button>
+          </div>
+          <div id="cp-games"></div>
+          <p class="banner" id="cp-count"><span class="bi" aria-hidden="true">#</span><span>0 of 14 games selected · minimum 3</span></p>
+          <p class="err" id="cp-games-err" role="alert"></p>
+        </div>
+
+        <div class="card" style="padding:16px;margin-top:16px;background:var(--glass2)">
+          <h3 style="margin-bottom:10px">Review</h3>
+          <div id="cp-review"></div>
+        </div>
+        <div class="m-actions">
+          <button class="btn btn-ghost" type="button" data-next="3">Back</button>
+          <button class="btn btn-red" type="submit" id="cp-submit">Create pool</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ══════════ OWNER CONSOLE ══════════ -->
+<section class="view" id="v-owner" tabindex="-1" aria-labelledby="ow-h">
+  <div class="wrap">
+    <h1 id="ow-h">My pools</h1>
+    <p class="sub">Pools you own. Owners can manage entries and promotion — never see a player's card.</p>
+    <div class="banner" id="ow-banner" hidden><span class="bi ok" aria-hidden="true">✓</span><span id="ow-banner-t"></span></div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="tblwrap">
+        <table class="tbl">
+          <caption class="sr-only">Pools you own</caption>
+          <thead><tr><th>Pool</th><th>Status</th><th>Players</th><th>Pot</th><th>Window</th><th>Promotion</th><th>Actions</th></tr></thead>
+          <tbody id="ow-rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="empty" id="ow-empty" hidden><strong>You don't own any pools yet</strong>Create one to get started.</div>
+    <p class="banner" style="margin-top:18px"><span class="bi lock" aria-hidden="true">🔒</span><span><b>Owners cannot see player cards.</b> Pick data is unreadable to every account except the card holder — enforced by row-level security, not by the UI.</span></p>
+  </div>
+</section>
+
+<!-- ══════════ MY CARDS ══════════ -->
+<section class="view" id="v-cards" tabindex="-1" aria-labelledby="mc-h">
+  <div class="wrap">
+    <h1 id="mc-h">My Cards</h1>
+    <p class="sub">Every card you hold. Only you can see these.</p>
+    <div class="mycards">
+      <div class="card mc">
+        <div class="mc-head"><h3>Sunday Main — Card 1</h3><span class="pill live">Live</span></div>
+        <p class="mc-sub">SportsPool Sunday Main · 14 picks</p>
+        <div class="mc-row"><span>KC @ BUF — picked Win</span><span class="ok">✓ Correct</span></div>
+        <div class="mc-row"><span>PHI @ DAL — picked Loss</span><span class="pend">In progress</span></div>
+        <div class="mc-row"><span>SF @ SEA — picked Win</span><span class="pend">Starts 4:05</span></div>
+        <div class="mc-row"><span>+ 11 more picks</span><span class="pend"></span></div>
+        <div class="mc-score"><div><div class="l">Score so far</div><div class="n">4 / 5</div></div><div style="text-align:right"><div class="l">Rank</div><div class="n">#12</div></div></div>
+      </div>
+      <div class="card mc">
+        <div class="mc-head"><h3>Culligan's Crew — Card 1</h3><span class="pill priv">Upcoming</span></div>
+        <p class="mc-sub">Private pool · 8 owner-picked games</p>
+        <div class="mc-row"><span>Picks completed</span><span class="ok">8 / 8</span></div>
+        <div class="mc-row"><span>Tiebreaker</span><span>44 pts</span></div>
+        <div class="mc-row"><span>Entry paid</span><span class="ok">$40 · Stripe</span></div>
+        <div class="mc-score"><div><div class="l">Status</div><div class="n" style="font-size:18px">Locked in</div></div></div>
+      </div>
+      <div class="card mc">
+        <div class="mc-head"><h3>Preseason Finale — Card 2</h3><span class="pill ok">Won</span></div>
+        <p class="mc-sub">Completed · 42 players</p>
+        <div class="mc-row"><span>Final score</span><span class="ok">11 / 12 correct</span></div>
+        <div class="mc-row"><span>Prize credited</span><span class="ok">+ $756.00</span></div>
+        <div class="mc-score"><div><div class="l">Result</div><div class="n win">WINNER</div></div>
+          <button class="btn btn-cob" data-go="wallet">Go to wallet</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ WALLET ══════════ -->
+<section class="view" id="v-wallet" tabindex="-1" aria-labelledby="wl-h">
+  <div class="wrap">
+    <h1 id="wl-h">Wallet</h1>
+    <p class="sub">Deposits run through Stripe. Choose how you withdraw.</p>
+    <div class="wallet-grid">
+      <div>
+        <div class="card wbal">
+          <div class="l">Total balance</div>
+          <div class="n" id="wl-total">$492.50</div>
+          <div class="balmath">
+            <div class="r"><span>Pending withdrawal <span class="st rev">In review · WD-4471</span></span><span class="num" id="wl-pending">– $150.00</span></div>
+            <div class="r tot"><span>Withdrawable now</span><span class="num" id="wl-avail">$342.50</span></div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-cob" data-dlg="dlg-withdraw" id="wl-wd">Withdraw</button>
+            <button class="btn btn-ghost" data-dlg="dlg-deposit">Add funds</button>
+          </div>
+          <p class="hint" id="wl-kycnote" style="margin-top:10px;color:var(--warn)"></p>
+        </div>
+
+        <div class="card wsec" style="margin-top:16px">
+          <fieldset class="providers">
+            <legend><h3 style="display:inline">Payout provider</h3></legend>
+            <label class="provider">
+              <input type="radio" name="payout" value="paypal" checked>
+              <span class="pv-ic pv-paypal" aria-hidden="true">PP</span>
+              <span><span class="pv-name">PayPal</span><br><span class="pv-sub">To your PayPal balance · 1–2 business days · fee $0.00</span></span>
+              <span class="pv-badge">SELECTED</span>
+            </label>
+            <label class="provider">
+              <input type="radio" name="payout" value="revolut">
+              <span class="pv-ic pv-revolut" aria-hidden="true">R</span>
+              <span><span class="pv-name">Revolut</span><br><span class="pv-sub">Card or bank transfer · same day · fee $1.50</span></span>
+              <span class="pv-badge">SELECTED</span>
+            </label>
+          </fieldset>
+          <p class="hint">Withdrawals are reviewed and approved by SportsPool before sending.</p>
+        </div>
+      </div>
+
+      <div>
+        <div class="card wsec">
+          <h3>Recent activity</h3>
+          <div id="wl-tx"></div>
+        </div>
+        <div class="card wsec">
+          <h3>Account &amp; compliance</h3>
+          <div id="wl-compliance"></div>
+          <p class="hint" style="margin-top:12px"><a href="#" data-go="responsible">Responsible play tools &amp; limits →</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ADMIN ══════════ -->
+<section class="view" id="v-admin" tabindex="-1" aria-labelledby="ad-h">
+  <div class="wrap">
+    <h1 id="ad-h">Admin console</h1>
+    <p class="sub">Compliance and money controls. Every action is written to an audit trail.</p>
+    <div class="filters" role="tablist" aria-label="Admin queues">
+      <button class="chip" role="tab" aria-selected="true" aria-pressed="true" data-q="blocked">Blocked accounts <b>(2)</b></button>
+      <button class="chip" role="tab" aria-selected="false" aria-pressed="false" data-q="payouts">Withdrawal approvals <b>(2)</b></button>
+      <button class="chip" role="tab" aria-selected="false" aria-pressed="false" data-q="chat">Chat moderation <b>(1)</b></button>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden"><div class="tblwrap"><div id="ad-body"></div></div></div>
+  </div>
+</section>
+
+<!-- ══════════ RESPONSIBLE PLAY ══════════ -->
+<section class="view" id="v-responsible" tabindex="-1" aria-labelledby="rp-h">
+  <div class="wrap" style="max-width:820px">
+    <h1 id="rp-h">Responsible play</h1>
+    <p class="sub">Tools to keep this fun. Limits apply immediately when you reduce them; increases wait 24 hours.</p>
+    <div class="card wsec">
+      <h3>Get help</h3>
+      <p style="margin-bottom:10px">If gambling stops being fun, help is free and confidential.</p>
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:8px">
+        <li><a href="tel:18004262537">National Problem Gambling Helpline — 1-800-GAMBLER</a></li>
+        <li><a href="https://www.ncpgambling.org/chat" rel="noopener noreferrer" target="_blank">NCPG live chat</a></li>
+        <li><a href="sms:53342">Text 800GAM to 53342</a></li>
+      </ul>
+    </div>
+    <div class="card wsec">
+      <h3>Deposit limits</h3>
+      <div class="field"><label for="rp-daily">Daily deposit limit (USD)</label><input class="inp" type="number" id="rp-daily" value="200" min="0"></div>
+      <div class="field"><label for="rp-weekly">Weekly deposit limit (USD)</label><input class="inp" type="number" id="rp-weekly" value="750" min="0"></div>
+      <button class="btn btn-cob" id="rp-save">Save limits</button>
+      <p class="hint" id="rp-saved" role="status" style="margin-top:8px"></p>
+    </div>
+    <div class="card wsec">
+      <h3>Reality check</h3>
+      <div class="seg" role="group" aria-label="Reality check interval">
+        <button type="button" data-rc="30" aria-pressed="true">Every 30 min</button>
+        <button type="button" data-rc="60" aria-pressed="false">Every 60 min</button>
+        <button type="button" data-rc="0" aria-pressed="false">Off</button>
+      </div>
+      <div class="banner warnb" style="margin-top:14px"><span class="bi" aria-hidden="true">◷</span><span><b>Sample reminder:</b> You've been playing for 30 minutes and staked $60 today. Take a break?</span></div>
+    </div>
+    <div class="card wsec">
+      <h3>Self-exclusion</h3>
+      <p class="sub">Blocks deposits and new entries for the period you choose. This cannot be undone early.</p>
+      <div class="seg" role="group" aria-label="Self-exclusion period">
+        <button type="button" data-se="1">24 hours</button><button type="button" data-se="30">30 days</button>
+        <button type="button" data-se="180">6 months</button><button type="button" data-se="-1">Permanent</button>
+      </div>
+      <p class="err" id="rp-se" role="alert" style="margin-top:12px"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ TERMS ══════════ -->
+<section class="view" id="v-terms" tabindex="-1" aria-labelledby="tm-h">
+  <div class="wrap" style="max-width:760px">
+    <h1 id="tm-h">Terms &amp; Conditions</h1>
+    <p class="sub">Version 1.0 · effective 1 August 2026</p>
+    <div class="card wsec">
+      <h3 id="tc-1">1. Eligibility (21+)</h3>
+      <p>You must be <b>21 years of age or older</b> to open an account, deposit, or enter any pool.
+      We collect your date of birth at registration and refuse accounts below this age.</p>
+    </div>
+    <div class="card wsec">
+      <h3 id="tc-2">2. Underage accounts may be banned</h3>
+      <p>If we determine an account holder is under 21 — at registration or at any point afterwards — that
+      account may be <b>suspended or permanently banned</b> without notice.</p>
+    </div>
+    <div class="card wsec">
+      <h3 id="tc-3">3. Withholding of funds</h3>
+      <p>Where an account is found to be held by a person under 21, <b>SportsPool reserves the right to withhold
+      any funds</b> in that account, including deposits, winnings and pending payouts, pending review.</p>
+    </div>
+    <div class="card wsec">
+      <h3 id="tc-4">4. Jurisdiction</h3>
+      <p>Availability varies by jurisdiction. We verify eligibility using IP and billing address. Playing from a
+      restricted jurisdiction, or misrepresenting your location, may result in closure and forfeiture.</p>
+    </div>
+    <div class="card wsec">
+      <h3 id="tc-5">5. Card privacy</h3>
+      <p>Your parlay card and picks are visible only to you. No other player, and no pool owner, can view them.
+      Discussing your specific picks in pool chat while a pool is open breaks these terms.</p>
+    </div>
+    <div class="banner warnb"><span class="bi" aria-hidden="true">⚠</span><span><b>Preview note:</b> this is illustrative
+      drafting for the design prototype, not reviewed legal copy. Real terms must be drafted by a gaming-law attorney
+      before accepting money.</span></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <span class="f21">21+</span>
+  <span>Real-money play. You must be 21 or older. Underage accounts are blocked and funds may be withheld per the
+    <a href="#" data-go="terms">Terms &amp; Conditions</a>.</span>
+  <span style="margin-left:auto"><a href="#" data-go="responsible">If gambling stops being fun, help is available →</a></span>
+</footer>
+
+<nav class="bottomnav" id="bottomnav" aria-label="Primary (mobile)" hidden>
+  <ul>
+    <li><button data-go="market"><span class="bn-ic" aria-hidden="true">◎</span>Market</button></li>
+    <li><button data-go="owner"><span class="bn-ic" aria-hidden="true">▦</span>My pools</button></li>
+    <li><button data-go="create"><span class="bn-ic" aria-hidden="true">＋</span>Create</button></li>
+    <li><button data-go="cards"><span class="bn-ic" aria-hidden="true">🎟</span>Cards</button></li>
+    <li><button data-go="wallet"><span class="bn-ic" aria-hidden="true">$</span>Wallet</button></li>
+  </ul>
+</nav>
+<dialog id="dlg-share" aria-labelledby="sh-h">
+  <div class="dlg-head"><h2 id="sh-h">Share this pool</h2>
+    <button class="dlg-close" data-close aria-label="Close">✕</button></div>
+  <div class="dlg-body">
+    <p class="m-sub">Anyone with the link can view the pool. Private pools still require the password to join.</p>
+    <div class="share-opts">
+      <button class="share-opt" data-share="copy"><span class="ic" aria-hidden="true">🔗</span>Copy link</button>
+      <a class="share-opt" id="sh-sms" href="#"><span class="ic" aria-hidden="true">💬</span>Text message</a>
+      <a class="share-opt" id="sh-mail" href="#"><span class="ic" aria-hidden="true">✉️</span>Email invite</a>
+      <button class="share-opt" data-share="qr"><span class="ic" aria-hidden="true">⬇︎</span>Save QR code</button>
+    </div>
+    <div class="qr-wrap">
+      <svg id="qr" width="96" height="96" viewBox="0 0 25 25" style="background:#fff;border-radius:8px;padding:4px;flex:none" role="img" aria-label="QR code placeholder"></svg>
+      <p class="qtxt"><b>Scan to join</b><br>
+        <span class="pill warn" style="margin-top:6px">Placeholder pattern — not scannable in this preview</span><br>
+        Production encodes the real pool URL with a QR library.</p>
+    </div>
+    <div class="linkrow">
+      <label class="sr-only" for="sh-link">Pool share link</label>
+      <input class="inp" id="sh-link" readonly value="https://sportspool.app/p/sunday-main">
+      <button class="btn btn-cob" data-share="copy">Copy</button>
+    </div>
+    <p class="hint" id="sh-status" role="status" style="margin-top:10px"></p>
+  </div>
+</dialog>
+
+<dialog id="dlg-chat" aria-labelledby="ca-h">
+  <div class="dlg-head"><h2 id="ca-h">Before you post</h2>
+    <button class="dlg-close" data-close aria-label="Close">✕</button></div>
+  <div class="dlg-body">
+    <p class="m-sub">Pool chat keeps games fair. To post, agree to the ground rules:</p>
+    <ul class="agree-list">
+      <li>I won't discuss or hint at the specifics of my picks while the pool is open.</li>
+      <li>I understand messages are filtered and rate-limited (slow mode).</li>
+      <li>I'll keep it civil — moderators can remove messages and mute accounts.</li>
+    </ul>
+    <div class="m-actions">
+      <button class="btn btn-ghost" data-close>Not now</button>
+      <button class="btn btn-cob" id="ca-accept">I agree — let me chat</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlg-withdraw" aria-labelledby="wd-h">
+  <div class="dlg-head"><h2 id="wd-h">Withdraw funds</h2>
+    <button class="dlg-close" data-close aria-label="Close">✕</button></div>
+  <div class="dlg-body">
+    <div id="wd-step1">
+      <div class="field">
+        <label for="wd-amt">Amount (USD)</label>
+        <div style="display:flex;gap:8px">
+          <input class="inp" type="number" id="wd-amt" min="10" step="0.01" placeholder="0.00" style="flex:1">
+          <button class="btn btn-ghost" type="button" id="wd-max">Max</button>
+        </div>
+        <p class="hint">Minimum $10. Withdrawable now: <b id="wd-avail">$342.50</b></p>
+        <p class="err" id="wd-err" role="alert"></p>
+      </div>
+      <div class="m-actions">
+        <button class="btn btn-ghost" data-close>Cancel</button>
+        <button class="btn btn-cob" id="wd-review">Review</button>
+      </div>
+    </div>
+    <div id="wd-step2" hidden>
+      <div class="mc-row"><span>Amount</span><span class="num" id="wd-r-amt">—</span></div>
+      <div class="mc-row"><span>Provider</span><span id="wd-r-prov">—</span></div>
+      <div class="mc-row"><span>Destination</span><span class="num" id="wd-r-dest">•••• 4471</span></div>
+      <div class="mc-row"><span>Fee</span><span class="num" id="wd-r-fee">—</span></div>
+      <div class="mc-row"><span><b>You receive</b></span><span class="num ok" id="wd-r-net">—</span></div>
+      <div class="banner warnb" style="margin-top:14px"><span class="bi" aria-hidden="true">⚠</span><span>Requests are reviewed by SportsPool within 24 hours. <b>Once approved this cannot be reversed.</b></span></div>
+      <div class="m-actions">
+        <button class="btn btn-ghost" id="wd-back">Back</button>
+        <button class="btn btn-cob" id="wd-confirm">Confirm withdrawal</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlg-deposit" aria-labelledby="dp-h">
+  <div class="dlg-head"><h2 id="dp-h">Add funds</h2>
+    <button class="dlg-close" data-close aria-label="Close">✕</button></div>
+  <div class="dlg-body">
+    <div class="field">
+      <label for="dp-amt">Amount (USD)</label>
+      <input class="inp" type="number" id="dp-amt" min="10" step="1" placeholder="50">
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" type="button" data-dep="20">$20</button>
+        <button class="btn btn-ghost" type="button" data-dep="50">$50</button>
+        <button class="btn btn-ghost" type="button" data-dep="100">$100</button>
+      </div>
+      <p class="hint" style="margin-top:8px">Daily deposit limit remaining: <b>$140.00</b> of $200.00 · <a href="#" data-go="responsible" data-close>change limit</a></p>
+      <p class="err" id="dp-err" role="alert"></p>
+    </div>
+    <div class="m-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-cob" id="dp-go">Continue to Stripe</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlg-boost" aria-labelledby="bo-h">
+  <div class="dlg-head"><h2 id="bo-h">Promote this pool</h2>
+    <button class="dlg-close" data-close aria-label="Close">✕</button></div>
+  <div class="dlg-body">
+    <p class="m-sub">Boosted pools appear at the top of the marketplace for a fixed window.</p>
+    <fieldset>
+      <legend>Campaign length</legend>
+      <div class="checkrow"><input type="radio" name="bo-len" id="bo1" value="1" checked><label for="bo1">24 hours</label></div>
+      <div class="checkrow"><input type="radio" name="bo-len" id="bo3" value="3"><label for="bo3">3 days</label></div>
+      <div class="checkrow"><input type="radio" name="bo-len" id="bo7" value="7"><label for="bo7">7 days</label></div>
+      <p class="hint">A campaign can never outlast the pool's own end date.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Placement</legend>
+      <div class="checkrow"><input type="radio" name="bo-pl" id="bp1" checked><label for="bp1">Marketplace top row</label></div>
+      <div class="checkrow"><input type="radio" name="bo-pl" id="bp2"><label for="bp2">Sport category top</label></div>
+    </fieldset>
+    <div class="banner warnb"><span class="bi" aria-hidden="true">$</span><span><b>Pricing TBD.</b> The client has not finalised boost pricing. The data model supports paid flags and time-boxed campaigns so pricing can be tuned without re-architecting.</span></div>
+    <div class="m-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-cob" id="bo-pay">Pay with Stripe</button>
+    </div>
+  </div>
+</dialog>
+
+<details class="demo" id="demo">
+  <summary>⚙ Demo states</summary>
+  <div class="demo-body">
+    <span class="lg">KYC status</span>
+    <select id="dm-kyc"><option value="none">Not started</option><option value="pending">Pending review</option>
+      <option value="verified" selected>Verified</option><option value="failed">Failed — resubmit</option></select>
+    <span class="lg">Region</span>
+    <select id="dm-region"><option value="ok" selected>Eligible — Texas</option><option value="restricted">Restricted — Washington</option></select>
+    <span class="lg">Chat state</span>
+    <select id="dm-chat"><option value="normal" selected>Normal</option><option value="muted">Muted by moderator</option></select>
+    <span class="lg">Tenant theme</span>
+    <button id="dm-theme" aria-pressed="false">Toggle white-label theme</button>
+    <span class="lg">Reset</span>
+    <button id="dm-reset">Clear session &amp; restart</button>
+  </div>
+</details>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
-<!--SCRIPT-->
+<script>
+"use strict";
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const money = n => "$" + n.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ═══════════ DATA ═══════════ */
+const GAMES = [
+  {id:"kcbuf", away:"KC",  home:"BUF", time:"Sun 1:00 PM ET", prime:false, live:true},
+  {id:"phidal",away:"PHI", home:"DAL", time:"Sun 1:00 PM ET", prime:false},
+  {id:"nyjmia",away:"NYJ", home:"MIA", time:"Sun 1:00 PM ET", prime:false},
+  {id:"cletpit",away:"CLE",home:"PIT", time:"Sun 1:00 PM ET", prime:false},
+  {id:"nolatb", away:"NO", home:"TB",  time:"Sun 1:00 PM ET", prime:false},
+  {id:"minchi", away:"MIN",home:"CHI", time:"Sun 1:00 PM ET", prime:false},
+  {id:"tenind", away:"TEN",home:"IND", time:"Sun 1:00 PM ET", prime:false},
+  {id:"sfsea",  away:"SF", home:"SEA", time:"Sun 4:05 PM ET", prime:false},
+  {id:"lacden", away:"LAC",home:"DEN", time:"Sun 4:05 PM ET", prime:false},
+  {id:"gbdet",  away:"GB", home:"DET", time:"Sun 4:25 PM ET", prime:false},
+  {id:"lararz", away:"LAR",home:"ARZ", time:"Sun 4:25 PM ET", prime:false},
+  {id:"nejax",  away:"NE", home:"JAX", time:"Sun 4:25 PM ET", prime:false},
+  {id:"balcin", away:"BAL",home:"CIN", time:"Sun 8:20 PM ET", prime:true},
+  {id:"houatl", away:"HOU",home:"ATL", time:"Mon 8:15 PM ET", prime:true}
+];
+const POOLS = [
+  {id:"main", name:"SportsPool Sunday Main", vis:"public", fee:20, pot:4180, players:209,
+   start:"2026-09-06", end:"2026-09-08", desc:"Full Sunday slate · standard 14-game slate", games:14, boosted:false, featured:true},
+  {id:"culligans", name:"Culligan's Crew", vis:"private", fee:40, pot:960, players:24,
+   start:"2026-09-05", end:"2026-09-08", desc:"Invite-only office pool · owner-picked slate", games:8, boosted:true, boostEnds:"Sat 6 PM"},
+  {id:"redzone", name:"Red Zone Rollers", vis:"public", fee:20, pot:1240, players:62,
+   start:"2026-09-06", end:"2026-09-09", desc:"Sunday + Monday night games", games:14},
+  {id:"divisional", name:"Divisional Duel Weekend", vis:"public", fee:25, pot:675, players:27,
+   start:"2026-09-05", end:"2026-09-07", desc:"Saturday–Sunday only · 6 divisional matchups", games:6},
+  {id:"primetime", name:"Primetime Only", vis:"private", fee:30, pot:300, players:10,
+   start:"2026-09-04", end:"2026-09-08", desc:"TNF + SNF + MNF · join with pool password", games:3},
+  {id:"family", name:"The Family Table", vis:"private", fee:20, pot:240, players:12,
+   start:"2026-09-06", end:"2026-09-08", desc:"Family league · shared by QR at dinner", games:8},
+  {id:"highroller", name:"High Rollers Club", vis:"public", fee:100, pot:2100, players:21,
+   start:"2026-09-06", end:"2026-09-08", desc:"Premium entry, winner takes all", games:14}
+];
+const DEMO_PASSWORD = "letmein";
+const PLATFORM_FEE = 0.10;
+
+/* ═══════════ STATE ═══════════ */
+const state = {
+  user:null, blocked:null, role:"player", view:"signup", poolId:"main",
+  picks:{}, tiebreak:null, chatOK:false, cooldownUntil:0, muted:false,
+  kyc:"verified", region:"ok",
+  balance:{total:492.50, pending:150.00},
+  tx:[
+    {t:"Prize — Preseason Finale", s:"paid", a:756.00, dir:"in"},
+    {t:"Withdrawal — PayPal", s:"paid", a:500.00, dir:"out", note:"Sent"},
+    {t:"Card — Culligan's Crew", s:"paid", a:40.00, dir:"out"},
+    {t:"Card ×2 — Sunday Main", s:"paid", a:40.00, dir:"out"},
+    {t:"Withdrawal — Revolut", s:"rev", a:150.00, dir:"out", ref:"WD-4471"},
+    {t:"Deposit — Stripe", s:"paid", a:100.00, dir:"in"}
+  ],
+  owned:[
+    {id:"culligans", name:"Culligan's Crew", status:"Open", players:24, pot:960, start:"2026-09-05", end:"2026-09-08", boost:"Boosted · ends Sat 6 PM"},
+    {id:"family", name:"The Family Table", status:"Open", players:12, pot:240, start:"2026-09-06", end:"2026-09-08", boost:null}
+  ]
+};
+const fmtWindow = (s,e) => {
+  const a=new Date(s+"T00:00"), b=new Date(e+"T00:00");
+  const o={month:"short", day:"numeric"};
+  const days=Math.round((b-a)/86400000)+1;
+  return `${a.toLocaleDateString("en-US",o)} → ${b.toLocaleDateString("en-US",o)} · ${days} day${days===1?"":"s"}`;
+};
+
+/* ═══════════ ROUTER ═══════════ */
+const VIEWS = ["signup","blocked","market","join","pool","create","owner","cards","wallet","admin","terms","responsible"];
+function go(view, params){
+  if(state.blocked && view!=="blocked"){ view="blocked"; }
+  if(!state.user && !["signup","blocked","terms"].includes(view)){ view="signup"; }
+  state.view = view;
+  VIEWS.forEach(v=>{ const el=$("#v-"+v); if(el) el.classList.toggle("on", v===view); });
+  const showChrome = !!state.user && !state.blocked;
+  $("#topnav").hidden = !showChrome;
+  $("#bottomnav").hidden = !showChrome;
+  $$("[data-go]").forEach(b=>{
+    const on = b.dataset.go===view;
+    if(b.classList.contains("tab")||b.closest(".bottomnav")){
+      if(on) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current");
+    }
+  });
+  if(params && params.id){ state.poolId = params.id; }
+  if(view==="market") renderMarket();
+  if(view==="pool") renderPool();
+  if(view==="owner") renderOwner();
+  if(view==="wallet") renderWallet();
+  if(view==="admin") renderAdmin("blocked");
+  if(view==="join") renderJoin();
+  if(view==="blocked") renderBlocked();
+  const sec=$("#v-"+view);
+  if(sec){ sec.focus({preventScroll:true}); }
+  window.scrollTo({top:0, behavior: REDUCED ? "auto" : "smooth"});
+}
+document.addEventListener("click", e=>{
+  const g = e.target.closest("[data-go]");
+  if(g){ e.preventDefault(); go(g.dataset.go); return; }
+  const p = e.target.closest("[data-pool]");
+  if(p){ e.preventDefault(); openPool(p.dataset.pool); return; }
+  const d = e.target.closest("[data-dlg]");
+  if(d){ e.preventDefault(); openDlg(d.dataset.dlg); return; }
+  if(e.target.closest("[data-close]")){ const dl=e.target.closest("dialog"); if(dl) dl.close(); }
+});
+function openPool(id){
+  const pool = POOLS.find(p=>p.id===id); if(!pool) return;
+  if(pool.vis==="private" && !pool.joined){ state.poolId=id; go("join"); return; }
+  state.poolId=id; state.picks={}; state.tiebreak=null; go("pool");
+}
+
+/* ═══════════ DIALOG HELPER ═══════════ */
+let lastFocus=null;
+function openDlg(id){
+  const dl=$("#"+id); if(!dl) return;
+  lastFocus=document.activeElement;
+  if(id==="dlg-withdraw"){ $("#wd-step1").hidden=false; $("#wd-step2").hidden=true; $("#wd-err").textContent=""; $("#wd-amt").value=""; $("#wd-avail").textContent=money(avail()); }
+  dl.showModal();
+  dl.addEventListener("close", ()=>{ if(lastFocus) lastFocus.focus(); }, {once:true});
+}
+
+/* ═══════════ SIGN UP (DOB gate as a route) ═══════════ */
+(function initDob(){
+  const d=$("#su-d"), m=$("#su-m"), y=$("#su-y");
+  for(let i=1;i<=31;i++) d.add(new Option(i,i));
+  ["January","February","March","April","May","June","July","August","September","October","November","December"]
+    .forEach((n,i)=>m.add(new Option(n,i+1)));
+  const now=new Date().getFullYear();
+  for(let i=now-13;i>=now-100;i--) y.add(new Option(i,i));
+})();
+function ageFrom(d,m,y){
+  const b=new Date(y, m-1, d); const t=new Date();
+  let a=t.getFullYear()-b.getFullYear();
+  const md=t.getMonth()-b.getMonth();
+  if(md<0 || (md===0 && t.getDate()<b.getDate())) a--;
+  return a;
+}
+function suState(){
+  const email=$("#su-email").value.trim();
+  const d=+$("#su-d").value, m=+$("#su-m").value, y=+$("#su-y").value;
+  const emailOK=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+  const dobOK = d&&m&&y;
+  const age = dobOK ? ageFrom(d,m,y) : null;
+  const c1=$("#su-c1").checked, c2=$("#su-c2").checked;
+  const box=$("#su-age");
+  if(!dobOK){ box.textContent="Enter your date of birth."; box.className="agecheck"; }
+  else if(age>=21){ box.textContent=`You are ${age} — eligible to open a real-money account.`; box.className="agecheck good"; }
+  else { box.textContent=`You are ${age} — not eligible. Accounts under 21 cannot be created.`; box.className="agecheck bad"; }
+  const ready = emailOK && dobOK && c1 && c2;
+  $("#su-submit").disabled = !ready;
+  const missing=[];
+  if(!emailOK) missing.push("a valid email");
+  if(!dobOK) missing.push("your date of birth");
+  if(!c1||!c2) missing.push("both confirmations");
+  $("#su-why").textContent = ready ? "" : "Still needed: " + missing.join(", ") + ".";
+  return {email, age, region:$("#su-region").value, ready};
+}
+["#su-email","#su-d","#su-m","#su-y","#su-c1","#su-c2","#su-region"].forEach(sel=>{
+  const el=$(sel); el.addEventListener("input", suState); el.addEventListener("change", suState);
+});
+$("#su-form").addEventListener("submit", e=>{
+  e.preventDefault();
+  const s=suState(); if(!s.ready) return;
+  if(s.age<21){
+    state.blocked={type:"age", age:s.age, email:s.email};
+    sessionStorage.setItem("sp_blocked", JSON.stringify(state.blocked));
+    go("blocked"); return;
+  }
+  if(s.region==="WA" || s.region==="XX"){
+    state.blocked={type:"region", region:s.region, email:s.email};
+    sessionStorage.setItem("sp_blocked", JSON.stringify(state.blocked));
+    go("blocked"); return;
+  }
+  state.user={email:s.email, age:s.age, region:s.region, tcVersion:"1.0", acceptedAt:new Date().toISOString()};
+  sessionStorage.setItem("sp_user", JSON.stringify(state.user));
+  go("market");
+});
+function renderBlocked(){
+  const b=state.blocked; const box=$("#bl-body"); box.textContent="";
+  const mk=(tag,txt,cls)=>{const e=document.createElement(tag); if(txt)e.textContent=txt; if(cls)e.className=cls; return e;};
+  if(b.type==="age"){
+    $("#bl-h").textContent="This account can't be created";
+    box.append(mk("p",`Based on the date of birth you entered you are ${b.age}. SportsPool is restricted to adults 21 and over.`,"sub"));
+    const w=mk("div",null,"banner bad");
+    w.append(mk("span","⚠","bi"), mk("span","This email is recorded as blocked. Per our Terms & Conditions, accounts found to be under 21 may be banned, and SportsPool may withhold any funds held in an underage account."));
+    box.append(w);
+    const a=document.createElement("a");
+    a.href="mailto:support@sportspool.app?subject=Age%20review%20request";
+    a.className="btn btn-ghost"; a.textContent="Email support to request a review";
+    box.append(a);
+  } else {
+    $("#bl-h").textContent="SportsPool isn't available where you are yet";
+    box.append(mk("p", b.region==="WA"
+      ? "Real-money pools aren't offered in Washington. This is a licensing restriction, not a ban — your email is not blocked."
+      : "Real-money pools are currently offered in the US only. This is a licensing restriction, not a ban.","sub"));
+    const f=mk("div",null,"field");
+    const l=mk("label","Tell me when it opens here"); l.setAttribute("for","wl-email");
+    const i=document.createElement("input"); i.className="inp"; i.type="email"; i.id="wl-email";
+    f.append(l,i); box.append(f);
+    const btn=mk("button","Join the waitlist","btn btn-cob"); box.append(btn);
+  }
+}
+
+/* ═══════════ MARKETPLACE ═══════════ */
+const filters={vis:null, fee:null, q:""};
+function renderMarket(){
+  $("[data-window='main']").textContent = fmtWindow(POOLS[0].start, POOLS[0].end);
+  const grid=$("#mk-grid"); grid.textContent="";
+  let list=POOLS.filter(p=>!p.featured);
+  if(filters.vis) list=list.filter(p=>p.vis===filters.vis);
+  if(filters.fee) list=list.filter(p=>p.fee<+filters.fee);
+  if(filters.q) list=list.filter(p=>p.name.toLowerCase().includes(filters.q));
+  list.sort((a,b)=>(b.boosted?1:0)-(a.boosted?1:0));
+  $("#mk-empty").hidden = list.length>0;
+  list.forEach(p=>{
+    const a=document.createElement("a");
+    a.className="card pool"+(p.boosted?" boosted":""); a.href="#"; a.dataset.pool=p.id;
+    const head=document.createElement("div"); head.className="p-head";
+    const nm=document.createElement("h3"); nm.className="p-name"; nm.textContent=p.name; head.append(nm);
+    if(p.boosted){ const b=document.createElement("span"); b.className="pill boost"; b.textContent="Boosted · ends "+p.boostEnds; head.append(b); }
+    const v=document.createElement("span"); v.className="pill "+(p.vis==="public"?"pub":"priv"); v.textContent=p.vis; head.append(v);
+    const desc=document.createElement("p"); desc.className="p-desc"; desc.textContent=p.desc;
+    const row=document.createElement("div"); row.className="p-row";
+    row.innerHTML='<div class="p-pot"><div class="n"></div><div class="l">Pot</div></div><div class="p-fee"><div class="n"></div><div class="l">Entry</div></div>';
+    $(".p-pot .n",row).textContent = money(p.pot);
+    $(".p-fee .n",row).textContent = money(p.fee);
+    const foot=document.createElement("div"); foot.className="p-foot";
+    const s1=document.createElement("span"); s1.innerHTML="<b></b> players"; $("b",s1).textContent=p.players;
+    const s2=document.createElement("span"); s2.textContent=fmtWindow(p.start,p.end);
+    const s3=document.createElement("span"); s3.innerHTML="<b></b> games"; $("b",s3).textContent=p.games;
+    foot.append(s1,s2,s3);
+    a.append(head,desc,row,foot); grid.append(a);
+  });
+}
+$("#mk-search").addEventListener("input", e=>{ filters.q=e.target.value.toLowerCase().trim(); renderMarket(); });
+$$(".chip[data-filter]").forEach(c=>c.addEventListener("click", ()=>{
+  const on = c.getAttribute("aria-pressed")==="true";
+  if(c.dataset.filter==="sport") return;
+  c.setAttribute("aria-pressed", String(!on));
+  filters[c.dataset.filter] = on ? null : c.dataset.val;
+  renderMarket();
+}));
+
+/* ═══════════ JOIN (private password) ═══════════ */
+function renderJoin(){
+  const p=POOLS.find(x=>x.id===state.poolId); if(!p) return;
+  $("[data-join='name']").textContent=p.name;
+  $("[data-join='desc']").textContent=p.desc;
+  $("[data-join='fee']").textContent=money(p.fee);
+  $("[data-join='window']").textContent=fmtWindow(p.start,p.end);
+  $("[data-join='players']").textContent=p.players;
+  $("#jn-pass").value=""; $("#jn-err").textContent="";
+}
+$("#jn-form").addEventListener("submit", e=>{
+  e.preventDefault();
+  if($("#jn-pass").value !== DEMO_PASSWORD){ $("#jn-err").textContent="That password isn't right. Ask the pool owner."; return; }
+  const p=POOLS.find(x=>x.id===state.poolId); p.joined=true;
+  state.picks={}; state.tiebreak=null; go("pool");
+});
+
+/* ═══════════ POOL DETAIL ═══════════ */
+function renderPool(){
+  const p=POOLS.find(x=>x.id===state.poolId)||POOLS[0];
+  $("[data-pd='name']").textContent=p.name;
+  $("[data-pd='meta']").textContent =
+    `${p.vis==="public"?"Public":"Private"} pool · ${p.players} players · ${money(p.pot)} pot · ${fmtWindow(p.start,p.end)}`;
+  $("[data-pd='buy']").textContent = "Buy card — "+money(p.fee);
+  $("#sl-price").textContent = money(p.fee);
+  const slate = GAMES.slice(0, p.games);
+  const box=$("#pd-games"); box.textContent="";
+  slate.forEach(g=>{
+    const row=document.createElement("div"); row.className="game";
+    const left=document.createElement("div");
+    const t=document.createElement("div"); t.className="g-teams";
+    const a=document.createElement("b"); a.textContent=g.away;
+    const at=document.createElement("span"); at.className="g-at"; at.textContent="at";
+    const h=document.createElement("b"); h.textContent=g.home;
+    t.append(a,at,h);
+    const time=document.createElement("div"); time.className="g-time"+(g.live?" islive":"");
+    time.textContent = g.live ? "● LIVE — picks locked" : g.time;
+    left.append(t,time);
+    const picks=document.createElement("div");
+    picks.className="picks"; picks.setAttribute("role","radiogroup");
+    picks.setAttribute("aria-label", `${g.away} at ${g.home} pick`);
+    picks.dataset.g=g.id;
+    [["W","Win"],["L","Loss"],["T","Tie"]].forEach(([sh,full])=>{
+      const b=document.createElement("button");
+      b.className="pick"; b.type="button"; b.setAttribute("role","radio");
+      b.setAttribute("aria-checked", String(state.picks[g.id]===full));
+      b.setAttribute("aria-label", `${full} — ${g.away} at ${g.home}`);
+      b.textContent=sh;
+      if(g.live){ b.disabled=true; b.title="Picks locked — game in progress"; }
+      b.addEventListener("click", ()=>{
+        state.picks[g.id]=full;
+        $$(".pick",picks).forEach(x=>x.setAttribute("aria-checked", String(x.getAttribute("aria-label").startsWith(full))));
+        renderSlip();
+      });
+      picks.append(b);
+    });
+    row.append(left,picks); box.append(row);
+  });
+  renderSlip();
+}
+function renderSlip(){
+  const p=POOLS.find(x=>x.id===state.poolId)||POOLS[0];
+  const slate=GAMES.slice(0,p.games);
+  const openGames=slate.filter(g=>!g.live);
+  const picked=openGames.filter(g=>state.picks[g.id]).length;
+  const total=openGames.length;
+  const box=$("#slippicks");
+  box.textContent="";
+  if(!picked){
+    const e=document.createElement("div"); e.className="empty";
+    e.textContent="Tap W / L / T on any open game. Every game needs a pick.";
+    box.append(e);
+  } else {
+    openGames.filter(g=>state.picks[g.id]).forEach(g=>{
+      const r=document.createElement("div"); r.className="sp-row";
+      const s=document.createElement("span"); s.textContent=`${g.away} @ ${g.home}`;
+      const b=document.createElement("b"); b.textContent=state.picks[g.id];
+      r.append(s,b); box.append(r);
+    });
+  }
+  const tbVal=$("#tiebreak").value.trim();
+  const tbOK = tbVal!=="" && +tbVal>=0 && +tbVal<=120;
+  const complete = picked===total && tbOK;
+  const btn=$("#sl-buy");
+  btn.disabled=!complete;
+  const remaining=total-picked;
+  btn.textContent = complete ? "Purchase card — "+money(p.fee)
+    : remaining>0 ? `Purchase card — ${remaining} pick${remaining===1?"":"s"} remaining`
+    : "Purchase card — enter a tiebreaker";
+  $("#sl-left").textContent = `${picked} of ${total} picked · 2 more cards allowed`;
+  $("#tb-err").textContent = (tbVal!=="" && !tbOK) ? "Enter a total between 0 and 120." : "";
+}
+$("#tiebreak").addEventListener("input", renderSlip);
+$("#sl-buy").addEventListener("click", e=>{
+  const b=e.currentTarget; b.classList.add("is-loading");
+  setTimeout(()=>{ b.classList.remove("is-loading");
+    $("#sl-status").textContent="Redirecting to Stripe Checkout… card is created server-side by the webhook, so closing the tab won't lose your entry.";
+  }, 900);
+});
+
+/* ═══════════ CHAT ═══════════ */
+const DENY=[/\bi (picked|took|went with)\b/i, /\bmy pick\b/i, /\btaking the (over|under)\b/i, /\block of the week\b/i];
+$("#chatbtn").addEventListener("click", ()=>{
+  if(!state.chatOK){ openDlg("dlg-chat"); return; }
+  sendChat();
+});
+$("#chatinput").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); sendChat(); }});
+$("#ca-accept").addEventListener("click", ()=>{
+  state.chatOK=true; $("#dlg-chat").close();
+  const i=$("#chatinput"); i.disabled=false;
+  $("#chat-hint").textContent="Slow mode: one message every 15 seconds. No pick talk.";
+  $("#chatbtn").textContent="Send"; i.focus();
+});
+function sendChat(){
+  const i=$("#chatinput"), err=$("#chat-err");
+  err.textContent="";
+  if(state.muted){ err.textContent="You're muted by a moderator until 6:00 PM."; return; }
+  if(Date.now() < state.cooldownUntil){
+    err.textContent="Slow mode — wait for the timer."; return;
+  }
+  const txt=i.value.trim(); if(!txt) return;
+  if(DENY.some(r=>r.test(txt))){
+    err.textContent="This message looks like pick talk and wasn't posted. Discussing your picks while the pool is open breaks pool rules.";
+    return;
+  }
+  const m=document.createElement("div"); m.className="msg";
+  const wrap=document.createElement("div");
+  const who=document.createElement("span"); who.className="who"; who.textContent="You";
+  const when=document.createElement("span"); when.className="when"; when.textContent="now";
+  const body=document.createElement("div");
+  body.textContent = txt;              // textContent, never innerHTML
+  wrap.append(who, when, body); m.append(wrap);
+  const box=$("#msgs"); box.append(m); box.scrollTop=box.scrollHeight;
+  i.value=""; startCooldown();
+}
+let coolT=null;
+function startCooldown(){
+  state.cooldownUntil = Date.now() + 15000;
+  const el=$("#cooldown"), btn=$("#chatbtn");
+  btn.disabled=true;
+  clearInterval(coolT);                 // never double-start
+  coolT=setInterval(()=>{
+    const left=Math.ceil((state.cooldownUntil-Date.now())/1000);
+    if(left<=0){ clearInterval(coolT); coolT=null; el.textContent=""; btn.disabled=false; }
+    else el.textContent=left+"s";
+  }, 250);
+}
+
+/* ═══════════ LIVE SIM — one state object, one renderer ═══════════ */
+const gs={quarter:2, secs:7*60+42, ballOn:380, dir:1, down:2, dist:6, away:14, home:10, poss:"KC", plays:7, yds:38};
+function renderGame(){
+  const mm=String(Math.floor(gs.secs/60)).padStart(2,"0"), ss=String(gs.secs%60).padStart(2,"0");
+  $("#gclock").textContent=`${mm}:${ss}`;
+  $("#lv-q").textContent="Q"+gs.quarter;
+  $("#lv-qlabel").textContent=["","1ST QTR","2ND QTR","3RD QTR","4TH QTR"][gs.quarter]||"OT";
+  $("#s-away").textContent=gs.away; $("#s-home").textContent=gs.home;
+  const side = gs.ballOn>320 ? "BUF" : "KC";
+  const yd = Math.max(1, 50-Math.round(Math.abs(gs.ballOn-320)/5.28));
+  $("#downdist").textContent=`${["","1st","2nd","3rd","4th"][gs.down]} & ${gs.dist} · ${side} ${yd}`;
+  $("#lv-drive").textContent=`${gs.plays} plays · ${gs.yds} yds · 3:12`;
+  $("#lv-poss-a").hidden = gs.poss!=="KC"; $("#lv-poss-h").hidden = gs.poss!=="BUF";
+  const ball=$("#ball"), scr=$("#scrimmage"), fd=$("#firstdown"), arrow=$("#drivearrow");
+  if(ball){
+    ball.setAttribute("transform",`translate(${gs.ballOn} 75)`);
+    scr.setAttribute("x1",gs.ballOn); scr.setAttribute("x2",gs.ballOn);
+    const f=Math.min(560, gs.ballOn + gs.dist*5.28);
+    fd.setAttribute("x1",f); fd.setAttribute("x2",f);
+    arrow.setAttribute("transform",`translate(${gs.ballOn} 122) scale(${gs.dir===-1?-1:1},1)`);
+  }
+  $("#lv-announce").textContent =
+    `Q${gs.quarter} ${mm}:${ss}, Kansas City ${gs.away}, Buffalo ${gs.home}, ${["","1st","2nd","3rd","4th"][gs.down]} and ${gs.dist} at ${side} ${yd}, ${gs.poss} ball`;
+}
+let clockT=null, driveT=null;
+function startSim(){
+  if(REDUCED){ renderGame(); return; }
+  clockT=setInterval(()=>{
+    gs.secs--;
+    if(gs.secs<=0){ gs.secs=15*60; gs.quarter=Math.min(4, gs.quarter+1); }
+    renderGame();
+  },1000);
+  driveT=setInterval(()=>{
+    gs.ballOn += gs.dir*(4+Math.floor(Math.random()*10));
+    if(gs.ballOn>500){ gs.ballOn=500; gs.dir=-1; gs.poss="BUF"; gs.plays=1; }
+    if(gs.ballOn<160){ gs.ballOn=160; gs.dir=1; gs.poss="KC"; gs.plays=1; }
+    gs.down = gs.down>=4 ? 1 : gs.down+1;
+    gs.dist = gs.down===1 ? 10 : Math.max(1, gs.dist-Math.floor(Math.random()*5));
+    gs.plays++; gs.yds+=Math.floor(Math.random()*9);
+    renderGame();
+  },6000);
+}
+function stopSim(){ clearInterval(clockT); clearInterval(driveT); clockT=driveT=null; }
+$("#lv-pause").addEventListener("click", e=>{
+  if(clockT){ stopSim(); e.target.textContent="Resume live updates"; }
+  else { startSim(); e.target.textContent="Pause live updates"; }
+});
+
+/* ═══════════ CREATE POOL ═══════════ */
+const cp={step:1, max:3, vis:"public", games:new Set()};
+function cpShow(n){
+  cp.step=n;
+  $$("[data-step]").forEach(s=>s.hidden = +s.dataset.step!==n);
+  $$("#cp-steps li").forEach((li,i)=>{
+    li.classList.toggle("done", i+1<n);
+    if(i+1===n) li.setAttribute("aria-current","step"); else li.removeAttribute("aria-current");
+  });
+  if(n===4) cpReview();
+}
+$$("[data-next]").forEach(b=>b.addEventListener("click", ()=>{
+  const target=+b.dataset.next;
+  if(target>cp.step && !cpValidate(cp.step)) return;
+  cpShow(target);
+}));
+function cpValidate(step){
+  if(step===1){
+    const v=$("#cp-name").value.trim();
+    if(v.length<3){ $("#cp-name-err").textContent="Pool name must be at least 3 characters."; return false; }
+    $("#cp-name-err").textContent=""; return true;
+  }
+  if(step===2){
+    const f=parseFloat($("#cp-fee").value);
+    if(!Number.isFinite(f)){ $("#cp-fee-err").textContent="Enter an entry fee."; return false; }
+    if(f<20){ $("#cp-fee-err").textContent="Entry fee must be at least $20."; return false; }
+    $("#cp-fee-err").textContent=""; return true;
+  }
+  if(step===3){
+    const s=$("#cp-start").value, e=$("#cp-end").value;
+    if(!s||!e){ $("#cp-date-err").textContent="Choose a start and end date."; return false; }
+    const days=Math.round((new Date(e)-new Date(s))/86400000)+1;
+    if(days<1){ $("#cp-date-err").textContent="The end date must be on or after the start date."; return false; }
+    if(days>7){ $("#cp-date-err").textContent=`Pools can run for a maximum of 7 days. That range is ${days} days — shorten the end date.`; return false; }
+    $("#cp-date-err").textContent="";
+    if(cp.vis==="private"){
+      const p=$("#cp-pass").value;
+      if(p.length<6){ $("#cp-pass-err").textContent="Password must be at least 6 characters."; return false; }
+      $("#cp-pass-err").textContent="";
+    }
+    return true;
+  }
+  return true;
+}
+$("#cp-name").addEventListener("input", e=>{
+  const v=e.target.value; $("#cp-name-count").textContent=v.length;
+  $("#cp-slug").textContent = "sportspool.app/p/" + (v.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "…");
+});
+$("#cp-desc").addEventListener("input", e=>{ $("#cp-desc-count").textContent=e.target.value.length; });
+$("#cp-fee").addEventListener("input", ()=>{
+  const f=parseFloat($("#cp-fee").value);
+  const b=$("#cp-math span:last-child");
+  if(!Number.isFinite(f)||f<20){ b.textContent="Enter a fee of $20 or more to see the pot maths."; return; }
+  const pot=20*f, fee=pot*PLATFORM_FEE;
+  b.textContent=`20 players × ${money(f)} = ${money(pot)} pot · platform fee ${PLATFORM_FEE*100}% (${money(fee)}) · winner takes ${money(pot-fee)}`;
+});
+$$("[data-max]").forEach(b=>b.addEventListener("click", ()=>{
+  cp.max=+b.dataset.max;
+  $$("[data-max]").forEach(x=>x.setAttribute("aria-pressed", String(x===b)));
+}));
+$("#cp-start").addEventListener("change", ()=>{
+  const s=$("#cp-start").value; if(!s) return;
+  const max=new Date(s); max.setDate(max.getDate()+6);
+  $("#cp-end").max = max.toISOString().slice(0,10);
+  $("#cp-end").min = s;
+  cpWindow();
+});
+$("#cp-end").addEventListener("change", cpWindow);
+function cpWindow(){
+  const s=$("#cp-start").value, e=$("#cp-end").value;
+  const b=$("#cp-window span:last-child");
+  if(!s||!e){ b.textContent="Choose a start and end date."; return; }
+  const days=Math.round((new Date(e)-new Date(s))/86400000)+1;
+  b.textContent = days>7 ? `${days} days — over the 7-day cap.` : fmtWindow(s,e);
+}
+$$("input[name='cp-vis']").forEach(r=>r.addEventListener("change", ()=>{
+  cp.vis=$("input[name='cp-vis']:checked").value;
+  $("#cp-access").hidden = cp.vis!=="private";
+  $("#cp-public-slate").hidden = cp.vis==="private";
+  $("#cp-private-slate").hidden = cp.vis!=="private";
+  if(cp.vis==="private") cpGames();
+}));
+$("#cp-pass-show").addEventListener("click", ()=>{
+  const i=$("#cp-pass"); const show=i.type==="password";
+  i.type=show?"text":"password"; $("#cp-pass-show").textContent=show?"Hide":"Show";
+});
+$("#cp-pass-gen").addEventListener("click", ()=>{
+  const a=new Uint8Array(6); crypto.getRandomValues(a);
+  $("#cp-pass").value=Array.from(a,x=>x.toString(36)).join("").slice(0,10);
+  $("#cp-pass-err").textContent="";
+});
+function cpGames(){
+  const box=$("#cp-games"); box.textContent="";
+  GAMES.forEach(g=>{
+    const row=document.createElement("label"); row.className="checkrow";
+    const c=document.createElement("input"); c.type="checkbox"; c.value=g.id;
+    c.checked=cp.games.has(g.id);
+    c.addEventListener("change", ()=>{ c.checked?cp.games.add(g.id):cp.games.delete(g.id); cpCount(); });
+    const s=document.createElement("span");
+    s.textContent=`${g.away} at ${g.home} — ${g.time}` + (g.prime?" · primetime":"");
+    row.append(c,s); box.append(row);
+  });
+  cpCount();
+}
+function cpCount(){
+  $("#cp-count span:last-child").textContent=`${cp.games.size} of ${GAMES.length} games selected · minimum 3`;
+  $("#cp-games-err").textContent = cp.games.size>0 && cp.games.size<3 ? "Pick at least 3 games." : "";
+}
+$$("[data-slate]").forEach(b=>b.addEventListener("click", ()=>{
+  const m=b.dataset.slate;
+  cp.games.clear();
+  if(m==="all") GAMES.forEach(g=>cp.games.add(g.id));
+  if(m==="prime") GAMES.filter(g=>g.prime).forEach(g=>cp.games.add(g.id));
+  cpGames();
+}));
+function cpReview(){
+  const box=$("#cp-review"); box.textContent="";
+  const rows=[
+    ["Name", $("#cp-name").value.trim()||"—"],
+    ["Sport", "NFL"],
+    ["Entry fee", $("#cp-fee").value?money(parseFloat($("#cp-fee").value)):"—"],
+    ["Max cards each", String(cp.max)],
+    ["Window", ($("#cp-start").value&&$("#cp-end").value)?fmtWindow($("#cp-start").value,$("#cp-end").value):"—"],
+    ["Visibility", cp.vis==="public"?"Public — listed in marketplace":"Private — link, QR or password"],
+    ["Games", cp.vis==="public"?"14 (standard slate)":`${cp.games.size} hand-picked`]
+  ];
+  rows.forEach(([k,v])=>{
+    const r=document.createElement("div"); r.className="mc-row";
+    const a=document.createElement("span"); a.textContent=k;
+    const b2=document.createElement("span"); b2.textContent=v;
+    r.append(a,b2); box.append(r);
+  });
+}
+$("#cp-form").addEventListener("submit", e=>{
+  e.preventDefault();
+  if(!cpValidate(1)||!cpValidate(2)||!cpValidate(3)) return;
+  if(cp.vis==="private" && cp.games.size<3){ cpShow(4); $("#cp-games-err").textContent="Pick at least 3 games."; return; }
+  const name=$("#cp-name").value.trim();
+  state.owned.unshift({id:"new", name, status:"Draft", players:0, pot:0,
+    start:$("#cp-start").value, end:$("#cp-end").value, boost:null});
+  $("#ow-banner").hidden=false;
+  $("#ow-banner-t").textContent=`"${name}" created. Share it to start taking entries.`;
+  go("owner");
+  setTimeout(()=>openDlg("dlg-share"), 350);
+});
+
+/* ═══════════ OWNER ═══════════ */
+function renderOwner(){
+  const body=$("#ow-rows"); body.textContent="";
+  $("#ow-empty").hidden = state.owned.length>0;
+  state.owned.forEach(p=>{
+    const tr=document.createElement("tr");
+    const cells=[p.name, p.status, String(p.players), money(p.pot), fmtWindow(p.start,p.end)];
+    cells.forEach((c,i)=>{ const td=document.createElement("td"); if(i===1){const s=document.createElement("span"); s.className="pill "+(p.status==="Open"?"ok":"priv"); s.textContent=c; td.append(s);} else td.textContent=c; tr.append(td); });
+    const tdB=document.createElement("td");
+    if(p.boost){ const s=document.createElement("span"); s.className="pill boost"; s.textContent=p.boost; tdB.append(s); }
+    else { const b=document.createElement("button"); b.className="btn btn-ghost"; b.style.cssText="padding:8px 12px;min-height:36px;font-size:12px"; b.textContent="Boost"; b.dataset.dlg="dlg-boost"; tdB.append(b); }
+    tr.append(tdB);
+    const tdA=document.createElement("td");
+    const share=document.createElement("button"); share.className="btn btn-ghost";
+    share.style.cssText="padding:8px 12px;min-height:36px;font-size:12px"; share.textContent="Share"; share.dataset.dlg="dlg-share";
+    tdA.append(share); tr.append(tdA);
+    body.append(tr);
+  });
+}
+
+/* ═══════════ WALLET ═══════════ */
+const avail = () => state.balance.total - state.balance.pending;
+function renderWallet(){
+  $("#wl-total").textContent=money(state.balance.total);
+  $("#wl-pending").textContent="– "+money(state.balance.pending);
+  $("#wl-avail").textContent=money(avail());
+  $("#navbal").textContent=money(avail());
+  const tx=$("#wl-tx"); tx.textContent="";
+  state.tx.forEach(t=>{
+    const r=document.createElement("div"); r.className="tx";
+    const a=document.createElement("span"); a.textContent=t.t;
+    const s=document.createElement("span"); s.className="st "+t.s;
+    s.textContent = t.note || (t.s==="rev" ? "In review"+(t.ref?" · "+t.ref:"") : "Paid");
+    const m=document.createElement("span"); m.className="amt "+t.dir;
+    m.textContent=(t.dir==="in"?"+ ":"– ")+money(t.a);
+    r.append(a,s,m); tx.append(r);
+  });
+  const kycMap={none:["Not started","pend"],pending:["Pending review","pend"],verified:["Verified","ok"],failed:["Failed — resubmit","bad"]};
+  const regMap={ok:["Eligible — Texas · IP + billing checked","ok"],restricted:["Restricted — Washington","bad"]};
+  const c=$("#wl-compliance"); c.textContent="";
+  const rows=[
+    ["Age verified (21+)", state.user?`Verified · DOB on file (age ${state.user.age})`:"—", "ok"],
+    ["Identity (KYC)", kycMap[state.kyc][0], kycMap[state.kyc][1]],
+    ["Terms & Conditions", "Accepted v1.0", "ok"],
+    ["Region", regMap[state.region][0], regMap[state.region][1]],
+    ["Tax info", "W-9 required before payouts over $600 · Not started", "pend"]
+  ];
+  rows.forEach(([k,v,cls])=>{
+    const r=document.createElement("div"); r.className="mc-row";
+    const a=document.createElement("span"); a.textContent=k;
+    const b=document.createElement("span"); b.className=cls; b.textContent=v;
+    r.append(a,b); c.append(r);
+  });
+  const blocked = state.kyc!=="verified" || state.region!=="ok";
+  $("#wl-wd").disabled = blocked;
+  $("#wl-kycnote").textContent = blocked
+    ? (state.region!=="ok" ? "Withdrawals are unavailable in a restricted region."
+       : "Complete identity verification (KYC) before withdrawing.")
+    : "";
+}
+$("#wd-max").addEventListener("click", ()=>{ $("#wd-amt").value=avail().toFixed(2); });
+$("#wd-review").addEventListener("click", ()=>{
+  const v=parseFloat($("#wd-amt").value); const err=$("#wd-err");
+  if(!Number.isFinite(v)){ err.textContent="Enter an amount."; return; }
+  if(v<10){ err.textContent="Minimum withdrawal is $10."; return; }
+  if(v>avail()){ err.textContent=`That's more than your withdrawable balance of ${money(avail())}.`; return; }
+  err.textContent="";
+  const prov=$("input[name='payout']:checked").value;
+  const fee = prov==="revolut" ? 1.50 : 0;
+  $("#wd-r-amt").textContent=money(v);
+  $("#wd-r-prov").textContent = prov==="revolut" ? "Revolut — same day" : "PayPal — 1–2 business days";
+  $("#wd-r-fee").textContent=money(fee);
+  $("#wd-r-net").textContent=money(v-fee);
+  $("#wd-step1").hidden=true; $("#wd-step2").hidden=false;
+});
+$("#wd-back").addEventListener("click", ()=>{ $("#wd-step1").hidden=false; $("#wd-step2").hidden=true; });
+$("#wd-confirm").addEventListener("click", e=>{
+  const v=parseFloat($("#wd-amt").value);
+  const prov=$("input[name='payout']:checked").value;
+  const ref="WD-"+Math.floor(1000+Math.random()*9000);
+  state.balance.pending += v;
+  state.tx.unshift({t:`Withdrawal — ${prov==="revolut"?"Revolut":"PayPal"}`, s:"rev", a:v, dir:"out", ref});
+  $("#dlg-withdraw").close();
+  renderWallet();
+  toast(`Withdrawal ${ref} submitted for review`);
+});
+$$("[data-dep]").forEach(b=>b.addEventListener("click", ()=>{ $("#dp-amt").value=b.dataset.dep; }));
+$("#dp-go").addEventListener("click", ()=>{
+  const v=parseFloat($("#dp-amt").value);
+  if(!Number.isFinite(v)||v<10){ $("#dp-err").textContent="Enter an amount of $10 or more."; return; }
+  if(v>140){ $("#dp-err").textContent="That exceeds your remaining daily deposit limit of $140.00."; return; }
+  $("#dp-err").textContent=""; $("#dlg-deposit").close();
+  toast("Opening Stripe Checkout for "+money(v));
+});
+$("#bo-pay").addEventListener("click", ()=>{ $("#dlg-boost").close(); toast("Boost campaign created — pending payment"); });
+
+/* ═══════════ ADMIN ═══════════ */
+const ADMIN_DATA={
+  blocked:{cols:["Email","DOB / age","Reason","When","Actions"], rows:[
+    ["j****@gmail.com","2009-04-11 · 17","Under 21 at signup","2 Aug 2026",["Uphold block","Unblock","Request documents"]],
+    ["m****@outlook.com","— · declared","Restricted region (WA)","1 Aug 2026",["Uphold block","Unblock"]]
+  ]},
+  payouts:{cols:["User","Amount","Provider","KYC","Waiting","Actions"], rows:[
+    ["p****@gmail.com","$150.00","Revolut","Verified","19h",["Approve","Reject","Hold for KYC"]],
+    ["k****@yahoo.com","$820.00","PayPal","Pending","31h · past SLA",["Approve","Reject","Hold for KYC"]]
+  ]},
+  chat:{cols:["User","Message","Trigger","Pool","Actions"], rows:[
+    ["Bohol_Blitz","\"i took the over on BAL\"","pick talk","Sunday Main",["Release","Remove","Warn","Mute 24h"]]
+  ]}
+};
+function renderAdmin(q){
+  $$("[data-q]").forEach(b=>{
+    const on=b.dataset.q===q;
+    b.setAttribute("aria-selected",String(on)); b.setAttribute("aria-pressed",String(on));
+  });
+  const d=ADMIN_DATA[q]; const box=$("#ad-body"); box.textContent="";
+  if(!d.rows.length){ const e=document.createElement("div"); e.className="empty";
+    e.innerHTML="<strong>Queue is clear</strong>Nothing waiting."; box.append(e); return; }
+  const t=document.createElement("table"); t.className="tbl";
+  const thead=document.createElement("thead"); const htr=document.createElement("tr");
+  d.cols.forEach(c=>{ const th=document.createElement("th"); th.textContent=c; htr.append(th); });
+  thead.append(htr); t.append(thead);
+  const tb=document.createElement("tbody");
+  d.rows.forEach(r=>{
+    const tr=document.createElement("tr");
+    r.forEach((cell,i)=>{
+      const td=document.createElement("td");
+      if(Array.isArray(cell)){
+        cell.forEach(label=>{
+          const b=document.createElement("button");
+          b.className="btn btn-ghost"; b.style.cssText="padding:7px 10px;min-height:34px;font-size:11.5px;margin:2px";
+          b.textContent=label;
+          b.addEventListener("click", ()=>toast(`${label} — recorded in the audit trail`));
+          td.append(b);
+        });
+      } else { td.textContent=cell; if(String(cell).includes("past SLA")) td.className="bad"; }
+      tr.append(td);
+    });
+    tb.append(tr);
+  });
+  t.append(tb); box.append(t);
+}
+$$("[data-q]").forEach(b=>b.addEventListener("click", ()=>renderAdmin(b.dataset.q)));
+
+/* ═══════════ RESPONSIBLE PLAY ═══════════ */
+$("#rp-save").addEventListener("click", ()=>{ $("#rp-saved").textContent="Limits saved. Decreases apply immediately; increases take effect after a 24-hour cool-off."; });
+$$("[data-rc]").forEach(b=>b.addEventListener("click", ()=>$$("[data-rc]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)))));
+$$("[data-se]").forEach(b=>b.addEventListener("click", ()=>{
+  $("#rp-se").textContent=`Confirm again to self-exclude for ${b.textContent}. This blocks deposits and entries and cannot be undone early.`;
+}));
+
+/* ═══════════ ROLE SWITCH / SHARE / DEMO ═══════════ */
+$$("[data-role]").forEach(b=>b.addEventListener("click", ()=>{
+  state.role=b.dataset.role;
+  $$("[data-role]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
+  $("#tab-admin").hidden = state.role!=="admin";
+  if(state.role==="admin") go("admin"); else if(state.role==="owner") go("owner"); else go("market");
+}));
+$$("[data-share]").forEach(b=>b.addEventListener("click", async ()=>{
+  const link=$("#sh-link").value;
+  if(b.dataset.share==="copy"){
+    try{ await navigator.clipboard.writeText(link); $("#sh-status").textContent="Link copied to clipboard."; }
+    catch{ $("#sh-status").textContent="Copy failed — select the link and copy manually."; }
+  } else {
+    $("#sh-status").textContent="QR download is not wired in this preview — the pattern shown is a placeholder.";
+  }
+}));
+$("#dm-kyc").addEventListener("change", e=>{ state.kyc=e.target.value; renderWallet(); });
+$("#dm-region").addEventListener("change", e=>{ state.region=e.target.value; renderWallet(); });
+$("#dm-chat").addEventListener("change", e=>{
+  state.muted = e.target.value==="muted";
+  $("#chat-hint").textContent = state.muted ? "You are muted by a moderator until 6:00 PM." : "Slow mode: one message every 15 seconds. No pick talk.";
+});
+$("#dm-theme").addEventListener("click", e=>{
+  const on=e.target.getAttribute("aria-pressed")==="true";
+  e.target.setAttribute("aria-pressed",String(!on));
+  const r=document.documentElement;
+  if(!on){
+    r.style.setProperty("--brand-primary","#7A1FA2"); r.style.setProperty("--brand-primary-rgb","122 31 162");
+    r.style.setProperty("--brand-primary-deep","#3D0B55");
+    r.style.setProperty("--brand-accent","#FF7A00"); r.style.setProperty("--brand-accent-rgb","255 122 0");
+  } else {
+    ["--brand-primary","--brand-primary-rgb","--brand-primary-deep","--brand-accent","--brand-accent-rgb"]
+      .forEach(p=>r.style.removeProperty(p));
+  }
+});
+$("#dm-reset").addEventListener("click", ()=>{ sessionStorage.clear(); location.reload(); });
+
+let toastT;
+function toast(msg){
+  const t=$("#toast"); t.textContent=msg; t.classList.add("on");
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("on"), 3200);
+}
+
+/* fake QR — explicitly labelled as a placeholder in the markup */
+(function(){
+  const svg=$("#qr"); let seed=42;
+  const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff;};
+  let cells="";
+  const finder=(x,y)=>`<rect x="${x}" y="${y}" width="7" height="7" fill="#0A1224"/><rect x="${x+1}" y="${y+1}" width="5" height="5" fill="#fff"/><rect x="${x+2}" y="${y+2}" width="3" height="3" fill="#0A1224"/>`;
+  for(let y=0;y<25;y++) for(let x=0;x<25;x++){
+    const inF=(x<8&&y<8)||(x>16&&y<8)||(x<8&&y>16);
+    if(!inF&&rnd()>0.55) cells+=`<rect x="${x}" y="${y}" width="1" height="1" fill="#0A1224"/>`;
+  }
+  svg.innerHTML=cells+finder(0,0)+finder(18,0)+finder(0,18);
+})();
+
+/* ═══════════ BOOT ═══════════ */
+(function boot(){
+  const b=sessionStorage.getItem("sp_blocked");
+  const u=sessionStorage.getItem("sp_user");
+  if(b){ state.blocked=JSON.parse(b); go("blocked"); return; }   // block survives reload
+  if(u){ state.user=JSON.parse(u); go("market"); }
+  else { go("signup"); suState(); }
+  renderGame(); startSim();
+})();
+</script>
 </body>
 </html>
