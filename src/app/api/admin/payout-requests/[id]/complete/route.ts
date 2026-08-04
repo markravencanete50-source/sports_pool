@@ -108,6 +108,47 @@ export async function PATCH(
       );
     }
 
+    /*
+     * SECURITY — ordering is the whole point here.
+     *
+     * This route used to call PayPal FIRST and check the balance afterwards, so
+     * N concurrent approvals each sent real money before any of them verified
+     * funds. Balance was never reserved at request time either, so the float
+     * could be drained well past what the user actually held.
+     *
+     * Correct order is reserve -> send -> compensate on failure:
+     *   1. Atomically debit (a single UPDATE ... WHERE balance >= amount, via
+     *      debit_user_balance). A read-then-write in JS would still be a TOCTOU
+     *      race; concurrent callers must serialise on the row lock.
+     *   2. Only if the debit succeeded, send the money.
+     *   3. If PayPal fails, credit the reservation back.
+     */
+    const { data: debitedBalance, error: debitError } = await admin.rpc(
+      "debit_user_balance",
+      { p_user_id: payoutRequest.user_id, p_amount: amount }
+    );
+
+    if (debitError) {
+      console.error("[payout-complete] debit failed:", debitError.message);
+      return NextResponse.json(
+        { error: "Could not reserve funds for this payout" },
+        { status: 500 }
+      );
+    }
+
+    // NULL means the conditional UPDATE matched no row: insufficient funds.
+    // Nothing has been sent at this point.
+    if (debitedBalance === null || debitedBalance === undefined) {
+      return NextResponse.json(
+        { error: "User balance is insufficient for this payout" },
+        { status: 400 }
+      );
+    }
+
+    const finalBalance = Number(debitedBalance);
+    const previousBalance = finalBalance + amount;
+    const debitAmount = -amount;
+
     let batchId: string;
     try {
       const result = await createPayPalPayout({
@@ -122,6 +163,19 @@ export async function PATCH(
         paypalError instanceof Error
           ? paypalError.message
           : "PayPal payout failed";
+
+      // Compensating action: the money never left, so return the reservation.
+      const { error: refundError } = await admin.rpc("credit_user_balance", {
+        p_user_id: payoutRequest.user_id,
+        p_amount: amount,
+      });
+      if (refundError) {
+        console.error(
+          `[payout-complete] CRITICAL: debited ${amount} for user ${payoutRequest.user_id} ` +
+            `but PayPal failed AND the refund failed (${refundError.message}). MANUAL CORRECTION REQUIRED.`
+        );
+      }
+
       await admin
         .from("payout_requests")
         .update({
@@ -135,26 +189,6 @@ export async function PATCH(
         { status: 502 }
       );
     }
-
-    const { data: userRow, error: userError } = await admin
-      .from("users")
-      .select("balance")
-      .eq("id", payoutRequest.user_id)
-      .single();
-    if (userError || !userRow) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    const previousBalance = Number(userRow.balance ?? 0);
-    if (previousBalance < amount) {
-      return NextResponse.json(
-        { error: "User balance is insufficient for this payout" },
-        { status: 400 }
-      );
-    }
-
-    const debitAmount = -amount;
-    const finalBalance = previousBalance + debitAmount;
 
     const { error: txError } = await admin.from("user_transactions").insert({
       user_id: payoutRequest.user_id,
@@ -173,17 +207,11 @@ export async function PATCH(
       return NextResponse.json({ error: txError.message }, { status: 400 });
     }
 
-    const { error: balanceError } = await admin
-      .from("users")
-      .update({ balance: finalBalance })
-      .eq("id", payoutRequest.user_id);
-
-    if (balanceError) {
-      return NextResponse.json(
-        { error: balanceError.message },
-        { status: 400 }
-      );
-    }
+    // NOTE: the balance was already moved atomically by debit_user_balance()
+    // above. The absolute `update({ balance: finalBalance })` that used to sit
+    // here is deliberately gone — writing a value computed before the PayPal
+    // call would clobber any concurrent change (a prize credited in that
+    // window would simply vanish). The RPC is the single source of the change.
 
     const { error: updateError } = await admin
       .from("payout_requests")

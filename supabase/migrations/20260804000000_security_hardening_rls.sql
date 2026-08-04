@@ -220,6 +220,75 @@ alter table public.pool_transactions
   unique (stripe_session_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 6b. ATOMIC BALANCE DEBIT — required by the payout-approval route
+--
+-- The admin payout route called PayPal FIRST and checked the balance
+-- afterwards, so N concurrent approvals each sent real money before any of them
+-- verified funds. Even reordering is not enough: a read-then-write in
+-- application code is a TOCTOU race. Settlement must be one statement.
+--
+-- Returns the new balance, or NULL when funds are insufficient. The caller
+-- must treat NULL as "do not send money".
+-- ─────────────────────────────────────────────────────────────────────────────
+create or replace function public.debit_user_balance(
+  p_user_id uuid,
+  p_amount  numeric
+)
+returns numeric
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_new numeric;
+begin
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'debit amount must be positive';
+  end if;
+
+  -- Single atomic statement: the WHERE clause re-checks sufficiency against the
+  -- row being written, so concurrent callers serialise on the row lock and only
+  -- one can take the last of the funds.
+  update public.users
+     set balance = balance - p_amount
+   where id = p_user_id
+     and balance >= p_amount
+  returning balance into v_new;
+
+  return v_new;  -- NULL when no row matched (insufficient funds)
+end;
+$$;
+
+create or replace function public.credit_user_balance(
+  p_user_id uuid,
+  p_amount  numeric
+)
+returns numeric
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_new numeric;
+begin
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'credit amount must be positive';
+  end if;
+
+  update public.users
+     set balance = balance + p_amount
+   where id = p_user_id
+  returning balance into v_new;
+
+  return v_new;
+end;
+$$;
+
+-- Only the service role may move money. Never expose these to the client.
+revoke all on function public.debit_user_balance(uuid, numeric)  from anon, authenticated;
+revoke all on function public.credit_user_balance(uuid, numeric) from anon, authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 7. Legacy picks table — user-attributed predictions readable by others
 -- ─────────────────────────────────────────────────────────────────────────────
 drop policy if exists "Picks are viewable by pool participants" on public.picks;

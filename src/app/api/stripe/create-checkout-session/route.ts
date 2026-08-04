@@ -83,16 +83,41 @@ export async function POST(request: Request) {
       .limit(1)
       .single();
 
-    const minimumEntryFee = platformSettings?.minimum_entry_fee ?? 20;
-    if (entryFee < minimumEntryFee) {
+    // SECURITY: the price is the POOL's entry fee, never the client's.
+    // This route used to charge the `entryFee` from the request body and only
+    // check it against the platform minimum — so a user could enter a $500 pool
+    // for the $20 floor, competing for the full pot at a fraction of the stake.
+    // pool.entry_fee was already being selected and simply never compared.
+    const authoritativeFee = Number(pool.entry_fee);
+    if (!Number.isFinite(authoritativeFee) || authoritativeFee <= 0) {
       return NextResponse.json(
-        { error: `Entry fee must be at least $${minimumEntryFee}` },
-        { status: 400 }
+        { error: "Pool has no valid entry fee" },
+        { status: 409 }
+      );
+    }
+
+    const minimumEntryFee = platformSettings?.minimum_entry_fee ?? 20;
+    if (authoritativeFee < minimumEntryFee) {
+      return NextResponse.json(
+        { error: `Pool entry fee is below the platform minimum of $${minimumEntryFee}` },
+        { status: 409 }
+      );
+    }
+
+    // Reject rather than silently overriding, so a mismatched client sees the
+    // real price instead of being charged an amount it did not display.
+    if (Number.isFinite(entryFee) && Math.round(entryFee * 100) !== Math.round(authoritativeFee * 100)) {
+      return NextResponse.json(
+        {
+          error: "Entry fee does not match this pool",
+          expected: authoritativeFee,
+        },
+        { status: 409 }
       );
     }
 
     const baseUrl = getBaseUrl();
-    const amountCents = Math.round(entryFee * 100);
+    const amountCents = Math.round(authoritativeFee * 100);
 
     const session = await getStripe().checkout.sessions.create({
       mode: "payment",
@@ -114,7 +139,9 @@ export async function POST(request: Request) {
       metadata: {
         poolId,
         userId: user.id,
-        entryFee: String(entryFee),
+        // Must be the authoritative fee: fulfillCardPurchase() cross-checks this
+        // against session.amount_total and rejects a mismatch.
+        entryFee: String(authoritativeFee),
       },
       success_url: `${baseUrl}/pool/${poolId}?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/pool/${poolId}`,
