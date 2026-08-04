@@ -308,3 +308,117 @@ revoke all on function public.credit_user_balance(uuid, numeric) from anon, auth
 drop policy if exists "Picks are viewable by pool participants" on public.picks;
 create policy "Own picks only" on public.picks
   for select using (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8. CHAT — the "must hold a card" rule was unenforceable at the DB layer
+--
+-- The shipped policy is NAMED "Comments are viewable by pool participants" but
+-- its predicate is merely:
+--     exists (select 1 from public.pools
+--             where pools.id = comments.pool_id
+--               and (pools.type = 'public' or pools.created_by = auth.uid()))
+--
+-- i.e. every comment in every PUBLIC pool is readable by anyone, including
+-- anonymous callers. The API route was hardened to require auth + a card, but
+-- PostgREST bypasses the route entirely: GET /rest/v1/comments?pool_id=eq.<id>
+-- with the anon key from the browser bundle returned the whole chat.
+--
+-- Align the database with the product rule: you may read a pool's chat only if
+-- you hold a card in it, or are a participant, or are an admin.
+-- ─────────────────────────────────────────────────────────────────────────────
+alter table public.comments enable row level security;
+
+drop policy if exists "Comments are viewable by pool participants" on public.comments;
+drop policy if exists "Authenticated users can create comments"    on public.comments;
+
+create policy "Chat readable by card holders" on public.comments
+  for select using (
+    public.is_admin()
+    or exists (select 1 from public.parlay_cards c
+               where c.pool_id = comments.pool_id
+                 and c.user_id = auth.uid())
+    or exists (select 1 from public.pool_participants pp
+               where pp.pool_id = comments.pool_id
+                 and pp.user_id = auth.uid())
+  );
+
+-- Posting requires the same entitlement, and you may only post as yourself.
+create policy "Chat postable by card holders" on public.comments
+  for insert with check (
+    auth.uid() = user_id
+    and (
+      exists (select 1 from public.parlay_cards c
+              where c.pool_id = comments.pool_id
+                and c.user_id = auth.uid())
+      or exists (select 1 from public.pool_participants pp
+                 where pp.pool_id = comments.pool_id
+                   and pp.user_id = auth.uid())
+    )
+  );
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 9. PAYOUT REQUESTS — amount was entirely unconstrained
+--
+-- Shipped policy:  for insert with check (auth.uid() = user_id)
+-- It constrains only WHOSE request it is. The API route checks the balance, but
+-- the route is optional — a direct PostgREST insert with the anon key could
+-- queue a withdrawal for any amount, for a user with a zero balance. The admin
+-- approval path is the last line of defence and it is a human clicking a button
+-- against a list that now contains plausible-looking fraudulent rows.
+--
+-- Constrain it in the database: positive, no greater than the caller's actual
+-- balance, and always created in 'pending'. Status transitions stay
+-- service-role-only (no UPDATE policy exists, so RLS denies by default).
+-- ─────────────────────────────────────────────────────────────────────────────
+drop policy if exists "Users can insert own payout requests" on public.payout_requests;
+drop policy if exists "Request own payout"                   on public.payout_requests;
+
+create policy "Request own payout within balance" on public.payout_requests
+  for insert with check (
+    auth.uid() = user_id
+    and amount > 0
+    and status = 'pending'
+    and amount <= coalesce(
+      (select u.balance from public.users u where u.id = auth.uid()), 0)
+  );
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 10. INVARIANT ASSERTION — fail the migration rather than pass silently
+--
+-- Every fix above that drops a policy does so BY NAME, and `drop policy if
+-- exists` is a silent no-op when the name does not match. That is the exact
+-- failure mode that would leave a critical hole open with no error anywhere:
+-- the migration reports success, the policy survives, and card privacy is gone.
+--
+-- So assert the end state instead of trusting the drops. If any SELECT policy
+-- on a privacy-critical table is not in the expected set, raise and roll the
+-- whole migration back.
+-- ─────────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  v_unexpected text;
+begin
+  select string_agg(format('%s.%s', tablename, policyname), ', ')
+    into v_unexpected
+  from pg_policies
+  where schemaname = 'public'
+    and cmd in ('SELECT', 'ALL')
+    and tablename in ('card_picks', 'parlay_cards', 'pool_transactions',
+                      'comments', 'picks', 'payout_requests')
+    and policyname not in (
+      'Card picks holder only',
+      'Users can read own parlay_cards',
+      'Card holder only',
+      'Own transactions only',
+      'Chat readable by card holders',
+      'Own picks only',
+      'Own payout requests',
+      'Admin can view all payout requests'
+    );
+
+  if v_unexpected is not null then
+    raise exception
+      'RLS INVARIANT VIOLATED — unexpected SELECT policy on privacy-critical table(s): %. Permissive policies are OR-ed, so this may expose other users'' cards, picks, chat or money. Refusing to apply.',
+      v_unexpected;
+  end if;
+end $$;
