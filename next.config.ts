@@ -24,15 +24,21 @@ const isProd = process.env.NODE_ENV === "production";
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://js.stripe.com`,
-  "style-src 'self' 'unsafe-inline'",
+  // src/app/font-loader.tsx injects a Google Fonts stylesheet at runtime and the
+  // faces are served from gstatic. Both origins must be allowed or the app
+  // silently loses its typography — CSP failures do not throw, they just drop
+  // the resource.
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: blob: https://*.supabase.co https://a.espncdn.com https://*.espncdn.com",
-  "font-src 'self' data:",
+  "font-src 'self' data: https://fonts.gstatic.com",
   [
     "connect-src 'self'",
     "https://*.supabase.co",
     "wss://*.supabase.co",
     "https://api.stripe.com",
     "https://site.api.espn.com",
+    "https://fonts.googleapis.com",
+    "https://fonts.gstatic.com",
   ].join(" "),
   "frame-src https://js.stripe.com https://hooks.stripe.com",
   "frame-ancestors 'none'",
