@@ -155,6 +155,28 @@ export async function GET(
       );
     }
 
+    // SECURITY (IDOR): this previously queried card_picks by cardId alone.
+    // poolId was destructured and never used, and the caller's identity was
+    // never compared to the card's owner — so any authenticated account,
+    // including one that had never paid, could read any card's picks by id.
+    // Card privacy is the product's hardest requirement; do not rely on RLS
+    // alone to enforce it here.
+    //
+    // Resolve the card and bind it to BOTH the caller and the pool in the URL
+    // first. Same pattern the POST handler in this file already uses.
+    const { data: ownedCard } = await supabase
+      .from("parlay_cards")
+      .select("id")
+      .eq("id", cardId)
+      .eq("user_id", user.id)
+      .eq("pool_id", poolId)
+      .maybeSingle();
+
+    if (!ownedCard) {
+      // 404, not 403 — do not confirm that someone else's card id exists.
+      return NextResponse.json({ error: "Card not found" }, { status: 404 });
+    }
+
     const { data: picks, error: picksError } = await supabase
       .from("card_picks")
       .select(`
@@ -169,7 +191,7 @@ export async function GET(
           away_score
         )
       `)
-      .eq("card_id", cardId);
+      .eq("card_id", ownedCard.id);
 
     if (picksError) {
       return NextResponse.json(

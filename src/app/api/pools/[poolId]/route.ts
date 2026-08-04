@@ -4,12 +4,19 @@ import { updatePoolWithGamesSchema } from "@/lib/validations";
 import { computePoolWinners } from "@/lib/winners";
 import { NextResponse } from "next/server";
 
+// SECURITY: never embed `users(*)`. That table carries email, role and balance,
+// and the shipped RLS policy on it was `select using (true)` — so an
+// unauthenticated GET of any pool returned the email, role and cash balance of
+// every participant, every commenter and the pool creator in one JSON blob.
+// Enumerate display-only columns instead.
+const USER_PUBLIC_COLS = "id, name, avatar";
+
 const poolDetailSelect = `
   *,
   pool_games(game_id, games(*)),
-  pool_participants(user_id, users(*)),
-  comments(*, users(*)),
-  created_by_user:users!pools_created_by_fkey(*)
+  pool_participants(user_id, users(${USER_PUBLIC_COLS})),
+  comments(*, users(${USER_PUBLIC_COLS})),
+  created_by_user:users!pools_created_by_fkey(${USER_PUBLIC_COLS})
 `;
 
 export async function GET(

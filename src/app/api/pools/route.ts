@@ -7,11 +7,18 @@ import {
 import { NextResponse } from "next/server";
 import { PoolStatus } from "@/lib/enums";
 
+// SECURITY: never embed `users(*)` — that table carries email, role and balance,
+// and shipped with `select using (true)` RLS. This list endpoint has no auth
+// check, so the over-select let an anonymous `curl /api/pools?limit=50` harvest
+// the email, admin flag and cash balance of every participant and pool creator,
+// paginated across the whole user base.
+const USER_PUBLIC_COLS = "id, name, avatar";
+
 const poolSelect = `
   *,
   pool_games(game_id, games(*)),
-  pool_participants(user_id, users(*)),
-  created_by_user:users!pools_created_by_fkey(*)
+  pool_participants(user_id, users(${USER_PUBLIC_COLS})),
+  created_by_user:users!pools_created_by_fkey(${USER_PUBLIC_COLS})
 `;
 
 const DEFAULT_PAGE = 1;
