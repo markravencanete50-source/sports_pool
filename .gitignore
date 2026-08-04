@@ -49,3 +49,5 @@ volumes/storage/
 supabase/dumps/
 .next/
 supabase/.temp/
+
+.vercel
