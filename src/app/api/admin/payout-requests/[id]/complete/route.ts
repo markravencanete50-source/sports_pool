@@ -2,7 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
-import { createPayPalPayout, isPayPalConfigured } from "@/lib/paypal";
+import {
+  createPayPalPayout,
+  isPayPalConfigured,
+  assertPayoutModeSafe,
+} from "@/lib/paypal";
 
 export async function PATCH(
   request: Request,
@@ -106,6 +110,13 @@ export async function PATCH(
         },
         { status: 503 }
       );
+    }
+
+    // Refuse to debit a real balance against sandbox money on production.
+    const modeProblem = assertPayoutModeSafe();
+    if (modeProblem) {
+      console.error("[payout-complete]", modeProblem);
+      return NextResponse.json({ error: modeProblem }, { status: 503 });
     }
 
     /*

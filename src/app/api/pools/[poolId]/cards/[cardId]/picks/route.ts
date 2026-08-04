@@ -76,6 +76,45 @@ export async function POST(
       );
     }
 
+    /*
+     * SECURITY — per-game kickoff lock.
+     *
+     * The checks above only assert that the CARD is pending and the POOL is not
+     * completed. Neither says anything about whether this particular game has
+     * started. And because pool completion is driven by a scheduled job that
+     * does not exist yet, pools stay 'open' indefinitely — so a player could
+     * submit a pick for a game that had already been played, with the result
+     * publicly known. That is a guaranteed-win primitive on a real-money pot.
+     *
+     * A pick is only accepted while its own game is still scheduled AND its
+     * kickoff is in the future. Mirrored by RLS in migration 20260804000000 so
+     * a direct PostgREST write cannot bypass it either.
+     */
+    const { data: game } = await supabase
+      .from("games")
+      .select("id, date, status")
+      .eq("id", validatedData.gameId)
+      .maybeSingle();
+
+    if (!game) {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+
+    const kickoff = new Date(game.date).getTime();
+    if (!Number.isFinite(kickoff)) {
+      return NextResponse.json(
+        { error: "Game has no valid kickoff time" },
+        { status: 409 }
+      );
+    }
+
+    if (game.status !== "scheduled" || kickoff <= Date.now()) {
+      return NextResponse.json(
+        { error: "Picks are locked for this game — it has already started" },
+        { status: 409 }
+      );
+    }
+
     const { data: existingPick } = await supabase
       .from("card_picks")
       .select("id")

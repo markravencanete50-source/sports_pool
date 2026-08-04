@@ -1,5 +1,42 @@
-const PAYPAL_BASE =
-  process.env.PAYPAL_MODE === "live"
+/*
+ * SECURITY — PAYPAL_MODE must never fail open to sandbox.
+ *
+ * This was `process.env.PAYPAL_MODE === "live" ? prod : sandbox`, so ANY other
+ * value — unset, "Live", "production", a trailing space, a typo — silently
+ * selected the sandbox host. The payout route debits the user's REAL balance
+ * and then sends fake money, so the user is out real funds and receives
+ * nothing, with no error anywhere.
+ *
+ * The value is now strict: exactly "live" or "sandbox", anything else throws.
+ * Callers can additionally refuse to run sandbox in production via isSandbox().
+ */
+function resolveMode(): "live" | "sandbox" {
+  const raw = process.env.PAYPAL_MODE?.trim().toLowerCase();
+  if (raw === "live" || raw === "sandbox") return raw;
+  throw new Error(
+    `PAYPAL_MODE must be exactly "live" or "sandbox" (got ${JSON.stringify(
+      process.env.PAYPAL_MODE ?? null
+    )}). Refusing to guess — an incorrect value sends fake money against real balances.`
+  );
+}
+
+export function isSandbox(): boolean {
+  return resolveMode() === "sandbox";
+}
+
+/**
+ * Guard for money-moving code paths: refuse to send sandbox payouts from a
+ * production deployment. Returns an error string, or null when safe.
+ */
+export function assertPayoutModeSafe(): string | null {
+  if (process.env.VERCEL_ENV === "production" && isSandbox()) {
+    return "PAYPAL_MODE is 'sandbox' on a production deployment. Refusing to debit a real balance against sandbox money.";
+  }
+  return null;
+}
+
+const PAYPAL_BASE = () =>
+  resolveMode() === "live"
     ? "https://api-m.paypal.com"
     : "https://api-m.sandbox.paypal.com";
 
@@ -15,7 +52,7 @@ function getCredentials(): { clientId: string; secret: string } {
 export async function getPayPalAccessToken(): Promise<string> {
   const { clientId, secret } = getCredentials();
   const auth = Buffer.from(`${clientId}:${secret}`).toString("base64");
-  const res = await fetch(`${PAYPAL_BASE}/v1/oauth2/token`, {
+  const res = await fetch(`${PAYPAL_BASE()}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -68,7 +105,7 @@ export async function createPayPalPayout(
     ],
   };
 
-  const res = await fetch(`${PAYPAL_BASE}/v1/payments/payouts`, {
+  const res = await fetch(`${PAYPAL_BASE()}/v1/payments/payouts`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

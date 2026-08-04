@@ -193,12 +193,26 @@ alter table public.pool_transactions enable row level security;
 alter table public.payout_requests   enable row level security;
 
 drop policy if exists "Transactions viewable by owner" on public.pool_transactions;
+drop policy if exists "Users can view own transactions" on public.pool_transactions;
 create policy "Own transactions only" on public.pool_transactions
   for select using (auth.uid() = user_id or public.is_admin());
 
+-- CRITICAL: the initial schema shipped
+--
+--   create policy "Users can create own transactions" on public.pool_transactions
+--       for insert with check (auth.uid() = user_id);
+--
+-- The predicate constrains only WHOSE row it is — not the amount, not the
+-- status, and not whether any money actually changed hands. Any authenticated
+-- user could POST straight to /rest/v1/pool_transactions with the anon key from
+-- the browser bundle and insert {amount: 100000, status: 'completed'}, which
+-- feeds the pot calculation directly. No API route involved, so none of the
+-- server-side payment checks applied.
+drop policy if exists "Users can create own transactions" on public.pool_transactions;
+
 -- No client-side INSERT/UPDATE at all: money rows are written exclusively by
--- service-role code (the Stripe webhook, payout approval). Absent a permissive
--- policy, RLS denies by default for anon/authenticated.
+-- service-role code (the Stripe webhook, payout approval). With every
+-- permissive policy dropped, RLS denies by default for anon/authenticated.
 
 create policy "Own payout requests" on public.payout_requests
   for select using (auth.uid() = user_id or public.is_admin());
