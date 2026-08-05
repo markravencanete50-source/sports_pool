@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/require-admin";
 import { updatePoolSchema } from "@/lib/validations";
 import { NextResponse } from "next/server";
@@ -39,7 +40,21 @@ export async function PUT(
     const body = await request.json();
     const validatedData = updatePoolSchema.parse(body);
 
-    const { data, error } = await supabase
+    /*
+     * Perform the write as service role, NOT with the caller's client.
+     *
+     * Migration 20260806000000 revokes UPDATE on pools from `authenticated` and
+     * grants back only (name, max_participants), because RLS cannot restrict
+     * which columns an UPDATE touches — a with_check of `auth.uid() =
+     * created_by` still permits `set status = 'completed'` straight through
+     * PostgREST. Columns like status, entry_fee and prize_pot are therefore
+     * unwritable by any client session, including an admin's.
+     *
+     * Authorization is already established above by requireAdmin(), so the
+     * privileged write is escalated deliberately and only after that gate.
+     */
+    const admin = createAdminClient();
+    const { data, error } = await admin
       .from("pools")
       .update(validatedData)
       .eq("id", poolId)
