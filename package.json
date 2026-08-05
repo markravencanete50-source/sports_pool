@@ -12,7 +12,8 @@
     "seed:admin": "tsx scripts/seed-admin.ts",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:settlement": "tsx scripts/verify-settlement.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

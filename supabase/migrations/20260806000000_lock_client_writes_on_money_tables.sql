@@ -90,10 +90,19 @@ create policy "Card picks updatable before kickoff" on public.card_picks
                   and g.status = 'scheduled')
   );
 
--- (b) DELETE carried no kickoff condition at all — only ownership. A player
---     could drop a pick after the game went against them. Whether that helps
---     depends on how scoring counts picks, which is exactly why it must not be
---     reachable. Same window as editing.
+-- (b) DELETE carried no kickoff condition at all — only ownership.
+--
+--     CORRECTION to the message on commit 5c8ff8b, which described this as
+--     "drop a pick after the game went against you" and implied a scoring gain.
+--     It is not exploitable that way. computePoolWinners disqualifies any card
+--     whose scored-pick count differs from the number of finished pool games
+--     (`score.total !== numFinishedGames`, src/lib/winners.ts), so deleting a
+--     losing pick removes the card from contention entirely — self-harm, not an
+--     edge. Verified by running the real scoring function against a seeded pool.
+--
+--     The guard is kept as hardening: post-kickoff mutation of a scored card
+--     has no legitimate use, and a future change to how `total` is derived
+--     would silently turn this into a genuine hole.
 drop policy if exists "Users can delete picks for own cards" on public.card_picks;
 create policy "Picks deletable before kickoff" on public.card_picks
   for delete

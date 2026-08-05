@@ -231,13 +231,42 @@ export function computePoolWinners(
     tied = tied.filter((t) => t.totalScoreDiff === best);
   }
 
-  const split = netPot / tied.length;
+  /*
+   * MONEY PRECISION.
+   *
+   * This was `const split = netPot / tied.length` — raw float division, no
+   * rounding. A 3-way split of a $100 net pot returns 33.333333333333336, and
+   * that value is credited straight to users.balance and written into
+   * pool_winners.amount. The balance is then a number with 15 decimal places
+   * that renders as $33.33 but is not $33.33, and it flows into withdrawal
+   * threshold comparisons and admin payout amounts.
+   *
+   * Split in integer cents instead. Any indivisible remainder is handed out one
+   * cent at a time, ordered by userId so the outcome is deterministic and
+   * reproducible rather than dependent on object key order. The payouts then
+   * sum to exactly the net pot, to the cent, for every pot and every winner
+   * count.
+   */
+  const netCents = Math.round(netPot * 100);
+  const n = tied.length;
+  const baseCents = Math.floor(netCents / n);
+  let remainderCents = netCents - baseCents * n;
+
+  const ordered = [...tied].sort((a, b) => a.userId.localeCompare(b.userId));
+
+  const amountByUser = new Map<string, number>();
+  for (const t of ordered) {
+    const extra = remainderCents > 0 ? 1 : 0;
+    if (extra) remainderCents--;
+    amountByUser.set(t.userId, (baseCents + extra) / 100);
+  }
+
   return tied.map((t) => ({
     userId: t.userId,
     cardId: userBest[t.userId].cardId,
     correct: userBest[t.userId].correct,
     total: userBest[t.userId].total,
     totalScoreDiff: userBest[t.userId].totalScoreDifference,
-    amount: split,
+    amount: amountByUser.get(t.userId) as number,
   }));
 }
