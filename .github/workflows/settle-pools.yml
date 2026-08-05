@@ -1,0 +1,84 @@
+name: Settle pools
+
+# Pool settlement needs to run often on game days — a pool that finishes at 4pm
+# should pay out in minutes, not the next morning.
+#
+# Vercel Cron on the Hobby plan is day-granularity only; sub-daily schedules
+# require Pro. vercel.json therefore carries a once-daily schedule that is valid
+# on any plan, and this workflow supplies the frequent cadence for free.
+#
+# Running both is safe: /api/cron/settle is idempotent by design. Balance
+# credits are guarded by a pre-check on user_transactions plus the UNIQUE index
+# idx_user_transactions_winning_per_pool, so a pool cannot be paid twice no
+# matter how many schedulers call it.
+#
+# SETUP — add these under Settings > Secrets and variables > Actions:
+#   CRON_SECRET  same value as the CRON_SECRET env var on Vercel
+#   APP_URL      e.g. https://sports-pool.vercel.app  (no trailing slash)
+#
+# If either secret is missing the job fails loudly rather than appearing to pass.
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub queues rather than guarantees this exact minute
+    # under load, which settlement tolerates — it is a catch-up job, not a
+    # real-time one.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  # Never let two settlement runs overlap.
+  group: settle-pools
+  cancel-in-progress: false
+
+jobs:
+  settle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger settlement
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ] || [ -z "${APP_URL:-}" ]; then
+            echo "::error::CRON_SECRET and APP_URL must both be set as Actions secrets."
+            exit 1
+          fi
+
+          body=$(mktemp)
+          code=$(curl -sS -o "$body" -w '%{http_code}' \
+                   --max-time 300 \
+                   -H "Authorization: Bearer ${CRON_SECRET}" \
+                   "${APP_URL}/api/cron/settle")
+
+          echo "HTTP $code"
+          cat "$body"
+          echo
+
+          if [ "$code" = "503" ]; then
+            echo "::error::503 — CRON_SECRET is not configured on Vercel, so settlement is disabled."
+            exit 1
+          fi
+          if [ "$code" != "200" ]; then
+            echo "::error::Settlement failed with HTTP $code"
+            exit 1
+          fi
+
+          # Surface held funds and per-pool failures as annotations so a silent
+          # bad state cannot sit unnoticed in a green run.
+          warnings=$(jq -r '.warnings // [] | length' < "$body")
+          failures=$(jq -r '[.pools // [] | .[] | select(.error)] | length' < "$body")
+
+          if [ "$warnings" != "0" ]; then
+            jq -r '.warnings[]' < "$body" | while read -r w; do
+              echo "::warning::$w"
+            done
+          fi
+          if [ "$failures" != "0" ]; then
+            jq -r '.pools[] | select(.error) | "pool \(.poolId): \(.error)"' < "$body" \
+              | while read -r f; do echo "::error::$f"; done
+            exit 1
+          fi
