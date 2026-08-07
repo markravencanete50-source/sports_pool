@@ -12,18 +12,24 @@ name: Settle pools
 # idx_user_transactions_winning_per_pool, so a pool cannot be paid twice no
 # matter how many schedulers call it.
 #
-# SETUP — add these under Settings > Secrets and variables > Actions:
+# SETUP — add this under Settings > Secrets and variables > Actions:
 #   CRON_SECRET  same value as the CRON_SECRET env var on Vercel
-#   APP_URL      e.g. https://sports-pool.vercel.app  (no trailing slash)
 #
-# If either secret is missing the job fails loudly rather than appearing to pass.
+# APP_URL defaults to the production domain below and only needs an Actions
+# secret to override it; it is a public URL, not a credential.
+#
+# If CRON_SECRET is missing the job fails loudly rather than appearing to pass.
 
 on:
   schedule:
-    # Every 15 minutes. GitHub queues rather than guarantees this exact minute
+    # Every 30 minutes. GitHub queues rather than guarantees this exact minute
     # under load, which settlement tolerates — it is a catch-up job, not a
     # real-time one.
-    - cron: "*/15 * * * *"
+    #
+    # Not */15: this is a private repo, so every run bills a full Actions minute
+    # even though the job takes seconds. */15 is ~2,880 min/month against a
+    # 2,000-minute free allowance; */30 is ~1,440 and stays inside it.
+    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -39,12 +45,12 @@ jobs:
       - name: Trigger settlement
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_URL: ${{ secrets.APP_URL }}
+          APP_URL: ${{ secrets.APP_URL || 'https://sports-pool.vercel.app' }}
         run: |
           set -euo pipefail
 
-          if [ -z "${CRON_SECRET:-}" ] || [ -z "${APP_URL:-}" ]; then
-            echo "::error::CRON_SECRET and APP_URL must both be set as Actions secrets."
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET must be set as an Actions secret (Settings > Secrets and variables > Actions). It must match CRON_SECRET on Vercel."
             exit 1
           fi
 
