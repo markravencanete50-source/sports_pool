@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { buildCsp, generateNonce } from "@/lib/csp";
 
 /**
  * Route protection. In Next.js 16 this file is `proxy.ts` (formerly `middleware.ts`).
@@ -25,7 +26,36 @@ const PROTECTED_PATHS = [
 const ADMIN_PATHS = ["/admin"];
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  /*
+   * Per-request CSP nonce.
+   *
+   * Setting the nonce on the REQUEST's Content-Security-Policy header is what
+   * makes this work: Next.js reads it there and stamps the same nonce onto
+   * every script tag it renders, so its inline bootstrap is authorised without
+   * 'unsafe-inline'. The header is also set on the response, which is what the
+   * browser actually enforces.
+   *
+   * API routes are skipped — CSP governs documents, and the Stripe webhook in
+   * particular is a server-to-server POST that gains nothing from it.
+   */
+  const isDocumentRequest = !request.nextUrl.pathname.startsWith("/api/");
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce);
+
+  const requestHeaders = new Headers(request.headers);
+  if (isDocumentRequest) {
+    requestHeaders.set("x-nonce", nonce);
+    requestHeaders.set("content-security-policy", csp);
+  }
+
+  const withCsp = <T extends NextResponse>(res: T): T => {
+    if (isDocumentRequest) res.headers.set("Content-Security-Policy", csp);
+    return res;
+  };
+
+  let supabaseResponse = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,7 +71,9 @@ export async function proxy(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = NextResponse.next({
+            request: { headers: requestHeaders },
+          });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
@@ -64,7 +96,7 @@ export async function proxy(request: NextRequest) {
   if ((needsAuth || needsAdmin) && !user) {
     const redirectUrl = new URL("/login", request.url);
     redirectUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(redirectUrl);
+    return withCsp(NextResponse.redirect(redirectUrl));
   }
 
   if (needsAdmin) {
@@ -74,11 +106,15 @@ export async function proxy(request: NextRequest) {
     const role = (user?.app_metadata as Record<string, unknown> | undefined)?.role;
     if (role !== "admin") {
       // 404 rather than 403: do not confirm the admin surface exists.
-      return NextResponse.rewrite(new URL("/not-found", request.url));
+      return withCsp(
+        NextResponse.rewrite(new URL("/not-found", request.url), {
+          request: { headers: requestHeaders },
+        })
+      );
     }
   }
 
-  return supabaseResponse;
+  return withCsp(supabaseResponse);
 }
 
 export const config = {

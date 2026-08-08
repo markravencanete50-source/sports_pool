@@ -1,4 +1,15 @@
 import type { Metadata } from "next";
+
+/*
+ * Required by the nonce-based CSP (src/lib/csp.ts).
+ *
+ * A per-request nonce cannot authorise a statically pre-rendered page: the HTML
+ * is baked at build time with no nonce, while the middleware sends a fresh one
+ * on every response, so the browser refuses every inline script and the page
+ * never hydrates. Rendering per request is what lets Next.js stamp the current
+ * nonce onto its bootstrap scripts.
+ */
+export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import "./globals.css";
 import { Providers } from "./providers";

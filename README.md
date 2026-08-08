@@ -25,6 +25,7 @@ pays the winners automatically.
 - [Settlement](#settlement)
 - [Deployment](#deployment)
 - [Self-hosting with Docker](#self-hosting-with-docker)
+- [Backup, recovery and incident response](#backup-recovery-and-incident-response)
 - [Known technical debt](#known-technical-debt)
 
 ---
@@ -126,10 +127,10 @@ curl -X POST "$NEXT_PUBLIC_APP_URL/api/seed-admin" \
 > `revoke` / `create or replace` — but the repair keeps the history honest.
 > A brand-new database needs none of this: just `npm run db:migrate`.
 
-> ⚠️ **Do not provision from `schema.sql`.** It is a stale early-development
-> snapshot, kept only for historical reference. It is missing the entire
-> balance/payout subsystem and several RPCs — a database built from it will
-> appear to work until money moves.
+> The migrations are the ONLY way to provision. A stale `schema.sql` snapshot
+> used to sit at the repo root; it has been deleted, because it was missing the
+> entire balance/payout subsystem and several RPCs, so a database built from it
+> appeared to work right up until money moved.
 
 For local development against a containerised stack, `npm run db:start` /
 `db:stop` / `db:reset` wrap the Supabase CLI.
@@ -315,9 +316,72 @@ Two things to know:
 
 - **The Dockerfile does not build the app.** It copies `.next/standalone`, so you
   must `npm run build` on the host first.
-- **The stack has no scheduler.** Nothing calls `/api/cron/settle`, so pools will
-  never pay out until you add a host cron, a sidecar, or point the GitHub Actions
-  workflow at your public URL. `.env.docker.example` shows all three.
+- **Settlement runs via the `settle-cron` service**, which calls
+  `/api/cron/settle` every 15 minutes. It needs `CRON_SECRET` in `.env.docker`
+  — without it the endpoint fails closed (503) and nobody gets paid.
+
+---
+
+## Backup, recovery and incident response
+
+This system holds player balances and an append-only money ledger. Losing or
+corrupting either is unrecoverable by other means, so treat the following as
+part of go-live, not as an afterthought.
+
+### Backups
+
+| What | How | Cadence |
+|---|---|---|
+| Database | Supabase Point-in-Time Recovery (**Pro plan or above** — the free tier only keeps daily logical backups) | Continuous, ≥ 7-day retention |
+| Pre-migration snapshot | `supabase db dump -f pre-<migration>.sql` before every `db:migrate` against production | Every schema change |
+| Verification | Restore the latest backup into a scratch project and run `npm test` plus a spot-check of `user_transactions` totals | Monthly |
+
+A backup nobody has restored is a hypothesis, not a backup. The monthly restore
+drill is the only thing that turns it into a fact.
+
+### Reconciliation invariant
+
+The ledger is the source of truth for money, and it should always agree with the
+balances:
+
+```sql
+-- Every user's balance must equal the sum of their ledger movements.
+select u.id, u.balance, coalesce(sum(t.amount), 0) as ledger
+from public.users u
+left join public.user_transactions t on t.user_id = u.id
+group by u.id, u.balance
+having u.balance <> coalesce(sum(t.amount), 0);
+```
+
+**Any row returned here is an incident.** Run it after every settlement run and
+after any manual database intervention.
+
+### Rolling back a migration
+
+Migrations are forward-only; there are no down scripts. To roll back:
+
+1. Restore the pre-migration snapshot into a scratch project and confirm it is
+   intact.
+2. Take the app offline (settlement in particular — an unset `CRON_SECRET`
+   stops it immediately and fails closed).
+3. Restore over production, then run `supabase migration repair` so the recorded
+   history matches what is actually applied.
+
+### Monitoring
+
+The money paths log at `error`/`warn` with a stable prefix. At minimum, alert a
+human on:
+
+- `FULFILMENT FAILED` — a player was charged and got no card; needs a refund.
+- `CRITICAL` — a payout was sent but the ledger write or status update failed.
+- `refusing to settle at zero` / `completed but produced no winners` — a pool is
+  holding player money.
+- `Refusing to re-materialise` — something tried to settle an already-paid pool.
+- Any non-200 from `/api/cron/settle`.
+
+Vercel captures stdout, but console output is not an alerting system. Ship these
+to something that can page someone (Sentry, Better Stack, Datadog) before taking
+real money.
 
 ---
 
@@ -331,10 +395,16 @@ Tracked deliberately, none of it blocking:
   models, then flip the rule back to `error`.
 - **React hooks lint findings** — `exhaustive-deps` and `set-state-in-effect` in
   several pages. Worth fixing, but each needs its own behavioural check.
+- **No static generation** — the nonce-based CSP requires per-request rendering,
+  so every page is dynamic (`export const dynamic = "force-dynamic"` in the root
+  layout). This is a deliberate trade: a per-request nonce cannot authorise
+  pre-rendered HTML, and dropping `'unsafe-inline'` from `script-src` was judged
+  worth more than CDN-caching the marketing pages. To recover static rendering
+  for public pages, serve them a separate nonce-free CSP and scope
+  `force-dynamic` to the authenticated routes.
 - **Migration history repair needed on the existing production database** — see
   the warning under [Database setup](#database-setup). A fresh database is fine;
   only the already-provisioned one needs the one-off `migration repair`.
-- **`schema.sql`** — retained for reference only; see the warning above.
 - **`src/lib/supabase/types.ts`** — generated types that are both stale and
   unwired (the clients are created without the `Database` generic, so queries are
   not type-checked against the schema). Regenerate with
