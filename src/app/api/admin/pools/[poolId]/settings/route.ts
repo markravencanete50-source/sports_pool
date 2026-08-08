@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/require-admin";
 import { updatePoolSchema } from "@/lib/validations";
 import { NextResponse } from "next/server";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 /**
  * SECURITY: this route lives under /api/admin/ but authorized on pool
@@ -21,6 +22,9 @@ export async function PUT(
   { params }: { params: Promise<{ poolId: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { poolId } = await params;
     const supabase = await createClient();
 

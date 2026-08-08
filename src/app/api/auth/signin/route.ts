@@ -29,8 +29,18 @@ export async function POST(request: Request) {
       );
     }
 
+    // Do NOT return `data.session`. It carries the refresh token, which is a
+    // long-lived credential; echoing it into a JSON body puts it somewhere any
+    // XSS or logging sink can reach, when the session is already delivered
+    // safely as an HTTP-only cookie by createClient(). Return only what the UI
+    // needs to render the signed-in state.
     return NextResponse.json(
-      { user: data.user, session: data.session },
+      {
+        user: {
+          id: data.user?.id,
+          email: data.user?.email,
+        },
+      },
       { status: 200 }
     );
   } catch (error) {

@@ -52,10 +52,15 @@ export async function GET(
       );
     }
 
-    // Never `users(*)` — that table carries email, role and balance.
+    // Read author names from public.profiles, NOT public.users.
+    //
+    // users is locked to own-row SELECT (it carries email, role and balance), so
+    // an embedded users(...) resolved to NULL for every author except the
+    // caller and the whole chat rendered as "Unknown". profiles is the
+    // world-readable (id, name, avatar) projection built for exactly this.
     const { data, error } = await supabase
       .from("comments")
-      .select("*, users(id, name, avatar)")
+      .select("*, users:profiles!comments_user_id_profiles_fkey(id, name, avatar)")
       .eq("pool_id", poolId)
       .order("created_at", { ascending: true });
 
@@ -164,7 +169,7 @@ export async function POST(
         user_id: user.id,
         text: validatedData.text,
       })
-      .select("*, users(id, name, avatar)")
+      .select("*, users:profiles!comments_user_id_profiles_fkey(id, name, avatar)")
       .single();
 
     if (error) {

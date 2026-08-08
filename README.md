@@ -315,6 +315,11 @@ Tracked deliberately, none of it blocking:
   Supabase's history, so they are intentionally left alone. Use distinct
   timestamps for new migrations.
 - **`schema.sql`** — retained for reference only; see the warning above.
+- **`src/lib/supabase/types.ts`** — generated types that are both stale and
+  unwired (the clients are created without the `Database` generic, so queries are
+  not type-checked against the schema). Regenerate with
+  `npx supabase gen types typescript --linked` and parameterise the clients to
+  make it real.
 - **Legacy `picks` table** — superseded by `card_picks`. Its write route is now
   410; the table itself can be dropped once you are sure nothing reads it.
 

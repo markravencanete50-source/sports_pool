@@ -66,6 +66,12 @@ export async function materializePoolWinners(
     platformFeePct = Number(platformSettings?.platform_fee_percentage);
     if (!Number.isFinite(platformFeePct)) platformFeePct = 10;
   }
+
+  // Clamp before it is multiplied into the payout. computePoolWinners derives
+  // netPot = prize_pot * (1 - pct/100), so a negative percentage would pay out
+  // MORE than the pot — minting money — and one above 100 would go negative.
+  // The database constrains this column too; this is the second line of defence.
+  platformFeePct = Math.min(Math.max(platformFeePct, 0), 100);
   const financials = await getPoolFinancials(admin, poolId);
   const prizePot = financials.prize_pot ?? 0;
 

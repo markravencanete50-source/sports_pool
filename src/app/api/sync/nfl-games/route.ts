@@ -9,6 +9,7 @@ import { ensureTeamsExist } from "@/lib/teams-seed";
 import { poolConfig } from "@/lib/config";
 import { completePoolIfAllGamesFinished } from "@/lib/pool-completion";
 import { materializePoolWinners } from "@/lib/materialize-winners";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 function getGameStatus(competition: ESPNGame["competitions"][0]): GameStatus {
   const status = competition.status.type;
@@ -121,6 +122,9 @@ async function runCompleteFinishedPools(supabase: Parameters<typeof completePool
 
 export async function POST(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const supabase = await createClient();
     const auth = await requireAdmin(supabase);
     if (auth instanceof NextResponse) return auth;

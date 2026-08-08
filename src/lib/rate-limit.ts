@@ -38,15 +38,41 @@ type Bucket = { count: number; resetAt: number };
 const store = new Map<string, Bucket>();
 let lastSweep = 0;
 
-/** Best-effort client IP from the standard proxy headers. */
+/**
+ * Client IP for rate-limit keying.
+ *
+ * SECURITY: the LEFTMOST X-Forwarded-For entry is supplied by the client and is
+ * trivially forged — sending a random value on every request gave each one its
+ * own bucket and defeated the throttle entirely, which is the one thing a
+ * limiter must not allow.
+ *
+ * Order of preference:
+ *   1. A platform header the client cannot set, because the edge overwrites it
+ *      (Vercel's x-vercel-forwarded-for, Cloudflare's cf-connecting-ip).
+ *   2. The RIGHTMOST X-Forwarded-For entry — appended by our own proxy, so it is
+ *      the last hop we actually trust, unlike the leftmost which the caller
+ *      controls.
+ *   3. x-real-ip, then a constant.
+ *
+ * Falling back to a shared constant is deliberate: an unidentifiable caller
+ * shares one bucket rather than getting an unlimited private one.
+ */
 export function getClientIp(request: Request): string {
+  const trusted =
+    request.headers.get("x-vercel-forwarded-for")?.trim() ||
+    request.headers.get("cf-connecting-ip")?.trim();
+  if (trusted) return trusted;
+
   const xff = request.headers.get("x-forwarded-for");
   if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
+    const hops = xff.split(",").map((h) => h.trim()).filter(Boolean);
+    const rightmost = hops[hops.length - 1];
+    if (rightmost) return rightmost;
   }
+
   const real = request.headers.get("x-real-ip")?.trim();
   if (real) return real;
+
   return "unknown";
 }
 

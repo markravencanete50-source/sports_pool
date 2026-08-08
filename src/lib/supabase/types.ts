@@ -1,3 +1,24 @@
+/**
+ * ⚠️ STALE AND UNUSED — do not trust this file as a description of the schema.
+ *
+ * Two things to know before you rely on it:
+ *
+ *  1. NOTHING IMPORTS IT. The Supabase clients in this directory are created
+ *     without the `Database` generic, so queries are not actually type-checked
+ *     against these definitions. Adding a wrong column name here (or there)
+ *     produces no error anywhere.
+ *
+ *  2. IT HAS DRIFTED. It predates most of the money subsystem — it is missing
+ *     the debit_user_balance / credit_user_balance / claim_pool_payout /
+ *     get_public_winners functions and the pools.platform_fee_percentage column,
+ *     among others. The migrations in supabase/migrations/ are the source of
+ *     truth.
+ *
+ * To make this real, regenerate and then wire it in:
+ *     npx supabase gen types typescript --linked > src/lib/supabase/types.ts
+ * and parameterise the clients, e.g. createServerClient<Database>(...).
+ * Until that is done, treat this file as documentation of historical intent.
+ */
 export type Json =
   | string
   | number

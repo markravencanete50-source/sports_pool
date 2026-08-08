@@ -9,14 +9,17 @@ import { NextResponse } from "next/server";
 // unauthenticated GET of any pool returned the email, role and cash balance of
 // every participant, every commenter and the pool creator in one JSON blob.
 // Enumerate display-only columns instead.
+// Display names come from public.profiles, NOT public.users: users is locked to
+// own-row SELECT, so an embedded users(...) resolves to NULL for everyone except
+// the caller and every other player renders as "Unknown".
 const USER_PUBLIC_COLS = "id, name, avatar";
 
 const poolDetailSelect = `
   *,
   pool_games(game_id, games(*)),
-  pool_participants(user_id, users(${USER_PUBLIC_COLS})),
-  comments(*, users(${USER_PUBLIC_COLS})),
-  created_by_user:users!pools_created_by_fkey(${USER_PUBLIC_COLS})
+  pool_participants(user_id, users:profiles!pool_participants_user_id_profiles_fkey(${USER_PUBLIC_COLS})),
+  comments(*, users:profiles!comments_user_id_profiles_fkey(${USER_PUBLIC_COLS})),
+  created_by_user:profiles!pools_created_by_profiles_fkey(${USER_PUBLIC_COLS})
 `;
 
 export async function GET(

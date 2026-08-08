@@ -7,12 +7,16 @@ import {
   isPayPalConfigured,
   assertPayoutModeSafe,
 } from "@/lib/paypal";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { id: payoutRequestId } = await params;
     const supabase = await createClient();
     const auth = await requireAdmin(supabase);

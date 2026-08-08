@@ -4,9 +4,13 @@ import { requireAdmin } from "@/lib/require-admin";
 import { PoolStatus } from "@/lib/enums";
 import { completePoolIfAllGamesFinished } from "@/lib/pool-completion";
 import { materializePoolWinners } from "@/lib/materialize-winners";
+import { assertSameOrigin } from "@/lib/request-guards";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const supabase = await createClient();
     const auth = await requireAdmin(supabase);
     if (auth instanceof NextResponse) return auth;
