@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createPoolSchema } from "@/lib/validations";
 import {
   attachFinancialsToPools,
@@ -64,7 +65,9 @@ export async function GET(request: Request) {
 
     const rawPools = data || [];
     const poolIds = rawPools.map((p: { id: string }) => p.id);
-    const financialsMap = await getPoolsFinancials(supabase, poolIds);
+    // get_pools_financials EXECUTE is revoked from client roles; it returns
+    // per-pool aggregates this endpoint already exposes publicly.
+    const financialsMap = await getPoolsFinancials(createAdminClient(), poolIds);
     const pools = attachFinancialsToPools(rawPools, financialsMap);
 
     return NextResponse.json(
@@ -104,7 +107,12 @@ export async function POST(request: Request) {
 
     const poolWeek = validatedData.week;
 
-    const { data: pool, error: poolError } = await supabase
+    // Client roles have no INSERT/UPDATE/DELETE on pools/pool_games; those
+    // writes go through the service role, which bypasses RLS — so auth,
+    // ownership and column allow-listing must all be enforced in this route.
+    const admin = createAdminClient();
+
+    const { data: pool, error: poolError } = await admin
       .from("pools")
       .insert({
         name: validatedData.name,
@@ -187,7 +195,7 @@ export async function POST(request: Request) {
             }
 
             if (gameWeek && gameWeek !== poolWeek) {
-              await supabase.from("pools").delete().eq("id", pool.id);
+              await admin.from("pools").delete().eq("id", pool.id);
               return NextResponse.json(
                 {
                   error: `Game week mismatch. All games must be from week ${poolWeek}. Found game from week ${gameWeek}.`,
@@ -225,7 +233,7 @@ export async function POST(request: Request) {
       if (gameWeeks.length > 0) {
         const uniqueWeeks = [...new Set(gameWeeks)];
         if (uniqueWeeks.length > 1) {
-          await supabase.from("pools").delete().eq("id", pool.id);
+          await admin.from("pools").delete().eq("id", pool.id);
           return NextResponse.json(
             {
               error: `All games must be from the same week. Found games from weeks: ${uniqueWeeks.join(
@@ -236,7 +244,7 @@ export async function POST(request: Request) {
           );
         }
         if (uniqueWeeks[0] !== poolWeek) {
-          await supabase.from("pools").delete().eq("id", pool.id);
+          await admin.from("pools").delete().eq("id", pool.id);
           return NextResponse.json(
             {
               error: `All games must be from week ${poolWeek}. Found games from week ${uniqueWeeks[0]}.`,
@@ -264,7 +272,7 @@ export async function POST(request: Request) {
 
         if (gamesError) {
           console.error("Error storing games:", gamesError);
-          await supabase.from("pools").delete().eq("id", pool.id);
+          await admin.from("pools").delete().eq("id", pool.id);
           return NextResponse.json(
             {
               error: "Failed to add games to pool",
@@ -276,7 +284,7 @@ export async function POST(request: Request) {
       }
 
       if (poolGames.length > 0) {
-        const { error: poolGamesError } = await supabase
+        const { error: poolGamesError } = await admin
           .from("pool_games")
           .insert(poolGames);
 
@@ -285,7 +293,7 @@ export async function POST(request: Request) {
             "Pool creation error - pool_games insert failed:",
             poolGamesError
           );
-          await supabase.from("pools").delete().eq("id", pool.id);
+          await admin.from("pools").delete().eq("id", pool.id);
           return NextResponse.json(
             {
               error: "Failed to add games to pool",
@@ -309,7 +317,7 @@ export async function POST(request: Request) {
         "Pool creation error - pool_participants insert failed:",
         participantError
       );
-      await supabase.from("pools").delete().eq("id", pool.id);
+      await admin.from("pools").delete().eq("id", pool.id);
       return NextResponse.json(
         {
           error: "Failed to add participant",

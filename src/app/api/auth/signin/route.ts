@@ -24,14 +24,13 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json(
-      { user: data.user, session: data.session },
-      { status: 200 }
-    );
+    // The session stays in the cookie the Supabase client just set. Returning it
+    // here would put a 400-day refresh token into every CDN and proxy log.
+    return NextResponse.json({ user: data.user }, { status: 200 });
   } catch (error) {
     if (error instanceof Error && error.name === "ZodError") {
       return NextResponse.json(
-        { error: "Validation error", details: error },
+        { error: "Enter a valid email and password." },
         { status: 400 }
       );
     }

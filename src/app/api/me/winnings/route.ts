@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { materializePoolWinners } from "@/lib/materialize-winners";
 
 export async function GET() {
   try {
@@ -41,24 +40,15 @@ export async function GET() {
       winningCardId?: string;
     }> = [];
 
+    // Read-only: settlement happens in the cron/sync paths. Triggering it from
+    // here let any player force a re-settlement of someone else's pool.
     for (const pool of completedPools ?? []) {
-      let { data: myWin } = await supabase
+      const { data: myWin } = await supabase
         .from("pool_winners")
         .select("pool_id, correct, total, amount, winning_card_id")
         .eq("pool_id", pool.id)
         .eq("user_id", user.id)
         .maybeSingle();
-
-      if (!myWin) {
-        await materializePoolWinners(supabase, pool.id);
-        const retry = await supabase
-          .from("pool_winners")
-          .select("pool_id, correct, total, amount, winning_card_id")
-          .eq("pool_id", pool.id)
-          .eq("user_id", user.id)
-          .maybeSingle();
-        myWin = retry.data ?? null;
-      }
 
       if (myWin) {
         winnings.push({

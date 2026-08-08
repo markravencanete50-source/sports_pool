@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getPoolFinancials } from "@/lib/pool-financials";
 import { updatePoolWithGamesSchema } from "@/lib/validations";
 import { computePoolWinners } from "@/lib/winners";
@@ -37,9 +38,13 @@ export async function GET(
       return NextResponse.json({ error: "Pool not found" }, { status: 404 });
     }
 
-    const financials = await getPoolFinancials(supabase, poolId);
+    // get_pool_financials EXECUTE is revoked from client roles; it returns
+    // aggregates this endpoint already exposes publicly. The parlay count runs
+    // as admin so can_edit matches the RLS-independent freeze check in PATCH.
+    const admin = createAdminClient();
+    const financials = await getPoolFinancials(admin, poolId);
 
-    const { count: joinedCount } = await supabase
+    const { count: joinedCount } = await admin
       .from("parlay_cards")
       .select("*", { count: "exact", head: true })
       .eq("pool_id", poolId)
@@ -87,7 +92,14 @@ export async function PATCH(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { count: joinedCount } = await supabase
+    // The pool_games writes below run on the service role (client roles have no
+    // INSERT/DELETE on pool_games), so every guard is enforced here. The freeze
+    // count runs as admin on purpose: under RLS "Card holder only" the creator
+    // would count only their OWN cards and could rewrite the slate after other
+    // players had already paid in.
+    const admin = createAdminClient();
+
+    const { count: joinedCount } = await admin
       .from("parlay_cards")
       .select("*", { count: "exact", head: true })
       .eq("pool_id", poolId)
@@ -160,7 +172,7 @@ export async function PATCH(
         );
       }
 
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await admin
         .from("pool_games")
         .delete()
         .eq("pool_id", poolId);
@@ -177,7 +189,7 @@ export async function PATCH(
         game_id,
       }));
 
-      const { error: insertError } = await supabase
+      const { error: insertError } = await admin
         .from("pool_games")
         .insert(poolGames);
 
@@ -192,7 +204,7 @@ export async function PATCH(
       Array.isArray(validatedData.selectedGames) &&
       validatedData.selectedGames.length === 0
     ) {
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await admin
         .from("pool_games")
         .delete()
         .eq("pool_id", poolId);
@@ -264,7 +276,28 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { error } = await supabase.from("pools").delete().eq("id", poolId);
+    // Client roles have no DELETE on pools, so this runs on the service role.
+    // Ownership is verified above; the freeze below stops a creator deleting a
+    // pool players have already paid into (which would orphan their cards and
+    // money). RLS used to make this delete a silent no-op — there is no DELETE
+    // policy on pools — so the guard has to live here now that the write really
+    // executes.
+    const admin = createAdminClient();
+
+    const { count: joinedCount } = await admin
+      .from("parlay_cards")
+      .select("*", { count: "exact", head: true })
+      .eq("pool_id", poolId)
+      .in("status", ["pending", "active", "completed"]);
+
+    if ((joinedCount ?? 0) > 0) {
+      return NextResponse.json(
+        { error: "Pool can no longer be deleted. At least one player has joined." },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await admin.from("pools").delete().eq("id", poolId);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });

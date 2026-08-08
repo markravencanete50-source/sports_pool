@@ -113,7 +113,16 @@ export function computePoolWinners(
     platformFeePercentage = 10,
   } = input;
 
-  const netPot = pool.prize_pot * (1 - platformFeePercentage / 100);
+  // A fee outside [0, 100) makes the net pot negative (or wipes it), writing
+  // negative winner rows that permanently strand the pot. Treat an insane
+  // setting as unset rather than paying against it.
+  const feePct =
+    Number.isFinite(platformFeePercentage) &&
+    platformFeePercentage >= 0 &&
+    platformFeePercentage < 100
+      ? platformFeePercentage
+      : 10;
+
   const cardIds = poolCards.map((c) => c.id);
   const cardIdToUserId = new Map(poolCards.map((c) => [c.id, c.user_id]));
 
@@ -246,8 +255,15 @@ export function computePoolWinners(
    * reproducible rather than dependent on object key order. The payouts then
    * sum to exactly the net pot, to the cent, for every pot and every winner
    * count.
+   *
+   * The net is derived in integer cents with the fee in basis points, and
+   * FLOORED — Math.round here was half-up, so a half-cent net rounded in the
+   * winners' favour and minted the difference. Sub-cent residue stays with
+   * the platform fee instead.
    */
-  const netCents = Math.round(netPot * 100);
+  const potCents = Math.round(pool.prize_pot * 100);
+  const feeBp = Math.round(feePct * 100);
+  const netCents = Math.floor((potCents * (10000 - feeBp)) / 10000);
   const n = tied.length;
   const baseCents = Math.floor(netCents / n);
   let remainderCents = netCents - baseCents * n;

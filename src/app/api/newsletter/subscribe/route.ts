@@ -12,20 +12,19 @@ export async function POST(request: Request) {
       email: validated.email,
     });
 
-    if (error?.code === "23505") {
+    // Already-subscribed and newly-subscribed must be indistinguishable, or this
+    // endpoint answers "is this address on the list?" for anyone who asks.
+    if (error && error.code !== "23505") {
+      console.error("newsletter subscribe:", error);
       return NextResponse.json(
-        { message: "You're already on the newsletter list." },
-        { status: 200 }
+        { error: "Unable to subscribe right now." },
+        { status: 500 }
       );
-    }
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
     return NextResponse.json(
       { message: "Subscribed. We'll send the good stuff only." },
-      { status: 201 }
+      { status: 200 }
     );
   } catch (error) {
     if (error instanceof Error && error.name === "ZodError") {

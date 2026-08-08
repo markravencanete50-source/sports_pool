@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { extractErrorMessage } from "@/lib/error-utils";
 import { useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { DASHBOARD_PATH } from "@/lib/routes";
+import { safeInternalPath } from "@/lib/routes";
 
 function LoginForm() {
   const { signin, isSigningIn, signinError, isAuthenticated, isLoadingUser } =
@@ -21,8 +21,9 @@ function LoginForm() {
 
   useEffect(() => {
     if (!isLoadingUser && isAuthenticated) {
-      const redirect = searchParams.get("redirect") || DASHBOARD_PATH;
-      router.push(redirect);
+      // `redirect` is attacker-supplied; unclamped it sends a signed-in visitor
+      // straight off-site.
+      router.push(safeInternalPath(searchParams.get("redirect")));
     }
   }, [isAuthenticated, isLoadingUser, router, searchParams]);
 
@@ -38,7 +39,7 @@ function LoginForm() {
     try {
       await signin(data);
       toast.success("Welcome back!");
-      const redirect = searchParams.get("redirect") || DASHBOARD_PATH;
+      const redirect = safeInternalPath(searchParams.get("redirect"));
       setTimeout(() => router.push(redirect), 400);
     } catch (err: any) {
       const errorMessage = extractErrorMessage(err);

@@ -33,10 +33,17 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false });
 
     if (search.length > 0) {
-      const term = search.replace(/%/g, "\\%").replace(/_/g, "\\_");
-      query = query.or(
-        `email.ilike.%${term}%,name.ilike.%${term}%`
-      );
+      // , ( ) " are PostgREST or() grammar — strip them so input can't append
+      // its own conditions; then escape LIKE wildcards.
+      const term = search
+        .replace(/[,()"]/g, "")
+        .replace(/%/g, "\\%")
+        .replace(/_/g, "\\_");
+      if (term.length > 0) {
+        query = query.or(
+          `email.ilike.%${term}%,name.ilike.%${term}%`
+        );
+      }
     }
 
     const from = (page - 1) * limit;

@@ -1,8 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { GameStatus } from "@/lib/enums";
-import { completePoolIfAllGamesFinished } from "@/lib/pool-completion";
-import { materializePoolWinners } from "@/lib/materialize-winners";
 import { getNflScoreboard } from "@/lib/fetch-nfl-scoreboard";
 
 export async function POST(
@@ -116,17 +114,14 @@ export async function POST(
       }
     }
 
-    const poolCompleted = await completePoolIfAllGamesFinished(supabase, poolId);
-    if (poolCompleted) {
-      await materializePoolWinners(supabase, poolId);
-    }
-
+    // Settlement (pool completion, winner materialization, balance credits) is
+    // reserved for the admin sync route and /api/cron/settle — this route is
+    // reachable by pool creators, who must not be able to drive payouts.
     return NextResponse.json(
       {
         message: "Pool games synced successfully",
         updated: updatedCount,
         total: poolGameIds.length,
-        poolCompleted,
       },
       { status: 200 }
     );

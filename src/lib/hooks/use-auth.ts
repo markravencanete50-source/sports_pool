@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
 import { apiRequest } from "@/lib/queryClient";
 import { signinSchema, signupSchema } from "@/lib/validations";
 import { useRouter } from "next/navigation";

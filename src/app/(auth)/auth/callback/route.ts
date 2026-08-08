@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { DASHBOARD_PATH } from "@/lib/routes";
+import { safeInternalPath } from "@/lib/routes";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
-  const nextUrl = searchParams.get("next") ?? DASHBOARD_PATH;
+  // `next` arrives via Supabase's redirect_to, i.e. attacker-influenceable.
+  const nextUrl = safeInternalPath(searchParams.get("next"));
 
   if (!code) {
     return NextResponse.redirect(

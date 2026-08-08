@@ -96,17 +96,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
-    const { data: account, error: fetchAccountError } = await admin
-      .from("users")
-      .select("balance")
-      .eq("id", user.id)
-      .single();
-    if (fetchAccountError || !account) {
+    /*
+     * Atomic credit: a read-then-write here raced with any concurrent balance
+     * change (a claim on another pool, an approved payout) and clobbered it
+     * with a stale absolute value. The ledger row is derived from the RPC's
+     * returned balance so final = previous + amount holds against what was
+     * actually written.
+     */
+    const { data: creditedBalance, error: creditError } = await admin.rpc(
+      "credit_user_balance",
+      { p_user_id: user.id, p_amount: amount }
+    );
+
+    if (creditError) {
+      console.error("[claim-payout] credit failed:", creditError.message);
+      return NextResponse.json(
+        { error: "Could not credit your balance" },
+        { status: 500 }
+      );
+    }
+    // NULL means the UPDATE matched no row: no such user.
+    if (creditedBalance === null || creditedBalance === undefined) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const balanceBefore = Number(account.balance ?? 0);
-    const balanceAfter = balanceBefore + amount;
+    const balanceAfter = Number(creditedBalance);
+    const balanceBefore = balanceAfter - amount;
 
     const { error: insertTxError } = await admin.from("user_transactions").insert({
       user_id: user.id,
@@ -122,19 +137,40 @@ export async function POST(request: Request) {
     });
 
     if (insertTxError) {
+      // Without a ledger row the credit must not stand — on the 23505 from
+      // idx_user_transactions_winning_per_pool a concurrent claim already
+      // credited this winning, so back this one out.
+      const { error: undoError } = await admin.rpc("debit_user_balance", {
+        p_user_id: user.id,
+        p_amount: amount,
+      });
+      if (undoError) {
+        console.error(
+          `[claim-payout] CRITICAL: credited ${amount} to user ${user.id} ` +
+            `but the ledger insert failed AND the compensating debit failed ` +
+            `(${undoError.message}). MANUAL CORRECTION REQUIRED.`
+        );
+      }
+
+      if (insertTxError.code === "23505") {
+        const { data: refreshed } = await admin
+          .from("users")
+          .select("balance")
+          .eq("id", user.id)
+          .single();
+        const currentBalance = Number(refreshed?.balance ?? 0);
+        return NextResponse.json(
+          {
+            message: "Payout already credited to your balance",
+            previousBalance: currentBalance,
+            amount: 0,
+            finalBalance: currentBalance,
+          },
+          { status: 200 }
+        );
+      }
+
       return NextResponse.json({ error: insertTxError.message }, { status: 400 });
-    }
-
-    const { error: updateBalanceError } = await admin
-      .from("users")
-      .update({ balance: balanceAfter })
-      .eq("id", user.id);
-
-    if (updateBalanceError) {
-      return NextResponse.json(
-        { error: updateBalanceError.message },
-        { status: 400 }
-      );
     }
 
     const { error: markClaimedError } = await admin

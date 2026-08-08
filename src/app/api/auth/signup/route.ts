@@ -83,12 +83,10 @@ export async function POST(request: Request) {
       !profileError.code?.includes("23505")
     ) {
       console.error("Profile creation error:", profileError);
+      // The Postgres message and code name tables, columns and RLS policies —
+      // a free schema map from an unauthenticated endpoint. Log, do not return.
       return NextResponse.json(
-        {
-          error: "Failed to create user profile",
-          details: profileError.message,
-          code: profileError.code,
-        },
+        { error: "Failed to create user profile" },
         { status: 500 }
       );
     }
@@ -113,7 +111,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Error && error.name === "ZodError") {
       return NextResponse.json(
-        { error: "Validation error", details: error },
+        { error: "Check your name, email and password and try again." },
         { status: 400 }
       );
     }

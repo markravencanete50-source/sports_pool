@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
 import { ESPNTeam, ESPNGame, ESPNScoreboardResponse, GameStatus } from "@/lib/types";
@@ -276,6 +277,11 @@ export async function POST(request: Request) {
       typeof auth.user?.id === "string" &&
       syncedWeek != null
     ) {
+      // pools / pool_games are not client-writable (INSERT/DELETE revoked from
+      // authenticated). requireAdmin has already authorized this caller, so the
+      // system weekly pool and its slate are created through the service role.
+      const admin = createAdminClient();
+
       const syncedGameIds = [
         ...gamesToInsert.map((g) => g.id),
         ...gamesToUpdate.map((g) => g.id),
@@ -301,7 +307,7 @@ export async function POST(request: Request) {
           const entryFeeAmount =
             !Number.isNaN(fee) && fee >= 20 ? fee : 20;
 
-          const { data: newPool, error: poolError } = await supabase
+          const { data: newPool, error: poolError } = await admin
             .from("pools")
             .insert({
               name,
@@ -326,15 +332,15 @@ export async function POST(request: Request) {
               pool_id: newPool.id,
               game_id: gameId,
             }));
-            const { error: pgError } = await supabase
+            const { error: pgError } = await admin
               .from("pool_games")
               .insert(poolGamesRows);
 
             if (pgError) {
-              await supabase.from("pools").delete().eq("id", newPool.id);
+              await admin.from("pools").delete().eq("id", newPool.id);
               responsePayload.poolSkipped = `Pool created but games failed: ${pgError.message}`;
             } else {
-              await supabase.from("pool_participants").insert({
+              await admin.from("pool_participants").insert({
                 pool_id: newPool.id,
                 user_id: auth.user.id,
               });
@@ -359,35 +365,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Failed to sync NFL games",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
-  }
-}
-
-export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const weekParam = searchParams.get("week");
-    const seasonParam = searchParams.get("season") || new Date().getFullYear().toString();
-    const season = parseInt(seasonParam, 10);
-    const week = weekParam !== null && weekParam !== "" ? parseInt(weekParam, 10) : undefined;
-
-    const espnData = await getNflScoreboard(season, week);
-
-    return NextResponse.json(
-      {
-        games: espnData.events || [],
-        week: espnData.week?.number,
-        season: espnData.season?.year,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error: "Failed to fetch NFL games",
         details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
