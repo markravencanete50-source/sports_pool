@@ -18,7 +18,18 @@ name: Settle pools
 # APP_URL defaults to the production domain below and only needs an Actions
 # secret to override it; it is a public URL, not a credential.
 #
-# If CRON_SECRET is missing the job fails loudly rather than appearing to pass.
+# UNCONFIGURED vs BROKEN — these are deliberately different outcomes.
+#
+# Without CRON_SECRET this workflow used to fail on every run. Because it is
+# scheduled every 30 minutes, that produced a permanent stream of failure
+# emails, which trains everyone to ignore this workflow's email — the opposite
+# of what a money-moving alarm should do.
+#
+# The distinction that matters: a missing Actions secret does NOT mean
+# settlement has stopped. The Vercel Cron in vercel.json still settles daily at
+# 08:00 UTC, and /api/cron/settle fails closed on its own. It only means the
+# faster cadence is inactive. So an unconfigured secret now SKIPS with a warning
+# annotation, while a genuine settlement failure still fails the run loudly.
 
 on:
   schedule:
@@ -42,17 +53,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Check configuration
+        id: cfg
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CRON_SECRET is not set as an Actions secret, so the 30-minute settlement cadence is INACTIVE. Settlement still runs once daily via Vercel Cron (vercel.json, 08:00 UTC). To enable the faster cadence add CRON_SECRET under Settings > Secrets and variables > Actions, using the same value as CRON_SECRET on the Vercel project."
+            echo "### Settlement skipped — CRON_SECRET not configured" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "The 30-minute cadence is inactive. Vercel Cron still settles daily at 08:00 UTC." >> "$GITHUB_STEP_SUMMARY"
+            echo "Add \`CRON_SECRET\` under **Settings > Secrets and variables > Actions** to enable it." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Trigger settlement
+        if: steps.cfg.outputs.configured == 'true'
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           APP_URL: ${{ secrets.APP_URL || 'https://sports-pool.vercel.app' }}
         run: |
           set -euo pipefail
-
-          if [ -z "${CRON_SECRET:-}" ]; then
-            echo "::error::CRON_SECRET must be set as an Actions secret (Settings > Secrets and variables > Actions). It must match CRON_SECRET on Vercel."
-            exit 1
-          fi
 
           body=$(mktemp)
           code=$(curl -sS -o "$body" -w '%{http_code}' \
@@ -68,8 +93,20 @@ jobs:
             echo "::error::503 — CRON_SECRET is not configured on Vercel, so settlement is disabled."
             exit 1
           fi
+          if [ "$code" = "401" ]; then
+            echo "::error::401 — the CRON_SECRET Actions secret does not match CRON_SECRET on Vercel."
+            exit 1
+          fi
           if [ "$code" != "200" ]; then
             echo "::error::Settlement failed with HTTP $code"
+            exit 1
+          fi
+
+          # A 200 carrying a non-JSON body (an edge/proxy error page, say) would
+          # otherwise crash jq with a confusing parse error rather than saying
+          # what went wrong.
+          if ! jq -e . >/dev/null 2>&1 < "$body"; then
+            echo "::error::Settlement returned HTTP 200 with a non-JSON body."
             exit 1
           fi
 
