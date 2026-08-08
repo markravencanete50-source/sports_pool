@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 /**
  * Claim an approved winning into the user's balance.
@@ -58,6 +59,9 @@ const FAILURES: Partial<Record<ClaimOutcome, { status: number; error: string }>>
 
 export async function POST(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const supabase = await createClient();
 
     const {

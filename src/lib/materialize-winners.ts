@@ -151,10 +151,17 @@ export async function materializePoolWinners(
       continue;
     }
 
-    const { error: updateBalanceError } = await admin
-      .from("users")
-      .update({ balance: balanceAfter })
-      .eq("id", winner.userId);
+    // Move the balance with an ATOMIC relative increment, not an absolute
+    // write. The transaction row is inserted first (guarded by the unique
+    // winning-per-pool index), so a concurrent balance change — e.g. a user
+    // claiming a different payout in this same window — is preserved rather
+    // than clobbered by writing back a value computed from an earlier read.
+    // This matches the atomic money paths used by claim_pool_payout and the
+    // admin payout route.
+    const { error: updateBalanceError } = await admin.rpc("credit_user_balance", {
+      p_user_id: winner.userId,
+      p_amount: amount,
+    });
     if (updateBalanceError) {
       console.error("materializePoolWinners users balance update:", updateBalanceError);
       continue;

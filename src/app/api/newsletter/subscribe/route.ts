@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { newsletterSignupSchema } from "@/lib/validations";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
+    const limited = enforceRateLimit(request, "newsletter", RATE_LIMITS.newsletter);
+    if (limited) return limited;
+
     const body = await request.json();
     const validated = newsletterSignupSchema.parse(body);
     const supabase = await createClient();

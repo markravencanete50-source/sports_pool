@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { fulfillCardPurchase } from "@/lib/fulfill-card-purchase";
 import { getStripe } from "@/lib/stripe/config";
 import { confirmPaymentSchema } from "@/lib/validations";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { assertSameOrigin } from "@/lib/request-guards";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -16,6 +18,12 @@ import { z } from "zod";
  */
 export async function POST(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
+    const limited = enforceRateLimit(request, "stripe:confirm", RATE_LIMITS.paymentConfirm);
+    if (limited) return limited;
+
     const supabase = await createClient();
     const {
       data: { user },

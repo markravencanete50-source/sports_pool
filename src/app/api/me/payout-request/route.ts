@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { MINIMUM_PAYOUT_AMOUNT } from "@/lib/constants";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 export async function GET() {
   try {
@@ -35,6 +37,12 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
+    const limited = enforceRateLimit(request, "payout:request", RATE_LIMITS.payoutRequest);
+    if (limited) return limited;
+
     const supabase = await createClient();
 
     const {

@@ -56,6 +56,41 @@ export async function POST(
       );
     }
 
+    /*
+     * SECURITY — per-game kickoff lock (defence in depth).
+     *
+     * This legacy endpoint writes to the `picks` table, which settlement does
+     * not read, so it cannot decide money today. But an unlocked write path is
+     * a latent guaranteed-win primitive the moment anything starts scoring off
+     * this table, so it enforces the same rule as the parlay path: a pick is
+     * accepted only while its game is still scheduled and its kickoff is in the
+     * future.
+     */
+    const { data: lockGame } = await supabase
+      .from("games")
+      .select("id, date, status")
+      .eq("id", validatedData.gameId)
+      .maybeSingle();
+
+    if (!lockGame) {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+
+    const kickoff = new Date(lockGame.date).getTime();
+    if (!Number.isFinite(kickoff)) {
+      return NextResponse.json(
+        { error: "Game has no valid kickoff time" },
+        { status: 409 }
+      );
+    }
+
+    if (lockGame.status !== "scheduled" || kickoff <= Date.now()) {
+      return NextResponse.json(
+        { error: "Picks are locked for this game — it has already started" },
+        { status: 409 }
+      );
+    }
+
     const { data: existingPick } = await supabase
       .from("picks")
       .select("id")
