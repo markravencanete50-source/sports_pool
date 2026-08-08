@@ -134,8 +134,22 @@ export function computePoolWinners(
 
   const cardScores: Record<
     string,
-    { correct: number; total: number; totalScoreDifference: number }
+    {
+      correct: number;
+      total: number;
+      totalScoreDifference: number;
+      // How many finished games this card actually supplied a total-score
+      // prediction for. A card that supplied none must NOT win a tie with its
+      // default diff of 0 (see the tiebreak below).
+      predictedCount: number;
+    }
   > = {};
+
+  // Effective tiebreak value: a card that never predicted a total score is
+  // treated as worst-case so it cannot beat a card that did on a 0 default.
+  const NO_PREDICTION_PENALTY = Number.MAX_SAFE_INTEGER;
+  const tiebreakOf = (s: { totalScoreDifference: number; predictedCount: number }) =>
+    s.predictedCount > 0 ? s.totalScoreDifference : NO_PREDICTION_PENALTY;
 
   for (const pick of picks) {
     if (!cardIds.includes(pick.card_id)) continue;
@@ -159,6 +173,7 @@ export function computePoolWinners(
         correct: 0,
         total: 0,
         totalScoreDifference: 0,
+        predictedCount: 0,
       };
     }
     cardScores[pick.card_id].total++;
@@ -175,6 +190,7 @@ export function computePoolWinners(
         pick.total_score_prediction,
         homeScore + awayScore
       );
+      cardScores[pick.card_id].predictedCount++;
     }
   }
 
@@ -184,7 +200,10 @@ export function computePoolWinners(
       cardId: string;
       correct: number;
       total: number;
+      // Real accumulated diff, stored on the winner row for display.
       totalScoreDifference: number;
+      // Effective diff used for tie-breaking (worst-case when no prediction).
+      tiebreak: number;
     }
   > = {};
 
@@ -197,18 +216,22 @@ export function computePoolWinners(
       !existing ||
       pct > existing.correct / existing.total ||
       (pct === existing.correct / existing.total &&
-        score.totalScoreDifference < existing.totalScoreDifference)
+        tiebreakOf(score) < existing.tiebreak)
     ) {
       userBest[card.user_id] = {
         cardId: card.id,
         correct: score.correct,
         total: score.total,
         totalScoreDifference: score.totalScoreDifference,
+        tiebreak: tiebreakOf(score),
       };
     }
   }
 
   let bestPercentage = 0;
+  // totalScoreDiff here carries the EFFECTIVE tiebreak (worst-case for cards
+  // that gave no total-score prediction), so the sort/filter below cannot be
+  // won by a defaulted 0. The winner's real diff is read from userBest.
   let tied: Array<{ userId: string; totalScoreDiff: number }> = [];
 
   for (const userId of Object.keys(userBest)) {
@@ -217,9 +240,9 @@ export function computePoolWinners(
     const pct = s.correct / s.total;
     if (pct > bestPercentage) {
       bestPercentage = pct;
-      tied = [{ userId, totalScoreDiff: s.totalScoreDifference }];
+      tied = [{ userId, totalScoreDiff: s.tiebreak }];
     } else if (pct === bestPercentage) {
-      tied.push({ userId, totalScoreDiff: s.totalScoreDifference });
+      tied.push({ userId, totalScoreDiff: s.tiebreak });
     }
   }
 

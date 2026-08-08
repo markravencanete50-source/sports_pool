@@ -51,7 +51,9 @@ A modern Next.js application for creating and managing NFL betting pools. Users 
 3. **Set up Supabase**
    - Create a new project at [supabase.com](https://supabase.com)
    - Go to Settings > API to get your project URL and anon key
-   - Run the SQL schema in `schema.sql` in your Supabase SQL Editor
+   - Apply the database schema by running the migrations in `supabase/migrations/`
+     (see **Database Setup** below). Do NOT use the legacy `schema.sql` — it is
+     an outdated snapshot missing the balance/payout tables and functions.
 
 4. **Configure environment variables**
    Create a `.env.local` file in the root directory:
@@ -76,10 +78,19 @@ A modern Next.js application for creating and managing NFL betting pools. Users 
 
 ## Database Setup
 
-1. In your Supabase dashboard, go to SQL Editor
-2. Copy and paste the contents of `schema.sql`
-3. Run the SQL script to create all tables, indexes, functions, triggers, and RLS policies
-4. (Optional) Seed NFL teams by running `lib/seed-nfl-teams.sql`
+The single source of truth for the schema is the ordered migration set in
+`supabase/migrations/`. It defines every table, index, function (RPC), trigger,
+and RLS policy — including the balance/payout subsystem that `schema.sql` (a
+stale one-off snapshot) does not contain.
+
+1. Install the Supabase CLI and link your project (`npx supabase link`).
+2. Apply all migrations: `npm run db:migrate` (`supabase db push`).
+3. (Optional) Seed reference/demo data: `npm run seed`.
+4. Bootstrap the first admin (one-time), then unset the secret:
+   `curl -X POST "$NEXT_PUBLIC_APP_URL/api/seed-admin" -H "Authorization: Bearer $SETUP_SECRET"`
+
+> `schema.sql` is retained only for historical reference and must not be used to
+> provision a database — it predates the money subsystem and several RPCs.
 
 ## Project Structure
 

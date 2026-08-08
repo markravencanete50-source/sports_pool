@@ -17,13 +17,18 @@ export async function GET(
         away_team:teams!games_away_team_id_fkey(*)
       `)
       .eq("id", gameId)
-      .single();
+      .maybeSingle();
 
     if (error) {
+      console.error("[games/[gameId]]", error.message);
       return NextResponse.json(
-        { error: error.message },
-        { status: 404 }
+        { error: "Failed to fetch game" },
+        { status: 500 }
       );
+    }
+
+    if (!data) {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
     return NextResponse.json({ game: data }, { status: 200 });

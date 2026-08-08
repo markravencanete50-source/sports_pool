@@ -3,8 +3,11 @@
 import { useQuery } from "@tanstack/react-query";
 
 export function useGames(week?: number, status?: string, season?: number) {
-  const queryKey = ["/api/games", week, status, season].filter(Boolean);
-  
+  // Object key, not a filtered positional array: `.filter(Boolean)` dropped
+  // undefined args so useGames(5) and useGames(undefined, undefined, 5) both
+  // collapsed to ["/api/games", 5] and could serve each other's cached data.
+  const queryKey = ["/api/games", { week, status, season }];
+
   return useQuery({
     queryKey,
     queryFn: async () => {

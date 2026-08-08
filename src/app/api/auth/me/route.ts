@@ -19,17 +19,20 @@ export async function GET() {
       .from("users")
       .select("*")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError) {
+      console.error("[auth/me]", profileError.message);
       return NextResponse.json(
         { error: "Failed to fetch user profile" },
         { status: 500 }
       );
     }
 
+    // Profile row can legitimately be absent (auth user exists but the profile
+    // insert never completed). Return the auth user rather than 500.
     return NextResponse.json(
-      { user: { ...user, ...profile } },
+      { user: { ...user, ...(profile ?? {}) } },
       { status: 200 }
     );
   } catch (error) {

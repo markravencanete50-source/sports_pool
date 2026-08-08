@@ -134,7 +134,12 @@ export async function POST(request: Request) {
       const { getNflScoreboard } = await import("@/lib/fetch-nfl-scoreboard");
       const currentYear = new Date().getFullYear();
 
-      const espnData = await getNflScoreboard(currentYear);
+      // Fetch the POOL's week, not just ESPN's current week. /api/games (which
+      // populates the create-pool UI) returns current + next week, so without
+      // the week arg a user could select next-week games that this fetch never
+      // returns — they'd fall through unstored and FK-fail the pool_games
+      // insert, making the whole pool un-creatable for any non-current week.
+      const espnData = await getNflScoreboard(currentYear, poolWeek);
       const allGames = espnData.events || [];
 
       const seasonYear = espnData.season?.year || new Date().getFullYear();

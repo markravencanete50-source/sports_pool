@@ -1,5 +1,17 @@
 -- =====================================================
--- SUPABASE DATABASE MIGRATION - COMPLETE SCHEMA
+-- ⚠️  NOT AUTHORITATIVE — DO NOT USE TO PROVISION A DATABASE
+--
+-- This is a stale one-off snapshot from early development. It is missing the
+-- entire balance/payout subsystem (user_transactions, payout_requests,
+-- payout_approvals, pool_winners, user_payout_accounts), the money RPCs
+-- (debit/credit_user_balance, claim_pool_payout, get_pool_financials,
+-- get_public_winners), and the security-hardening RLS.
+--
+-- The single source of truth is the ordered migration set in
+-- supabase/migrations/. Provision with `npm run db:migrate` (supabase db push).
+-- Kept only for historical reference.
+-- =====================================================
+-- SUPABASE DATABASE MIGRATION - COMPLETE SCHEMA (LEGACY SNAPSHOT)
 -- Generated from existing database structure
 -- =====================================================
 

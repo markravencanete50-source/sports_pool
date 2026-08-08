@@ -201,6 +201,40 @@ export async function PATCH(
       );
     }
 
+    // CRITICAL ORDERING: the money has ALREADY left via PayPal and the balance
+    // is ALREADY debited. From here on, nothing may return an HTTP failure —
+    // doing so used to leave the request 'pending' with the funds gone, and
+    // because the idempotency guard keys off the (never-written) user_transaction
+    // row, a retry would re-debit and re-send. So we mark the request completed
+    // FIRST (which blocks any retry via the status check at the top), then write
+    // the audit row best-effort.
+    const { error: updateError } = await admin
+      .from("payout_requests")
+      .update({
+        status: "completed",
+        processed_at: new Date().toISOString(),
+        processed_by: user.id,
+        stripe_transfer_id: batchId,
+      })
+      .eq("id", payoutRequestId);
+
+    if (updateError) {
+      // The payout succeeded but we could not flip the status. Do NOT report
+      // failure (money is gone); log loudly so an operator reconciles, and
+      // still record the audit row below.
+      console.error(
+        `[payout-complete] CRITICAL: PayPal batch ${batchId} sent and balance ` +
+          `debited for request ${payoutRequestId}, but status update failed ` +
+          `(${updateError.message}). MANUAL RECONCILIATION REQUIRED.`
+      );
+    }
+
+    // NOTE: the balance was already moved atomically by debit_user_balance()
+    // above. The absolute `update({ balance: finalBalance })` that used to sit
+    // here is deliberately gone — writing a value computed before the PayPal
+    // call would clobber any concurrent change (a prize credited in that
+    // window would simply vanish). The RPC is the single source of the change.
+
     const { error: txError } = await admin.from("user_transactions").insert({
       user_id: payoutRequest.user_id,
       admin_id: user.id,
@@ -215,27 +249,14 @@ export async function PATCH(
     });
 
     if (txError) {
-      return NextResponse.json({ error: txError.message }, { status: 400 });
-    }
-
-    // NOTE: the balance was already moved atomically by debit_user_balance()
-    // above. The absolute `update({ balance: finalBalance })` that used to sit
-    // here is deliberately gone — writing a value computed before the PayPal
-    // call would clobber any concurrent change (a prize credited in that
-    // window would simply vanish). The RPC is the single source of the change.
-
-    const { error: updateError } = await admin
-      .from("payout_requests")
-      .update({
-        status: "completed",
-        processed_at: new Date().toISOString(),
-        processed_by: user.id,
-        stripe_transfer_id: batchId,
-      })
-      .eq("id", payoutRequestId);
-
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 });
+      // Money is sent and the request is marked completed; a missing audit row
+      // must not present as a failed payout (that invites a re-debit retry).
+      console.error(
+        `[payout-complete] CRITICAL: PayPal batch ${batchId} sent for request ` +
+          `${payoutRequestId} but the audit user_transactions insert failed ` +
+          `(${txError.message}). Balance was debited; audit row missing. ` +
+          `MANUAL RECONCILIATION REQUIRED.`
+      );
     }
 
     return NextResponse.json(

@@ -87,31 +87,6 @@ export function useUpdatePool(poolId: string) {
   });
 }
 
-export function useSubmitPick() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({
-      poolId,
-      gameId,
-      teamId,
-    }: {
-      poolId: string;
-      gameId: string;
-      teamId: string;
-    }) => {
-      const res = await apiRequest(
-        "POST",
-        `/api/pools/${poolId}/cards/${gameId}/submit`,
-        { teamId }
-      );
-      return res.json();
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pools", variables.poolId] });
-    },
-  });
-}
 
 export function usePoolComments(poolId: string) {
   const queryClient = useQueryClient();
