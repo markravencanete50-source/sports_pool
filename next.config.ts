@@ -12,9 +12,21 @@ import type { NextConfig } from "next";
  * CSP notes:
  *  - 'unsafe-inline' on style-src is required by Tailwind's runtime style
  *    injection and by the inline styles in the design preview.
- *  - 'unsafe-inline'/'unsafe-eval' on script-src is what Next.js needs in dev;
- *    it is dropped in production below. Tighten further with a nonce if the app
- *    later needs inline scripts in prod.
+ *  - script-src: 'unsafe-eval' is dev-only, but 'unsafe-inline' is present in
+ *    PRODUCTION TOO, because Next.js injects inline bootstrap/hydration scripts.
+ *
+ *    KNOWN LIMITATION — do not read more into this header than it delivers:
+ *    with 'unsafe-inline' present, script-src provides essentially NO XSS
+ *    mitigation, since an injected inline script would execute. It still
+ *    constrains which EXTERNAL origins may load scripts, and the other
+ *    directives (frame-ancestors, form-action, object-src, base-uri) are doing
+ *    real work.
+ *
+ *    The fix is a per-request nonce: generate one in src/proxy.ts, pass it
+ *    through, and emit "'nonce-<value>' 'strict-dynamic'" instead of
+ *    'unsafe-inline'. That needs verifying in a real browser — a wrong nonce
+ *    breaks hydration and takes the whole app down — so it is tracked in the
+ *    handover checklist rather than changed blind.
  *  - connect-src must list every external origin the browser talks to. Adding a
  *    new provider (a second payout rail, an analytics vendor) means adding it
  *    here or the request is blocked.

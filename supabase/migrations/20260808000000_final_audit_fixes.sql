@@ -231,6 +231,45 @@ alter table public.pools
 
 
 -- ---------------------------------------------------------------------------
+-- 6c. CRITICAL — a card could be activated AFTER the pool had been settled
+-- ---------------------------------------------------------------------------
+-- "Card editable while pending" allowed pending -> active with no condition on
+-- the pool's status:
+--
+--   using      (user_id = auth.uid() and status = 'pending')
+--   with check (user_id = auth.uid() and status in ('pending', 'active'))
+--
+-- The pool-completed check lived only in /cards/[cardId]/lock, which a direct
+-- PATCH to /rest/v1/parlay_cards bypasses entirely. Combined with the
+-- re-materialisation path that used to exist on the winnings page, a player
+-- could fill in every pick, deliberately NOT lock the card, wait for the real
+-- results, then activate it and have the pool re-scored with the outcomes
+-- known — paying the pot a second time.
+--
+-- Scoring only ever considers 'active'/'completed' cards, so a card must not be
+-- able to enter that set once its pool has stopped accepting play.
+drop policy if exists "Card editable while pending" on public.parlay_cards;
+create policy "Card editable while pending" on public.parlay_cards
+  for update
+  using (
+    user_id = auth.uid()
+    and status = 'pending'
+    and exists (
+      select 1 from public.pools p
+      where p.id = pool_id and p.status in ('open', 'active')
+    )
+  )
+  with check (
+    user_id = auth.uid()
+    and status in ('pending', 'active')
+    and exists (
+      select 1 from public.pools p
+      where p.id = pool_id and p.status in ('open', 'active')
+    )
+  );
+
+
+-- ---------------------------------------------------------------------------
 -- 7. LOW — pool_winners was directly readable by anon for completed pools
 -- ---------------------------------------------------------------------------
 -- The public ticker now goes through get_public_winners(), which returns a

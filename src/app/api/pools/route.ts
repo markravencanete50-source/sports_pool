@@ -350,7 +350,14 @@ export async function POST(request: Request) {
         const normalizedEmails = validatedData.invitedEmails.map((e) =>
           e.trim().toLowerCase()
         );
-        const { data: usersByEmail } = await supabase
+        // Service-role lookup: users is own-row-only under RLS, so resolving
+        // invitee emails with the caller's session matched nothing and every
+        // email invite was silently dropped at pool creation. Ids are used
+        // internally only and never returned to the caller.
+        const { createAdminClient: adminForEmails } = await import(
+          "@/lib/supabase/admin"
+        );
+        const { data: usersByEmail } = await adminForEmails()
           .from("users")
           .select("id")
           .in("email", normalizedEmails);

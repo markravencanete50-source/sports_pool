@@ -47,7 +47,20 @@ export async function POST(
     }
 
     const normalizedEmails = [...new Set(emails.map((e) => e.trim().toLowerCase()))];
-    const { data: usersByEmail } = await supabase
+    /*
+     * Resolve invitee emails with the SERVICE-ROLE client.
+     *
+     * public.users is restricted to own-row SELECT (it carries email, role and
+     * balance), so this lookup run under the caller's session matched zero rows
+     * and invite-by-email always failed with "No users found with those
+     * emails" — for addresses that do exist.
+     *
+     * Only the ids are read, and they are never returned to the caller: the
+     * response reports a count, so this does not become an account-existence
+     * oracle. Authorization (pool owner, private pool) is established above.
+     */
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const { data: usersByEmail } = await createAdminClient()
       .from("users")
       .select("id")
       .in("email", normalizedEmails);

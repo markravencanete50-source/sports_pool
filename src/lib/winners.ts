@@ -145,11 +145,25 @@ export function computePoolWinners(
     }
   > = {};
 
-  // Effective tiebreak value: a card that never predicted a total score is
-  // treated as worst-case so it cannot beat a card that did on a 0 default.
-  const NO_PREDICTION_PENALTY = Number.MAX_SAFE_INTEGER;
+  /*
+   * TIEBREAK — must be comparable across cards, so it has to be count-aware.
+   *
+   * totalScoreDifference only accumulates over games where a prediction was
+   * actually supplied, and total_score_prediction is optional per pick. So
+   * comparing the raw sums rewarded predicting LESS: a card that predicted one
+   * game and was off by 5 (sum 5) beat a card that predicted all four and was
+   * off by 3 on each (sum 12) — the strictly better forecaster lost the pot.
+   * Predicting exactly one total was the dominant strategy.
+   *
+   * Charge a worst-case penalty for every MISSING prediction instead of only
+   * for a card that supplied none. A card with full coverage can then only be
+   * beaten by another card with full coverage and a smaller error, and the
+   * "no predictions at all" case falls out as the limiting case.
+   */
+  const MAX_TOTAL_SCORE_ERROR = 200; // total_score_prediction is capped at 200
   const tiebreakOf = (s: { totalScoreDifference: number; predictedCount: number }) =>
-    s.predictedCount > 0 ? s.totalScoreDifference : NO_PREDICTION_PENALTY;
+    s.totalScoreDifference +
+    Math.max(0, numFinishedGames - s.predictedCount) * MAX_TOTAL_SCORE_ERROR;
 
   for (const pick of picks) {
     if (!cardIds.includes(pick.card_id)) continue;

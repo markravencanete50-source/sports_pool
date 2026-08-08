@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { createCommentSchema } from "@/lib/validations";
 import { moderateChatMessage } from "@/lib/chat-moderation";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { assertSameOrigin } from "@/lib/request-guards";
 import { NextResponse } from "next/server";
 
 export async function GET(
@@ -83,6 +85,16 @@ export async function POST(
 ) {
   try {
     const { poolId } = await params;
+
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
+    // Throttle BEFORE the moderation call: each post costs a paid third-party
+    // request, and moderation fails closed, so an unthrottled loop can knock out
+    // chat for every pool at once.
+    const limited = await enforceRateLimit(request, "chat:post", RATE_LIMITS.chatPost);
+    if (limited) return limited;
+
     const supabase = await createClient();
 
     const {

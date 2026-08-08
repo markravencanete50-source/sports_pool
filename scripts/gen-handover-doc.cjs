@@ -387,6 +387,8 @@ c.push(H2("9.1 Critical"));
 c.push(table([2900, 5900], ["Issue", "Resolution"], [
   ["Card purchases failed on any rebuilt database, charging the player and issuing nothing", "platform_fee / net_amount were NOT NULL with no default and no trigger supplied them. Migration 20260807000001 adds the defaults and creates the trigger, which also finally records the platform's cut per sale."],
   ["A crafted pool could mint prize money", "The pool's fee percentage is multiplied into the payout, and the column was writable on insert and never clamped, so a negative value paid out more than the pot. The fee is now stamped unconditionally by trigger, constrained to 0–100 by the database, and clamped again in code before use."],
+  ["A settled pool could be made to pay its pot a second time", "Three things lined up: a card could still be activated after its pool had settled, the winnings page re-ran settlement for any pool where the viewer had no winner row, and re-running deletes and rewrites the winners without reversing money already paid. A player could therefore fill in picks, never lock the card, wait for the results, then activate it and be paid — while the original winner kept their credit. All three are closed: settlement now refuses to run on a pool that already has winners or has moved money, the winnings page is read-only, and the database blocks activation once a pool is no longer open."],
+  ["No database could be provisioned from the repository at all", "The security-hardening migration ends with an assertion that fails the migration if an unexpected read policy survives — and a leftover policy from an earlier migration triggered it, aborting the migration and everything after it. Verified fixed by applying all 23 migrations to a scratch database."],
   ["Two RPCs existed only in the live database", "claim_pool_payout and get_public_winners were called in code but committed to no migration, so withdrawals and the winners ticker broke on a fresh environment. Added, guarded so they cannot overwrite the live definitions."],
   ["ESLint could not start, and would break the build", "A dependency conflict made the linter crash. Removed the dead dependency and pinned the transitive one."],
 ]));
@@ -403,6 +405,8 @@ c.push(table([2900, 5900], ["Issue", "Resolution"], [
   ["A demoted admin kept database-level admin", "The role check trusted the token's claim over the users table, so revoking admin had no effect until the token expired. The table is now authoritative."],
   ["Sign-in returned the refresh token in the response body", "A long-lived credential was echoed into JSON when it already travels safely as an HTTP-only cookie. Removed."],
   ["Winner rows were directly readable by anonymous callers", "Exposed user identifiers and private-pool results. The public ticker now goes only through its minimal projection."],
+  ["Chat could be used to exhaust a paid dependency and disable itself globally", "Every message triggers a moderation API call, unthrottled — and moderation fails closed, so tripping the provider's own rate limit would have blocked chat in every pool at once. Now rate limited and origin-checked."],
+  ["A demoted admin kept API access until their token expired", "The admin check honoured the token's role claim, which cannot be revoked early. The database table is now the sole authority at the API layer too, matching the database's own check."],
 ]));
 
 c.push(H2("9.3 Correctness"));
@@ -418,6 +422,10 @@ c.push(table([2900, 5900], ["Issue", "Resolution"], [
   ["Every other player's name displayed as 'Unknown'", "Locking the users table to own-row reads — correct, since it holds email, role and balance — silently broke every display-name lookup in chat, participant lists and pool headers. These now read from the public name projection that was built for the purpose but never wired up."],
   ["Signing up reported failure after succeeding", "With email confirmation enabled there is no session yet, so the verification read after account creation came back empty and the request returned a server error — on a signup that had fully succeeded and already sent its confirmation email."],
   ["The newsletter table existed in no migration", "Subscribing would fail outright on a freshly provisioned database."],
+  ["The tie-breaker rewarded predicting less", "Total-score error was summed only over the games a player actually predicted, so one lucky prediction beat full, more accurate coverage — making 'predict exactly one total' the dominant strategy. Missing predictions are now charged a worst-case penalty, with a regression test."],
+  ["Invitations by email silently never worked", "Resolving an email to an account ran under the caller's own restricted view, which matches nobody else, so every email invite was dropped with 'no users found'."],
+  ["Advertised prize differed from the amount actually paid", "The displayed net pot used the live platform fee while settlement used the pool's locked fee, so changing the rate mid-pool overstated the prize on a real-money product."],
+  ["Documentation and tooling gaps", "The Docker environment template was silently excluded from the repository by a gitignore rule, and the document generators depended on a package that was never declared — so neither survived a fresh clone."],
 ]));
 
 c.push(H2("9.4 Handover and maintainability"));
@@ -442,7 +450,8 @@ c.push(checklist([
   ["Confirm a test card purchase writes a pool_transactions row with a non-zero platform_fee", "Proves the trigger is live"],
   ["Confirm pools.platform_fee_percentage is populated for every existing pool, and is between 0 and 100", "Backfilled and constrained"],
   ["Attempt to create a pool with a negative fee via the REST API and confirm it is stamped, not accepted", "Payout-inflation guard"],
-  ["Confirm supabase db push applies cleanly on a scratch database, with no duplicate-version error", "A duplicate version was resolved"],
+  ["Confirm supabase db push applies cleanly on a scratch database", "Verified during the audit: all 23 migrations apply to an empty database"],
+  ["Run the one-off migration history repair against the EXISTING production database", "Two commands, in README > Database setup. A fresh database needs none of it"],
   ["Take a verified backup and confirm the restore procedure works", ""],
 ]));
 c.push(H3("Regression checks — these were broken and are now fixed"));
@@ -452,6 +461,9 @@ c.push(checklist([
   ["Sign up with email confirmation enabled and confirm the response is a success, not a 500", ""],
   ["Confirm a player cannot invite themselves into someone else's private pool", "Invite bypass"],
   ["Buy a card and confirm exactly one pool_transactions row appears with a correct platform_fee", ""],
+  ["Confirm an unlocked card cannot be activated after its pool has settled, and that a settled pool cannot be re-scored", "Double-payout guard"],
+  ["Send an invitation by email address and confirm the invitee receives it", "Was silently failing"],
+  ["Confirm the advertised net prize on a pool matches what settlement actually pays", ""],
 ]));
 c.push(H3("Secrets and configuration"));
 c.push(checklist([
@@ -522,6 +534,12 @@ c.push(checklist([
   ["Add a settlement scheduler to the Docker compose stack", "Self-host has none"],
   ["Drop the legacy picks table once nothing reads it", "Its write route is already 410"],
   ["Add end-to-end tests for purchase and withdrawal", "Only settlement is covered today"],
+  ["Replace the CSP's 'unsafe-inline' script policy with a per-request nonce", "Until then script-src gives little XSS protection; needs browser verification"],
+  ["Review the dependency advisories reported by npm audit", "Several high-severity advisories in production dependencies; the fix needs a framework bump and a regression pass"],
+  ["Make the Docker compose stack self-contained", "It mounts gateway config from a directory outside the repo, needs a pre-existing external network, and publishes no ports"],
+  ["Point the seed scripts at the same env file the README tells you to create", "They read .env; the README says .env.local"],
+  ["Prune the unused UI dependencies and delete the dead component files", "Roughly 30 unused packages and a complete unused toast stack, left from scaffolding"],
+  ["Gate or document the mock scoreboard endpoint", "It serves fabricated fixtures and is live in production builds"],
 ]));
 
 /* ─────────────── 11. Debt ─────────────── */

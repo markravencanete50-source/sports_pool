@@ -43,9 +43,10 @@ export async function POST(
       .eq("id", user.id)
       .single();
     const isPoolCreator = pool.created_by === user.id;
-    const isAdmin =
-      (user.app_metadata?.role as string) === "admin" ||
-      (currentUserProfile?.role as string) === "admin";
+    // Table-authoritative, matching requireAdmin() and public.is_admin(): the
+    // JWT claim cannot be revoked before it expires, so a demoted admin would
+    // otherwise keep access for up to an hour.
+    const isAdmin = (currentUserProfile?.role as string) === "admin";
     if (!isPoolCreator && !isAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

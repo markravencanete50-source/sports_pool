@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { materializePoolWinners } from "@/lib/materialize-winners";
 
 export async function GET() {
   try {
@@ -42,24 +41,21 @@ export async function GET() {
     }> = [];
 
     for (const pool of completedPools ?? []) {
-      let { data: myWin } = await supabase
+      const { data: myWin } = await supabase
         .from("pool_winners")
         .select("pool_id, correct, total, amount, winning_card_id")
         .eq("pool_id", pool.id)
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (!myWin) {
-        await materializePoolWinners(supabase, pool.id);
-        const retry = await supabase
-          .from("pool_winners")
-          .select("pool_id, correct, total, amount, winning_card_id")
-          .eq("pool_id", pool.id)
-          .eq("user_id", user.id)
-          .maybeSingle();
-        myWin = retry.data ?? null;
-      }
-
+      /*
+       * This page is READ-ONLY. It used to call materializePoolWinners() for
+       * any completed pool where the caller had no winner row — i.e. on every
+       * losing player's page load — which meant an ordinary GET could re-run
+       * settlement, delete the existing winners and pay the pot again.
+       * Settlement belongs to the cron (/api/cron/settle), which is
+       * secret-gated and idempotent. Just read the result here.
+       */
       if (myWin) {
         winnings.push({
           poolId: pool.id,

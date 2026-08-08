@@ -3,8 +3,17 @@ import { getPoolFinancials } from "@/lib/pool-financials";
 import { computePoolWinners } from "@/lib/winners";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+/**
+ * Score a completed pool and pay its winners.
+ *
+ * NOTE the `supabase` parameter is intentionally unused: this function always
+ * builds its own service-role client, because it writes balances. It is kept so
+ * existing call sites compile, but do NOT read it as "runs with the caller's
+ * rights" — it never did, and that mismatch is what made the re-settlement bug
+ * below invisible at the call site.
+ */
 export async function materializePoolWinners(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   poolId: string
 ): Promise<{ count: number }> {
   const admin = createAdminClient();
@@ -16,6 +25,48 @@ export async function materializePoolWinners(
     .single();
 
   if (!pool) return { count: 0 };
+
+  /*
+   * CRITICAL — settle a pool ONCE, and never again.
+   *
+   * Below, this function does `delete from pool_winners where pool_id = ...`
+   * and rewrites the winner set. It does NOT reverse money already paid: the
+   * user_transactions rows, payout_approvals and users.balance from the previous
+   * run all stand. Re-running it after a payout therefore pays the pot a second
+   * time, to a possibly different winner.
+   *
+   * That was reachable by an ordinary player. RLS lets a card leave 'pending'
+   * with no pool-status condition, and /api/me/winnings re-materialised any
+   * completed pool in which the caller had no winner row. So: buy a card, fill
+   * in every pick, DO NOT lock it, wait for the results, then flip the card to
+   * 'active' straight through PostgREST and load the winnings page. The card is
+   * now scored with the outcomes known, the real winner's row is deleted, and
+   * the attacker is credited — while the original winner keeps their credit.
+   *
+   * Refuse outright once the pool has winners or has moved money. Re-scoring a
+   * settled pool is an operator action against the ledger, not something an
+   * HTTP request may trigger.
+   */
+  const [{ count: existingWinners }, { count: paidCount }] = await Promise.all([
+    admin
+      .from("pool_winners")
+      .select("id", { count: "exact", head: true })
+      .eq("pool_id", poolId),
+    admin
+      .from("user_transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("pool_id", poolId)
+      .eq("type", "winning_approved"),
+  ]);
+
+  if ((existingWinners ?? 0) > 0 || (paidCount ?? 0) > 0) {
+    console.warn(
+      `[materialize-winners] pool ${poolId} is already settled ` +
+        `(${existingWinners ?? 0} winner rows, ${paidCount ?? 0} credits). ` +
+        `Refusing to re-materialise — that would pay the pot twice.`
+    );
+    return { count: 0 };
+  }
 
   const { data: poolCards } = await admin
     .from("parlay_cards")

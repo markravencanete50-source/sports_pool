@@ -218,4 +218,11 @@ export const RATE_LIMITS = {
   checkout: { limit: 30, windowMs: 60 * 60_000 },
   /** Payment confirmation polling abuse. */
   paymentConfirm: { limit: 60, windowMs: 60 * 60_000 },
+  /**
+   * Chat posting. Every message costs an OpenAI Moderation call, so an
+   * unthrottled loop burns the quota — and because moderation fails CLOSED,
+   * tripping OpenAI's own 429 would block chat in every pool at once. Generous
+   * for a human, fatal to a script.
+   */
+  chatPost: { limit: 30, windowMs: 5 * 60_000 },
 } as const;

@@ -105,6 +105,27 @@ curl -X POST "$NEXT_PUBLIC_APP_URL/api/seed-admin" \
   -H "Authorization: Bearer $SETUP_SECRET"
 ```
 
+> ⚠️ **Applying to the EXISTING production database? Repair the history first.**
+>
+> Two migrations previously shared the version `20260805000000`, which makes
+> `supabase db push` abort on a fresh database. One was renamed to
+> `20260805000003`, and `20260804000000` was edited to drop a leftover policy
+> that made its own invariant assertion fail (that assertion aborted the whole
+> migration, so **no database could be provisioned from this repo at all**).
+>
+> Both changes are correct and verified against a scratch database, but the
+> production database already records the old version. Run this once, against
+> production only:
+>
+> ```bash
+> supabase migration repair --status reverted 20260805000000
+> supabase migration repair --status applied  20260805000003
+> ```
+>
+> Re-applying `20260805000003` would be harmless anyway — it is entirely
+> `revoke` / `create or replace` — but the repair keeps the history honest.
+> A brand-new database needs none of this: just `npm run db:migrate`.
+
 > ⚠️ **Do not provision from `schema.sql`.** It is a stale early-development
 > snapshot, kept only for historical reference. It is missing the entire
 > balance/payout subsystem and several RPCs — a database built from it will
@@ -177,7 +198,7 @@ src/
 └── proxy.ts                  # route protection middleware (Next 16 names it proxy.ts)
 
 supabase/migrations/          # single source of truth for the database
-scripts/                      # seeds + the settlement regression suite
+scripts/                      # seeds, settlement regression suite, doc generators
 ```
 
 ---
@@ -310,10 +331,9 @@ Tracked deliberately, none of it blocking:
   models, then flip the rule back to `error`.
 - **React hooks lint findings** — `exhaustive-deps` and `set-state-in-effect` in
   several pages. Worth fixing, but each needs its own behavioural check.
-- **Duplicate migration timestamp** — two files share the `20260805000000`
-  prefix. They are already applied, and renaming an applied migration breaks
-  Supabase's history, so they are intentionally left alone. Use distinct
-  timestamps for new migrations.
+- **Migration history repair needed on the existing production database** — see
+  the warning under [Database setup](#database-setup). A fresh database is fine;
+  only the already-provisioned one needs the one-off `migration repair`.
 - **`schema.sql`** — retained for reference only; see the warning above.
 - **`src/lib/supabase/types.ts`** — generated types that are both stale and
   unwired (the clients are created without the `Database` generic, so queries are

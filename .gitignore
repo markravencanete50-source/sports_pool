@@ -34,6 +34,9 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
+# Template only — placeholders, no real values. Must be committed or the
+# documented self-hosted Docker path cannot be reproduced from a clone.
+!.env.docker.example
 
 # vercel
 .vercel

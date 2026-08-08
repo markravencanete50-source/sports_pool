@@ -5,9 +5,13 @@ import { requireAdmin } from "@/lib/require-admin";
 import { fetchNflTeamsFromApi } from "@/lib/fetch-nfl-teams";
 import { TEAM_MAP } from "@/lib/constants";
 import { getTeamRowsForAbbrevs } from "@/lib/teams-seed";
+import { assertSameOrigin } from "@/lib/request-guards";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const supabase = await createClient();
     const auth = await requireAdmin(supabase);
     if (auth instanceof NextResponse) return auth;

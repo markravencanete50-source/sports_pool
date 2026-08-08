@@ -68,8 +68,8 @@ function toFinancials(row: FinancialsRow, feePct: number): PoolFinancials {
   };
 }
 
-/** Current platform fee percentage, mirroring settlement's fallback of 10%. */
-async function getPlatformFeePct(supabase: SupabaseClient): Promise<number> {
+/** Live global fee, used only as a fallback for pools with no locked rate. */
+async function getGlobalFeePct(supabase: SupabaseClient): Promise<number> {
   const { data } = await supabase
     .from("platform_settings")
     .select("platform_fee_percentage")
@@ -77,17 +77,58 @@ async function getPlatformFeePct(supabase: SupabaseClient): Promise<number> {
     .limit(1)
     .maybeSingle();
   const pct = Number(data?.platform_fee_percentage);
-  return Number.isFinite(pct) ? pct : DEFAULT_PLATFORM_FEE_PCT;
+  return Number.isFinite(pct) ? clampPct(pct) : DEFAULT_PLATFORM_FEE_PCT;
+}
+
+function clampPct(pct: number): number {
+  return Math.min(Math.max(pct, 0), 100);
+}
+
+/**
+ * Fee rates for the given pools, keyed by pool id.
+ *
+ * MUST match settlement. materializePoolWinners pays out using the pool's OWN
+ * locked pools.platform_fee_percentage; reading the live global rate here meant
+ * the advertised "you'll receive" figure diverged from the actual payout the
+ * moment an admin changed the global rate — overstating the prize on a
+ * real-money product. Fall back to the global rate only where a pool has no
+ * locked rate (legacy rows the backfill did not reach).
+ */
+async function getPoolFeePcts(
+  supabase: SupabaseClient,
+  poolIds: string[]
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (poolIds.length === 0) return map;
+
+  const [{ data: pools }, globalPct] = await Promise.all([
+    supabase
+      .from("pools")
+      .select("id, platform_fee_percentage")
+      .in("id", poolIds),
+    getGlobalFeePct(supabase),
+  ]);
+
+  for (const id of poolIds) map.set(id, globalPct);
+  for (const p of (pools ?? []) as Array<{
+    id: string;
+    platform_fee_percentage: number | string | null;
+  }>) {
+    const pct = Number(p.platform_fee_percentage);
+    if (Number.isFinite(pct)) map.set(p.id, clampPct(pct));
+  }
+  return map;
 }
 
 export async function getPoolFinancials(
   supabase: SupabaseClient,
   poolId: string
 ): Promise<PoolFinancials> {
-  const [{ data, error }, feePct] = await Promise.all([
+  const [{ data, error }, feeMap] = await Promise.all([
     supabase.rpc("get_pool_financials", { p_pool_id: poolId }).single(),
-    getPlatformFeePct(supabase),
+    getPoolFeePcts(supabase, [poolId]),
   ]);
+  const feePct = feeMap.get(poolId) ?? DEFAULT_PLATFORM_FEE_PCT;
 
   if (error || !data) {
     // Falling back to zero is the safe display default, but it must never be
@@ -112,9 +153,9 @@ export async function getPoolsFinancials(
   const map = new Map<string, PoolFinancials>();
   if (poolIds.length === 0) return map;
 
-  const [{ data, error }, feePct] = await Promise.all([
+  const [{ data, error }, feeMap] = await Promise.all([
     supabase.rpc("get_pools_financials", { pool_ids: poolIds }),
-    getPlatformFeePct(supabase),
+    getPoolFeePcts(supabase, poolIds),
   ]);
 
   if (error || !data) {
@@ -128,7 +169,7 @@ export async function getPoolsFinancials(
   }
 
   for (const row of data as Array<FinancialsRow & { pool_id: string }>) {
-    map.set(row.pool_id, toFinancials(row, feePct));
+    map.set(row.pool_id, toFinancials(row, feeMap.get(row.pool_id) ?? DEFAULT_PLATFORM_FEE_PCT));
   }
   return map;
 }
