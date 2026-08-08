@@ -162,10 +162,11 @@ c.push(table([3200, 1500, 4100], ["Gate", "Status", "Detail"], [
   ["Continuous integration", { text: "ADDED", color: GREEN, bold: true }, "All four gates now block every push and PR"],
 ]));
 c.push(new Paragraph({ spacing: { after: 80 } }));
-c.push(note("The single most important finding",
-  [T("Card purchases were broken end-to-end on any database provisioned from the committed migrations. ", { bold: true }),
-   T("Two columns on "), M("pool_transactions"), T(" are "), M("NOT NULL"), T(" with no default, the trigger meant to populate them existed in no migration, and the purchase code supplied neither — so the insert failed, the card was rolled back, and "),
-   T("the player was charged by Stripe and received nothing", { bold: true }), T(". This is fixed by migration "), M("20260807000001"), T(". See §9.")],
+c.push(note("The two most important findings",
+  [T("1. Card purchases were broken end-to-end on any database provisioned from the committed migrations. ", { bold: true }),
+   T("Two columns on "), M("pool_transactions"), T(" are "), M("NOT NULL"), T(" with no default, the trigger meant to populate them existed in no migration, and the purchase code supplied neither — so the insert failed, the card was rolled back, and the player was charged by Stripe and received nothing."),
+   T("2. A crafted pool could mint prize money. ", { bold: true }),
+   T("The platform fee is multiplied into the payout, and the column that holds it was writable on insert and unclamped — a pool created with a fee of −100 would have paid out twice its pot. Both are fixed; see §9.")],
   "FBECEC", RED));
 
 /* ─────────────── 2. What the product does ─────────────── */
@@ -385,6 +386,7 @@ c.push(P("A staged audit — security, then correctness, then handover readiness
 c.push(H2("9.1 Critical"));
 c.push(table([2900, 5900], ["Issue", "Resolution"], [
   ["Card purchases failed on any rebuilt database, charging the player and issuing nothing", "platform_fee / net_amount were NOT NULL with no default and no trigger supplied them. Migration 20260807000001 adds the defaults and creates the trigger, which also finally records the platform's cut per sale."],
+  ["A crafted pool could mint prize money", "The pool's fee percentage is multiplied into the payout, and the column was writable on insert and never clamped, so a negative value paid out more than the pot. The fee is now stamped unconditionally by trigger, constrained to 0–100 by the database, and clamped again in code before use."],
   ["Two RPCs existed only in the live database", "claim_pool_payout and get_public_winners were called in code but committed to no migration, so withdrawals and the winners ticker broke on a fresh environment. Added, guarded so they cannot overwrite the live definitions."],
   ["ESLint could not start, and would break the build", "A dependency conflict made the linter crash. Removed the dead dependency and pinned the transitive one."],
 ]));
@@ -394,7 +396,13 @@ c.push(table([2900, 5900], ["Issue", "Resolution"], [
   ["Open redirect after login", "The post-login target came from an unvalidated query parameter, allowing a phishing hop off a trusted domain. Now restricted to same-origin relative paths with an origin guard."],
   ["Filter injection in admin search", "Search text was interpolated into a PostgREST filter expression. Structural metacharacters are now stripped."],
   ["No rate limiting anywhere", "Credential stuffing and floods were unthrottled. Added a limiter backed by Upstash Redis (global across instances) with an in-memory fallback, applied to auth, newsletter, payout and checkout routes."],
-  ["No CSRF defence on money mutations", "SameSite cookies were the only control. Added an explicit same-origin check on payout, payout-account, claim, checkout and confirm routes."],
+  ["No CSRF defence on money mutations", "SameSite cookies were the only control. Added an explicit same-origin check on the money routes, and later extended it to every remaining privileged state-changing route."],
+  ["A self-issued invitation still unlocked any private pool", "Self-joining was blocked, but the invitation table itself was not: a player could invite themselves into any private pool and accept it. Only the pool owner may now invite, and never themselves."],
+  ["Rate limiting could be bypassed with a forged header", "The limiter keyed off the leftmost X-Forwarded-For entry, which the caller controls, so a random value per request gave each one its own bucket. It now prefers platform headers the edge overwrites, then the rightmost hop."],
+  ["Reference data was writable by any signed-in account", "Team rows were insert/update-able by anyone, despite deciding every game's identity. Now admin-only, matching games."],
+  ["A demoted admin kept database-level admin", "The role check trusted the token's claim over the users table, so revoking admin had no effect until the token expired. The table is now authoritative."],
+  ["Sign-in returned the refresh token in the response body", "A long-lived credential was echoed into JSON when it already travels safely as an HTTP-only cookie. Removed."],
+  ["Winner rows were directly readable by anonymous callers", "Exposed user identifiers and private-pool results. The public ticker now goes only through its minimal projection."],
 ]));
 
 c.push(H2("9.3 Correctness"));
@@ -406,6 +414,10 @@ c.push(table([2900, 5900], ["Issue", "Resolution"], [
   ["Successful payouts could report failure", "An audit-write failure after PayPal had already sent the money returned an error and left the request pending, inviting a re-debit. The completion is now recorded first."],
   ["Balance credit could be clobbered", "Settlement wrote an absolute balance computed before the write. Now an atomic relative credit, consistent with the other money paths."],
   ["Pools could not be created for a future week", "Game lookup fetched only the current week, so the insert failed and rolled the pool back."],
+  ["No ordinary player could create a pool at all", "Pool creation writes reference data (teams and games), which the security hardening had correctly restricted to admins — so the write was denied and the whole pool was rolled back. That write is now performed with elevated rights after the caller is authenticated, using values that come from the sports feed rather than the request."],
+  ["Every other player's name displayed as 'Unknown'", "Locking the users table to own-row reads — correct, since it holds email, role and balance — silently broke every display-name lookup in chat, participant lists and pool headers. These now read from the public name projection that was built for the purpose but never wired up."],
+  ["Signing up reported failure after succeeding", "With email confirmation enabled there is no session yet, so the verification read after account creation came back empty and the request returned a server error — on a signup that had fully succeeded and already sent its confirmation email."],
+  ["The newsletter table existed in no migration", "Subscribing would fail outright on a freshly provisioned database."],
 ]));
 
 c.push(H2("9.4 Handover and maintainability"));
@@ -428,8 +440,18 @@ c.push(checklist([
   ["Apply every migration to the production database (npm run db:migrate) and confirm 22 migrations report as applied", "Never use schema.sql"],
   ["Verify the reconstructed RPCs match production: claim_pool_payout and get_public_winners", "See §10.4"],
   ["Confirm a test card purchase writes a pool_transactions row with a non-zero platform_fee", "Proves the trigger is live"],
-  ["Confirm pools.platform_fee_percentage is populated for every existing pool", "Backfilled by migration"],
+  ["Confirm pools.platform_fee_percentage is populated for every existing pool, and is between 0 and 100", "Backfilled and constrained"],
+  ["Attempt to create a pool with a negative fee via the REST API and confirm it is stamped, not accepted", "Payout-inflation guard"],
+  ["Confirm supabase db push applies cleanly on a scratch database, with no duplicate-version error", "A duplicate version was resolved"],
   ["Take a verified backup and confirm the restore procedure works", ""],
+]));
+c.push(H3("Regression checks — these were broken and are now fixed"));
+c.push(checklist([
+  ["Create a pool as an ordinary (non-admin) account and confirm it succeeds", "Was failing for every non-admin"],
+  ["Open a pool chat with two accounts and confirm both names render, not 'Unknown'", "Display-name projection"],
+  ["Sign up with email confirmation enabled and confirm the response is a success, not a 500", ""],
+  ["Confirm a player cannot invite themselves into someone else's private pool", "Invite bypass"],
+  ["Buy a card and confirm exactly one pool_transactions row appears with a correct platform_fee", ""],
 ]));
 c.push(H3("Secrets and configuration"));
 c.push(checklist([
