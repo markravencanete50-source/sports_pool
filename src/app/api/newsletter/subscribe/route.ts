@@ -5,7 +5,7 @@ import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
-    const limited = enforceRateLimit(request, "newsletter", RATE_LIMITS.newsletter);
+    const limited = await enforceRateLimit(request, "newsletter", RATE_LIMITS.newsletter);
     if (limited) return limited;
 
     const body = await request.json();

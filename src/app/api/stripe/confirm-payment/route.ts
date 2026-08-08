@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
 
-    const limited = enforceRateLimit(request, "stripe:confirm", RATE_LIMITS.paymentConfirm);
+    const limited = await enforceRateLimit(request, "stripe:confirm", RATE_LIMITS.paymentConfirm);
     if (limited) return limited;
 
     const supabase = await createClient();

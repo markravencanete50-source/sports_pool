@@ -69,7 +69,7 @@ export async function PUT(request: Request) {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
 
-    const limited = enforceRateLimit(request, "payout:account", RATE_LIMITS.payoutAccount);
+    const limited = await enforceRateLimit(request, "payout:account", RATE_LIMITS.payoutAccount);
     if (limited) return limited;
 
     const supabase = await createClient();

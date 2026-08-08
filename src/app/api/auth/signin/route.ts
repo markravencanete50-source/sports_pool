@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 export async function POST(request: Request) {
   try {
     // Throttle password guessing / credential stuffing before touching Auth.
-    const limited = enforceRateLimit(request, "auth:signin", RATE_LIMITS.authSignin);
+    const limited = await enforceRateLimit(request, "auth:signin", RATE_LIMITS.authSignin);
     if (limited) return limited;
 
     const body = await request.json();

@@ -5,26 +5,36 @@ import { NextResponse } from "next/server";
  *
  * The backend previously had NO throttling anywhere, so the authentication and
  * money endpoints were open to credential stuffing, password brute-forcing and
- * request floods — the first thing a pen-tester reaches for once the logic bugs
- * are closed.
+ * request floods.
  *
- * This is a dependency-free, in-memory fixed-window limiter. It is deliberately
- * honest about its scope:
+ * Two backends, chosen automatically:
  *
- *   - On serverless (Vercel), each instance has its own memory, so a limit of N
- *     is enforced PER INSTANCE, not globally. It still meaningfully raises the
- *     cost of an attack (a single hot instance throttles a burst) and adds zero
- *     infrastructure, but it is best-effort.
- *   - For a hard, cross-instance guarantee, back the same call sites with a
- *     shared store (e.g. Upstash Redis / @upstash/ratelimit). The call sites do
- *     not change — only the implementation of `hit()` below would.
+ *   1. Upstash Redis (preferred, and the right choice on serverless). When
+ *      UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set, limits are
+ *      enforced GLOBALLY across every serverless instance via a shared store,
+ *      over Upstash's HTTP REST API (no persistent TCP connection, which is
+ *      exactly what Vercel functions need). Uses @upstash/ratelimit's sliding
+ *      window.
  *
- * Supabase Auth applies its own server-side limits too; this is defence in
- * depth in front of it, and the only limiter for our own custom endpoints.
+ *   2. In-memory fallback. When Redis is not configured — local dev, or before
+ *      the env vars are provisioned — it degrades to a per-instance in-memory
+ *      fixed window. Still useful, but PER INSTANCE, so treat it as best-effort.
+ *
+ * The fallback also catches Redis outages: if a Redis call throws, that single
+ * request is limited in memory rather than failing the user's request. Rate
+ * limiting is a protective control, so a store outage must not take auth or
+ * checkout down with it.
+ *
+ * Call sites do not care which backend is active:
+ *
+ *   const limited = await enforceRateLimit(request, "auth:signin", RATE_LIMITS.authSignin);
+ *   if (limited) return limited;
  */
 
+// ─────────────────────────────────────────────────────────────────────────────
+// In-memory fallback
+// ─────────────────────────────────────────────────────────────────────────────
 type Bucket = { count: number; resetAt: number };
-
 const store = new Map<string, Bucket>();
 let lastSweep = 0;
 
@@ -46,11 +56,9 @@ export type RateLimitResult =
   | { ok: true; remaining: number }
   | { ok: false; retryAfter: number };
 
-/** Register one hit against `key`. Returns whether the caller is within budget. */
-export function hit(key: string, opts: RateLimitOptions): RateLimitResult {
+function hitMemory(key: string, opts: RateLimitOptions): RateLimitResult {
   const now = Date.now();
 
-  // Opportunistic cleanup so the map cannot grow unbounded from one-off keys.
   if (now - lastSweep > 60_000) {
     for (const [k, b] of store) if (b.resetAt <= now) store.delete(k);
     lastSweep = now;
@@ -70,20 +78,93 @@ export function hit(key: string, opts: RateLimitOptions): RateLimitResult {
   return { ok: true, remaining: opts.limit - bucket.count };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Upstash Redis backend (lazy, optional)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// One Ratelimit instance per distinct (limit, window) config, cached for the
+// lifetime of the instance. `any` here avoids a hard type dependency on the
+// package when it is not installed; the shape used below is stable Upstash API.
+const limiterCache = new Map<string, unknown>();
+let upstashUnavailable = false;
+
+async function getUpstashLimiter(
+  opts: RateLimitOptions
+): Promise<{ limit: (id: string) => Promise<{ success: boolean; remaining: number; reset: number }> } | null> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  if (upstashUnavailable) return null;
+
+  const cacheKey = `${opts.limit}:${opts.windowMs}`;
+  const cached = limiterCache.get(cacheKey);
+  if (cached) return cached as never;
+
+  try {
+    const [{ Ratelimit }, { Redis }] = await Promise.all([
+      import("@upstash/ratelimit"),
+      import("@upstash/redis"),
+    ]);
+    const redis = new Redis({ url, token });
+    const seconds = Math.max(1, Math.ceil(opts.windowMs / 1000));
+    const limiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(opts.limit, `${seconds} s`),
+      prefix: "rl",
+      analytics: false,
+    });
+    limiterCache.set(cacheKey, limiter);
+    return limiter as never;
+  } catch (e) {
+    // Package not installed or failed to init: stop trying and use memory.
+    upstashUnavailable = true;
+    console.error(
+      "[rate-limit] Upstash unavailable, falling back to in-memory:",
+      e instanceof Error ? e.message : String(e)
+    );
+    return null;
+  }
+}
+
+/**
+ * Register one hit against `key`. Prefers the shared Redis store; falls back to
+ * in-memory when Redis is unconfigured or a call fails.
+ */
+export async function hit(
+  key: string,
+  opts: RateLimitOptions
+): Promise<RateLimitResult> {
+  const limiter = await getUpstashLimiter(opts);
+  if (limiter) {
+    try {
+      const res = await limiter.limit(key);
+      if (res.success) return { ok: true, remaining: res.remaining };
+      const retryAfter = Math.max(1, Math.ceil((res.reset - Date.now()) / 1000));
+      return { ok: false, retryAfter };
+    } catch (e) {
+      // Transient Redis error: don't fail the request — degrade to memory.
+      console.error(
+        "[rate-limit] Redis limit() failed, using in-memory for this call:",
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+  }
+  return hitMemory(key, opts);
+}
+
 /**
  * Enforce a named limit keyed by client IP. Returns a ready-to-send 429
  * NextResponse when the caller is over budget, or null to proceed.
  *
- *   const limited = enforceRateLimit(request, "auth:signin", RATE_LIMITS.authSignin);
- *   if (limited) return limited;
+ * NOTE: this is async — always `await` it and return the result if truthy.
  */
-export function enforceRateLimit(
+export async function enforceRateLimit(
   request: Request,
   bucketName: string,
   opts: RateLimitOptions
-): NextResponse | null {
+): Promise<NextResponse | null> {
   const key = `${bucketName}:${getClientIp(request)}`;
-  const result = hit(key, opts);
+  const result = await hit(key, opts);
   if (result.ok) return null;
 
   return NextResponse.json(

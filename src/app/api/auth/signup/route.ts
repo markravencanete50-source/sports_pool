@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 export async function POST(request: Request) {
   try {
     // Throttle automated account-creation floods.
-    const limited = enforceRateLimit(request, "auth:signup", RATE_LIMITS.authSignup);
+    const limited = await enforceRateLimit(request, "auth:signup", RATE_LIMITS.authSignup);
     if (limited) return limited;
 
     const body = await request.json();
