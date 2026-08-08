@@ -13,7 +13,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify:settlement": "tsx scripts/verify-settlement.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx scripts/verify-settlement.ts",
+    "verify:settlement": "tsx scripts/verify-settlement.ts",
+    "check": "npm run typecheck && npm run test && npm run lint"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

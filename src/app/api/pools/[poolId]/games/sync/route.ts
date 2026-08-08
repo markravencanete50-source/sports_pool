@@ -59,8 +59,12 @@ export async function POST(
       );
     }
 
+    // Fetch the POOL's week, not ESPN's current week. Without the week arg this
+    // returned only the in-progress slate, so syncing a pool from any other week
+    // matched nothing, updated 0 rows, and still returned 200 "synced
+    // successfully" — a silent no-op that reads as success.
     const currentYear = pool.season ?? new Date().getFullYear();
-    const espnData = await getNflScoreboard(currentYear);
+    const espnData = await getNflScoreboard(currentYear, pool.week ?? null);
     const espnGames = espnData.events || [];
 
     let updatedCount = 0;

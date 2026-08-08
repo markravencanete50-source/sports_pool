@@ -20,8 +20,31 @@ function getGameStatus(competition: ESPNGame["competitions"][0]): GameStatus {
 async function syncSpecificGames(supabase: any, gameIds: string[]) {
   try {
     const currentYear = new Date().getFullYear();
-    const espnData = await getNflScoreboard(currentYear);
-    const espnGames = espnData.events || [];
+
+    // Fetch each requested game's OWN (season, week). With no week argument
+    // ESPN returns only its current slate, so syncing games from any other week
+    // matched nothing and reported "synced successfully" with updated: 0.
+    const { data: targetGames } = await supabase
+      .from("games")
+      .select("id, season, week")
+      .in("id", gameIds);
+
+    const slates = new Map<string, { season: number; week: number | null }>();
+    for (const g of (targetGames ?? []) as Array<{
+      season?: number | null;
+      week?: number | null;
+    }>) {
+      const season = g.season ?? currentYear;
+      const week = g.week ?? null;
+      slates.set(`${season}:${week ?? "current"}`, { season, week });
+    }
+    if (slates.size === 0) slates.set(`${currentYear}:current`, { season: currentYear, week: null });
+
+    const espnGames: ESPNGame[] = [];
+    for (const { season, week } of slates.values()) {
+      const board = await getNflScoreboard(season, week);
+      espnGames.push(...((board.events ?? []) as ESPNGame[]));
+    }
 
     let updatedCount = 0;
 
@@ -120,7 +143,7 @@ export async function POST(request: Request) {
     const requestedWeek = week ?? null;
 
     let espnData = await getNflScoreboard(currentYear, requestedWeek);
-    let allEvents: ESPNGame[] = espnData.events || [];
+    const allEvents: ESPNGame[] = espnData.events || [];
 
     const responseWeek =
       espnData.week?.number ?? allEvents[0]?.week?.number ?? null;

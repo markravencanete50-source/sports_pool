@@ -83,7 +83,7 @@ export async function GET(request: Request) {
       .filter((p: { status: string }) => p.status === "completed")
       .map((p: { id: string }) => p.id);
 
-    let winnersMap: Record<
+    const winnersMap: Record<
       string,
       {
         amount: number;
@@ -121,7 +121,7 @@ export async function GET(request: Request) {
     }
 
     const lostPoolIds = completedPoolIds.filter((id) => !winnersMap[id]);
-    let lostScoresMap: Record<string, { correct: number; total: number }> = {};
+    const lostScoresMap: Record<string, { correct: number; total: number }> = {};
     if (lostPoolIds.length > 0) {
       const { data: lostCards } = await supabase
         .from("parlay_cards")

@@ -11,7 +11,7 @@ export async function materializePoolWinners(
 
   const { data: pool } = await admin
     .from("pools")
-    .select("id, name")
+    .select("id, name, platform_fee_percentage")
     .eq("id", poolId)
     .single();
 
@@ -42,14 +42,30 @@ export async function materializePoolWinners(
 
   if (!picks?.length || !poolGames?.length) return { count: 0 };
 
-  const { data: platformSettings } = await admin
-    .from("platform_settings")
-    .select("platform_fee_percentage")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .single();
+  /*
+   * FEE LOCK — settle against the fee this pool was CREATED with.
+   *
+   * This used to read the live platform_settings row, so an admin who changed
+   * platform_fee_percentage between the first card sale and settlement re-split
+   * an in-flight pot against a rate nobody was charged (10% -> 20% quietly took
+   * another 10% off the players). pools.platform_fee_percentage is stamped at
+   * insert by trg_set_pool_platform_fee and is immutable for the pool's life.
+   *
+   * The platform_settings read remains only as a fallback for any legacy row the
+   * backfill did not reach.
+   */
+  let platformFeePct = Number(pool.platform_fee_percentage);
 
-  const platformFeePct = platformSettings?.platform_fee_percentage ?? 10;
+  if (!Number.isFinite(platformFeePct)) {
+    const { data: platformSettings } = await admin
+      .from("platform_settings")
+      .select("platform_fee_percentage")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    platformFeePct = Number(platformSettings?.platform_fee_percentage);
+    if (!Number.isFinite(platformFeePct)) platformFeePct = 10;
+  }
   const financials = await getPoolFinancials(admin, poolId);
   const prizePot = financials.prize_pot ?? 0;
 

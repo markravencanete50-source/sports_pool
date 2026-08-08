@@ -1,188 +1,331 @@
-# Sports Pool - NFL Betting Platform
+# Gridiron — NFL Sports Pool Platform
 
-A modern Next.js application for creating and managing NFL betting pools. Users can create public or private pools, make picks on games, and compete for prize pots.
+A Next.js application for running real-money NFL prediction pools. Players buy
+parlay cards, predict a slate of games, and the platform scores the results and
+pays the winners automatically.
 
-## Features
+> **This handles real money.** Entry fees are taken with Stripe, winnings are
+> credited to an in-app balance, and withdrawals are sent via PayPal Payouts.
+> Read [Security model](#security-model) and [Settlement](#settlement) before
+> changing anything in `src/lib/` or `supabase/migrations/`.
 
-- 🔐 **Authentication** - User signup, login, and session management with Supabase Auth
-- 🏈 **Pool Management** - Create public or private pools (6-9 games, $20+ entry fee)
-- 🎴 **Parlay Card System** - Purchase up to 3 cards per pool, make Win/Loss/Tie predictions
-- 🎮 **Game Selection** - Select NFL games from ESPN API, filter by date and status
-- 💬 **Social Features** - Pool chat (requires card purchase), comments and discussions
-- 📊 **Real-time Updates** - Live pool statistics, game outcomes, and prize pot tracking
-- 💰 **Transaction Tracking** - Platform fee calculation (10% default), prize pot management
-- 🎨 **Modern UI** - Beautiful glassmorphism design with 3D effects and animations
+---
 
-## Tech Stack
+## Contents
 
-- **Framework**: Next.js 16.1.5 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS 4
-- **Database**: Supabase (PostgreSQL)
-- **Authentication**: Supabase Auth
-- **State Management**: TanStack React Query
-- **Form Validation**: React Hook Form + Zod
-- **UI Components**: Radix UI + Custom components
+- [How it works](#how-it-works)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [Database setup](#database-setup)
+- [Environment variables](#environment-variables)
+- [Scripts](#scripts)
+- [Project structure](#project-structure)
+- [API routes](#api-routes)
+- [Security model](#security-model)
+- [Settlement](#settlement)
+- [Deployment](#deployment)
+- [Self-hosting with Docker](#self-hosting-with-docker)
+- [Known technical debt](#known-technical-debt)
 
-## Getting Started
+---
+
+## How it works
+
+1. **Sign up** — Supabase Auth (email + password, min 10 chars with mixed case
+   and a digit).
+2. **Join a pool** — pay the entry fee through Stripe Checkout. The price is set
+   by the pool server-side; the client cannot influence it.
+3. **Get a card** — issued only after Stripe confirms payment (webhook is the
+   source of truth). Up to 3 cards per user per pool.
+4. **Make picks** — predict each game. Picks for a game lock at its kickoff.
+5. **Games play** — final scores are pulled from the ESPN scoreboard feed.
+6. **Settle** — once every game in a pool is finished, cards are scored, winners
+   are chosen (ties broken by closest total-score prediction) and the pot, less
+   the platform fee, is credited to the winners' balances.
+7. **Withdraw** — the player requests a payout; an admin approves it and the
+   money is sent to their PayPal.
+
+---
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router, route handlers) |
+| Language | TypeScript (strict) |
+| Database / Auth | Supabase (PostgreSQL + Row Level Security + GoTrue) |
+| Payments in | Stripe Checkout + webhooks |
+| Payments out | PayPal Payouts |
+| Sports data | ESPN public scoreboard API |
+| Data fetching | TanStack React Query |
+| Validation | Zod |
+| Styling | Tailwind CSS 4 + Radix UI |
+| Rate limiting | Upstash Redis (optional; in-memory fallback) |
+| Scheduling | Vercel Cron + GitHub Actions |
+
+---
+
+## Getting started
 
 ### Prerequisites
 
-- Node.js 18+ and npm/yarn/pnpm
-- A Supabase account (free tier works)
+- **Node.js 22** (matches the Dockerfile and CI; Next 16 requires ≥ 18.18)
+- **npm** — this repo standardises on npm and commits only `package-lock.json`.
+  Do not add a second lockfile; CI runs `npm ci`.
+- A Supabase project (free tier is fine)
+- Stripe and PayPal accounts for the money paths
 
-### Installation
+### Install and run
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd sportspool_b
-   ```
+```bash
+git clone <repository-url>
+cd sports_pool
+npm ci
+cp .env.example .env.local   # then fill it in
+npm run dev                  # http://localhost:3000
+```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   # or
-   yarn install
-   # or
-   pnpm install
-   ```
+---
 
-3. **Set up Supabase**
-   - Create a new project at [supabase.com](https://supabase.com)
-   - Go to Settings > API to get your project URL and anon key
-   - Apply the database schema by running the migrations in `supabase/migrations/`
-     (see **Database Setup** below). Do NOT use the legacy `schema.sql` — it is
-     an outdated snapshot missing the balance/payout tables and functions.
+## Database setup
 
-4. **Configure environment variables**
-   Create a `.env.local` file in the root directory:
-   ```env
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-   NEXT_PUBLIC_APP_URL=http://localhost:3000
-   ```
+**The migrations in `supabase/migrations/` are the single source of truth.** They
+define every table, index, function (RPC), trigger and RLS policy.
 
-5. **Run the development server**
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   # or
-   pnpm dev
-   ```
+```bash
+npx supabase link          # link to your project
+npm run db:migrate         # supabase db push — applies all migrations
+npm run seed               # optional: reference/demo data
+```
 
-6. **Open your browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
+Then bootstrap the first admin once, and unset the secret afterwards:
 
-## Database Setup
+```bash
+curl -X POST "$NEXT_PUBLIC_APP_URL/api/seed-admin" \
+  -H "Authorization: Bearer $SETUP_SECRET"
+```
 
-The single source of truth for the schema is the ordered migration set in
-`supabase/migrations/`. It defines every table, index, function (RPC), trigger,
-and RLS policy — including the balance/payout subsystem that `schema.sql` (a
-stale one-off snapshot) does not contain.
+> ⚠️ **Do not provision from `schema.sql`.** It is a stale early-development
+> snapshot, kept only for historical reference. It is missing the entire
+> balance/payout subsystem and several RPCs — a database built from it will
+> appear to work until money moves.
 
-1. Install the Supabase CLI and link your project (`npx supabase link`).
-2. Apply all migrations: `npm run db:migrate` (`supabase db push`).
-3. (Optional) Seed reference/demo data: `npm run seed`.
-4. Bootstrap the first admin (one-time), then unset the secret:
-   `curl -X POST "$NEXT_PUBLIC_APP_URL/api/seed-admin" -H "Authorization: Bearer $SETUP_SECRET"`
+For local development against a containerised stack, `npm run db:start` /
+`db:stop` / `db:reset` wrap the Supabase CLI.
 
-> `schema.sql` is retained only for historical reference and must not be used to
-> provision a database — it predates the money subsystem and several RPCs.
+---
 
-## Project Structure
+## Environment variables
+
+`.env.example` documents every variable the app reads. The ones without a safe
+default:
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client + server Supabase access (RLS applies) |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Bypasses all RLS.** Server-only, never `NEXT_PUBLIC_` |
+| `NEXT_PUBLIC_APP_URL` | Base URL for Stripe redirects and auth emails |
+| `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe Checkout |
+| `STRIPE_WEBHOOK_SECRET` | Verifies webhook signatures. Without it the webhook fails closed and **players are charged with no card issued** |
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE` | Withdrawals |
+| `CRON_SECRET` | Gates `/api/cron/settle`. Unset ⇒ 503, settlement never runs |
+| `SETUP_SECRET` | Gates the one-time admin bootstrap. Unset it again after use |
+| `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Optional. Enables global rate limiting; without it limits are per-instance only |
+
+---
+
+## Scripts
+
+| Script | What it does |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm run start` | Serve the production build |
+| `npm run typecheck` | `tsc --noEmit` — **blocking in CI** |
+| `npm test` | Settlement regression suite — **blocking in CI** |
+| `npm run lint` | ESLint — **blocking in CI**. Pre-existing style debt is configured as warnings, so this blocks only on new errors |
+| `npm run check` | typecheck + test + lint, all at once |
+| `npm run db:migrate` | Apply migrations |
+| `npm run seed` / `seed:admin` | Seed data / promote the admin account |
+
+`npm test` runs `scripts/verify-settlement.ts`, which exercises scoring,
+tie-breaking and the cent-exact pot split (including a swept rounding check
+across 243 combinations). **Treat a failure here as a release blocker.**
+
+---
+
+## Project structure
 
 ```
-sportspool_b/
-├── app/                    # Next.js App Router pages
-│   ├── api/               # API routes
-│   ├── create-pool/       # Pool creation page
-│   ├── login/             # Authentication pages
-│   ├── signup/
-│   ├── public-pools/      # Browse public pools
-│   ├── private-pools/     # User's private pools
-│   └── pool/[id]/         # Individual pool detail
-├── components/            # React components
-│   ├── auth/             # Authentication components
-│   ├── create-pool/      # Pool creation components
-│   ├── home/             # Homepage sections
-│   ├── layout/           # Layout components
-│   └── ui/               # Reusable UI components
+src/
+├── app/
+│   ├── (marketing)/          # public landing, terms, privacy, contact
+│   ├── (auth)/               # login, signup, auth/callback
+│   ├── (app)/                # authenticated app: dashboard, pools, my-games, admin
+│   └── api/                  # route handlers (the backend)
+├── components/               # UI, grouped by feature
 ├── lib/
-│   ├── hooks/            # Custom React hooks
-│   ├── supabase/         # Supabase client setup
-│   └── validations.ts    # Zod schemas
-└── middleware.ts         # Next.js middleware for auth
+│   ├── hooks/                # React Query data hooks
+│   ├── supabase/             # server (RLS) and admin (service-role) clients
+│   ├── winners.ts            # scoring + pot split  ← money
+│   ├── settle-pools.ts       # settlement pipeline   ← money
+│   ├── materialize-winners.ts# winner persistence    ← money
+│   ├── fulfill-card-purchase.ts # Stripe fulfilment  ← money
+│   ├── rate-limit.ts         # Upstash + in-memory limiter
+│   ├── request-guards.ts     # CSRF / same-origin
+│   └── validations.ts        # Zod schemas
+└── proxy.ts                  # route protection middleware (Next 16 names it proxy.ts)
+
+supabase/migrations/          # single source of truth for the database
+scripts/                      # seeds + the settlement regression suite
 ```
 
-## API Routes
+---
 
-- `POST /api/auth/signup` - Create new user account
-- `POST /api/auth/signin` - Sign in user
-- `POST /api/auth/signout` - Sign out user
-- `GET /api/auth/me` - Get current user
-- `GET /api/pools` - List pools (with optional type/status filters)
-- `POST /api/pools` - Create new pool
-- `GET /api/pools/[poolId]` - Get pool details
-- `POST /api/pools/[poolId]/cards/purchase` - Purchase a parlay card
-- `GET /api/pools/[poolId]/cards` - Get user's cards for a pool
-- `POST /api/pools/[poolId]/cards/[cardId]/picks` - Submit picks for a card
-- `GET /api/pools/[poolId]/cards/[cardId]/picks` - Get picks for a card
-- `GET /api/pools/[poolId]/chat` - Get pool comments
-- `POST /api/pools/[poolId]/chat` - Add comment
-- `GET /api/games` - List games (with optional week/status filters)
-- `GET /api/games/[gameId]` - Get game details
+## API routes
 
-## Environment Variables
+All handlers live under `src/app/api/`. Auth posture in brief:
 
-See `.env.example` for all required environment variables. For Stripe card payments you also need:
+**Public** — `GET /api/pools`, `GET /api/pools/[poolId]`, `GET /api/games`,
+`GET /api/games/[gameId]`, `GET /api/winners`, `POST /api/newsletter/subscribe`.
 
-- `STRIPE_SECRET_KEY` – Stripe secret key (starts with `sk_`)
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` – Stripe publishable key (starts with `pk_`)
-- `NEXT_PUBLIC_APP_URL` – App base URL (used for Stripe redirects)
+**Authenticated** — `/api/auth/*`, `/api/me/*` (balance, games, winnings,
+payout-account, payout-request, claim-payout), `/api/pools` (POST),
+`/api/pools/[poolId]/cards*`, `/api/pools/[poolId]/chat`, `/api/invitations/*`,
+`/api/notifications/[id]/read`, `/api/stripe/create-checkout-session`,
+`/api/stripe/confirm-payment`.
 
-Run the migration in `docs/stripe-migration.sql` before using Stripe. See `docs/STRIPE_SETUP.md` for details.
+**Admin only** — `/api/admin/*`, `/api/games/[gameId]/outcome`,
+`/api/sync/nfl-games`, `/api/pools/complete-finished`.
 
-## Development
+**Secret-gated (no session)** — `/api/cron/settle` (`CRON_SECRET`),
+`/api/seed-admin` (`SETUP_SECRET`).
 
-- Run `npm run dev` to start the development server
-- Run `npm run build` to build for production
-- Run `npm run start` to start the production server
-- Run `npm run lint` to run ESLint
+**Signature-gated** — `/api/stripe/webhook` (Stripe signature *is* its auth).
+
+**Removed, deliberately `410 Gone`** — `POST /api/pools/[poolId]/cards/purchase`
+(issued unpaid cards) and `POST /api/pools/[poolId]/cards/[cardId]/submit`
+(wrote to a table settlement ignores). They return 410 rather than 404 so any
+straggler caller fails loudly.
+
+---
+
+## Security model
+
+Defence in depth, seven layers. The guiding rule: **the database is the
+authorization boundary — an API bug alone must not be able to leak or move
+money.**
+
+1. **Authentication** — Supabase JWT in HTTP-only cookies, verified per request.
+2. **Authorization** — `requireAdmin()` for role gates; every object is bound to
+   the caller in the query (`.eq("user_id", user.id)`) to prevent IDOR.
+3. **Row Level Security** — holder-only cards and picks, own-row profiles with
+   `role`/`balance` pinned, money tables writable only by the service role. See
+   `supabase/migrations/20260804000000_security_hardening_rls.sql`; it ends with
+   an assertion that fails the migration if an unexpected SELECT policy exists.
+4. **Money integrity** — server-authoritative pricing, Stripe signature
+   verification over the raw body, two-layer idempotency (pre-check + unique
+   index), atomic balance moves via `debit_user_balance` / `credit_user_balance`,
+   and cent-exact pot splitting.
+5. **Game integrity** — picks are private to their holder and lock at kickoff,
+   enforced in both the API and RLS.
+6. **Secrets & automation** — `requireSecret()` fails closed (503) and compares
+   timing-safely; scheduled jobs and the admin bootstrap are secret-gated.
+7. **Input handling** — Zod validation, UUID checks, PostgREST filter
+   sanitisation, rate limiting, and same-origin (CSRF) checks on money mutations.
+
+Security headers and a CSP are set in `next.config.ts` (the Stripe webhook path
+is excluded, as browser headers do not apply to a server-to-server POST).
+
+---
+
+## Settlement
+
+`/api/cron/settle` runs the pipeline in `src/lib/settle-pools.ts`:
+
+1. **Refresh scores** — pull finals from ESPN for every `(season, week)` that
+   still has unfinished games.
+2. **Complete pools** — flip a pool to `completed` only once its whole slate is
+   finished.
+3. **Materialize winners** — score the cards, pick winners, credit balances.
+
+Every phase is idempotent; the job runs on a schedule and may be retried.
+
+It is triggered from **two** schedulers, which is safe by design:
+
+- `vercel.json` — daily at 08:00 UTC (works on any Vercel plan).
+- `.github/workflows/settle-pools.yml` — every 30 minutes, for game-day latency.
+  Requires a `CRON_SECRET` Actions secret; without it the workflow **skips with a
+  warning** rather than failing, so it never trains the team to ignore its email.
+
+The platform fee is **locked per pool at creation** (`pools.platform_fee_percentage`),
+so changing the global rate mid-pool cannot re-split an in-flight pot.
+
+---
 
 ## Deployment
 
-### Vercel (Recommended)
+### Vercel (recommended)
 
-1. Push your code to GitHub
-2. Import your repository in Vercel
-3. Add your environment variables in Vercel dashboard
-4. Deploy!
+1. Import the repository.
+2. Set every variable from [Environment variables](#environment-variables).
+3. Point a Stripe webhook at `https://<your-domain>/api/stripe/webhook` for
+   `checkout.session.completed`, and set `STRIPE_WEBHOOK_SECRET`.
+4. Deploy, then run the one-time admin bootstrap.
 
-### Other Platforms
+CI (`.github/workflows/ci.yml`) gates every push and PR on typecheck, the
+settlement tests and a production build.
 
-The app can be deployed to any platform that supports Next.js:
-- Netlify
-- Railway
-- Render
-- AWS Amplify
+---
 
-Make sure to set all environment variables in your deployment platform.
+## Self-hosting with Docker
+
+`docker-compose.yml` brings up the app plus a full self-hosted Supabase stack
+(Postgres, GoTrue, PostgREST, Realtime, Kong) and an optional Cloudflare tunnel.
+
+```bash
+cp .env.docker.example .env.docker   # then fill it in
+npm ci && npm run build              # the image copies a PREBUILT .next/standalone
+docker compose build
+docker compose up -d
+```
+
+Two things to know:
+
+- **The Dockerfile does not build the app.** It copies `.next/standalone`, so you
+  must `npm run build` on the host first.
+- **The stack has no scheduler.** Nothing calls `/api/cron/settle`, so pools will
+  never pay out until you add a host cron, a sidecar, or point the GitHub Actions
+  workflow at your public URL. `.env.docker.example` shows all three.
+
+---
+
+## Known technical debt
+
+Tracked deliberately, none of it blocking:
+
+- **~150 `any` annotations** (mostly `src/lib/types.ts`, `interfaces.ts`, and the
+  untyped ESPN payload). `@typescript-eslint/no-explicit-any` is set to `warn`
+  so real errors stay visible. Path: type the ESPN response and the shared domain
+  models, then flip the rule back to `error`.
+- **React hooks lint findings** — `exhaustive-deps` and `set-state-in-effect` in
+  several pages. Worth fixing, but each needs its own behavioural check.
+- **Duplicate migration timestamp** — two files share the `20260805000000`
+  prefix. They are already applied, and renaming an applied migration breaks
+  Supabase's history, so they are intentionally left alone. Use distinct
+  timestamps for new migrations.
+- **`schema.sql`** — retained for reference only; see the warning above.
+- **Legacy `picks` table** — superseded by `card_picks`. Its write route is now
+  410; the table itself can be dropped once you are sure nothing reads it.
+
+---
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. Branch from `main`.
+2. Make your change; run `npm run check` before pushing.
+3. Open a pull request — CI must be green.
 
 ## License
 
-This project is licensed under the MIT License.
-
-## Support
-
-For issues and questions, please open an issue on GitHub.
+MIT.

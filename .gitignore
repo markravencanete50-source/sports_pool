@@ -51,3 +51,8 @@ supabase/dumps/
 supabase/.temp/
 
 .vercel
+
+# Single lockfile policy: this project standardises on npm (package-lock.json).
+# CI runs `npm ci`. Do not commit a second lockfile — two lockfiles resolve to
+# two different dependency trees depending on who installed last.
+bun.lock
