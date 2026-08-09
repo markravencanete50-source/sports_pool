@@ -46,7 +46,7 @@ export function useRequestPayout() {
     },
     onError: (error: Error & { error?: string }) => {
       toast.error(
-        (error as any)?.error ?? error?.message ?? "Failed to request payout"
+        error?.error ?? error?.message ?? "Failed to request payout"
       );
     },
   });
@@ -71,7 +71,7 @@ export function useClaimPayout() {
     },
     onError: (error: Error & { error?: string }) => {
       toast.error(
-        (error as any)?.error ?? error?.message ?? "Failed to claim payout"
+        error?.error ?? error?.message ?? "Failed to claim payout"
       );
     },
   });

@@ -82,7 +82,7 @@ export function getUserCardScore(
   let total = 0;
   for (const pick of picks) {
     if (pick.card_id !== cardId || !finishedGameIds.has(pick.game_id)) continue;
-    const poolGame = poolGames.find((pg: any) => pg.game_id === pick.game_id);
+    const poolGame = poolGames.find((pg) => pg.game_id === pick.game_id);
     const gameData = Array.isArray(poolGame?.games)
       ? poolGame?.games[0]
       : poolGame?.games;
@@ -172,7 +172,7 @@ export function computePoolWinners(
     const userId = cardIdToUserId.get(pick.card_id);
     if (!userId) continue;
 
-    const poolGame = poolGames.find((pg: any) => pg.game_id === pick.game_id);
+    const poolGame = poolGames.find((pg) => pg.game_id === pick.game_id);
     const gameData = Array.isArray(poolGame?.games)
       ? poolGame?.games[0]
       : poolGame?.games;

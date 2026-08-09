@@ -56,7 +56,6 @@ function buildMockEvents(): ESPNGame[] {
     const [awayAbbr, homeAbbr] = pairForIndex(i);
     const gameId = `mock-nfl-${String(i + 1).padStart(3, "0")}`;
     const completed = false;
-    const live = false;
     const homeScore = undefined;
     const awayScore = undefined;
     const statusDesc = "Scheduled";

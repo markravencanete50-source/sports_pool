@@ -80,7 +80,7 @@ export function useUpdatePool(poolId: string) {
       const res = await apiRequest("PATCH", `/api/pools/${poolId}`, data);
       return res.json();
     },
-    onSuccess: (_, _variables, context) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pools", poolId] });
     },
@@ -96,8 +96,10 @@ export function usePoolComments(poolId: string) {
       const res = await fetch(`/api/pools/${poolId}/chat`, { credentials: "include" });
       const data = await res.json();
       if (!res.ok) {
-        const error = new Error(data.error || "Failed to fetch comments");
-        (error as any).requiresCard = data.requiresCard;
+        const error = new Error(
+          data.error || "Failed to fetch comments"
+        ) as Error & { requiresCard?: boolean };
+        error.requiresCard = data.requiresCard;
         throw error;
       }
       return data.comments || [];

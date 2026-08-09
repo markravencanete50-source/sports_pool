@@ -5,7 +5,6 @@ import { apiRequest } from "@/lib/queryClient";
 import { toast } from "sonner";
 import type {
   UserRole,
-  AdminUser,
   UseAdminUsersParams,
   AdminUsersResult,
 } from "@/lib/types";

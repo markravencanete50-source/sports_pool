@@ -1,4 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { buildCsp, generateNonce } from "@/lib/csp";
@@ -68,7 +68,7 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(
-          cookiesToSet: Array<{ name: string; value: string; options?: any }>
+          cookiesToSet: { name: string; value: string; options: CookieOptions }[]
         ) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)

@@ -1,4 +1,4 @@
-import { addDays, format } from "date-fns";
+import { addDays } from "date-fns";
 
 export type Team = {
   id: string;

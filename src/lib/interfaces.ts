@@ -3,6 +3,7 @@ import { LucideIcon } from "lucide-react";
 import {
   ParlayCard,
   Comment,
+  Pool,
   PoolType,
   GamePrediction,
   DateRange,
@@ -91,13 +92,73 @@ export interface PoolSummaryCardProps {
   formatCurrency: (amount: number) => string;
 }
 
+/** Team info embedded on games served by /api/games. */
+export interface ScheduleGameTeam {
+  id?: string;
+  abbreviation?: string;
+  name?: string | null;
+  logo?: string | null;
+}
+
+/**
+ * Game shape consumed by the schedule components. Games arrive either from
+ * /api/games (which emits BOTH snake_case and camelCase id/score fields) or
+ * from mock data (camelCase only); components read whichever variant is
+ * present, so only id/date are required.
+ */
+export interface ScheduleGame {
+  id: string;
+  date: string;
+  status?: string;
+  week?: number;
+  season?: number;
+  odds?: string | null;
+  home_team_id?: string;
+  away_team_id?: string;
+  homeTeamId?: string;
+  awayTeamId?: string;
+  homeScore?: number | null;
+  awayScore?: number | null;
+  home_score?: number | null;
+  away_score?: number | null;
+  home_team?: ScheduleGameTeam | null;
+  away_team?: ScheduleGameTeam | null;
+}
+
+/**
+ * Game shape accepted by the game-selection (pool create/edit) components.
+ * Same dual-naming convention as ScheduleGame; status may be null on raw DB
+ * rows.
+ */
+export interface PickableGame {
+  id: string;
+  date: string;
+  status?: string | null;
+  week?: number;
+  season?: number;
+  odds?: string | null;
+  home_team_id?: string | null;
+  away_team_id?: string | null;
+  homeTeamId?: string;
+  awayTeamId?: string;
+  homeScore?: number | null;
+  awayScore?: number | null;
+  home_score?: number | null;
+  away_score?: number | null;
+  home_team?: ScheduleGameTeam | null;
+  away_team?: ScheduleGameTeam | null;
+}
+
 export interface GameSelectionSectionProps {
-  groupedGames: Record<string, any[]>;
+  groupedGames: Record<string, PickableGame[]>;
   sortedDates: string[];
   selectedGames: string[];
   myPicks: Record<string, string | number>;
   onToggleGameSelection: (gameId: string) => void;
-  onTogglePick: (gameId: string, teamId: string) => void;
+  // Method syntax (bivariant) on purpose: games may carry either id naming, so
+  // the resolved teamId can be undefined; existing handlers typed on `string`
+  // must remain assignable.
+  onTogglePick(gameId: string, teamId: string | undefined): void;
   onTogglePrediction?: (
     gameId: string,
     prediction: GamePrediction,
@@ -111,13 +172,14 @@ export interface GameSelectionSectionProps {
 }
 
 export interface GameSelectionItemProps {
-  game: any;
+  game: PickableGame;
   isSelected: boolean;
   selectedTeamId?: string;
   selectedPrediction?: GamePrediction;
   totalScorePrediction?: number;
   onToggleSelection: () => void;
-  onPickTeam?: (teamId: string) => void;
+  // Method syntax (bivariant): see GameSelectionSectionProps.onTogglePick.
+  onPickTeam?(teamId: string | undefined): void;
   onPickPrediction?: (prediction: GamePrediction, totalScore?: number) => void;
   pickEnabled?: boolean;
 }
@@ -152,7 +214,7 @@ export interface FriendInviteCardProps {
 }
 
 export interface ScheduleGameCardProps {
-  game: any;
+  game: ScheduleGame;
 }
 
 export interface Card3DProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -183,11 +245,17 @@ export interface ProgressCardProps {
 }
 
 export interface PoolHeaderProps {
-  pool: any;
+  pool: {
+    name: string;
+    type: string;
+    week: number;
+    participants: number;
+    prizePot: number;
+  };
 }
 
 export interface NFLScheduleSectionProps {
-  groupedGames: Record<string, any[]>;
+  groupedGames: Record<string, ScheduleGame[]>;
   sortedDates: string[];
 }
 
@@ -196,11 +264,11 @@ export interface GameDateHeaderProps {
 }
 
 export interface FeaturedPoolsSectionProps {
-  pools: any[];
+  pools: Pool[];
 }
 
 export interface YourActivePoolsSectionProps {
-  pools: any[];
+  pools: Pool[];
 }
 
 export interface EmptyStateProps {

@@ -389,12 +389,13 @@ real money.
 
 Tracked deliberately, none of it blocking:
 
-- **~150 `any` annotations** (mostly `src/lib/types.ts`, `interfaces.ts`, and the
-  untyped ESPN payload). `@typescript-eslint/no-explicit-any` is set to `warn`
-  so real errors stay visible. Path: type the ESPN response and the shared domain
-  models, then flip the rule back to `error`.
-- **React hooks lint findings** — `exhaustive-deps` and `set-state-in-effect` in
-  several pages. Worth fixing, but each needs its own behavioural check.
+- ~~**~150 `any` annotations**~~ — **cleared 2026-08-10.** Shared domain models,
+  route-local row types, and the ESPN feed mapping are typed;
+  `@typescript-eslint/no-explicit-any` is back at `error`.
+- ~~**React hooks lint findings**~~ — **cleared 2026-08-10.** Pagination resets
+  moved into filter handlers / debounce callbacks, derived-in-render replaced
+  sync effects where possible, and `set-state-in-effect` is back at `error`;
+  the few genuine server-sync effects carry justified per-line disables.
 - **No static generation** — the nonce-based CSP requires per-request rendering,
   so every page is dynamic (`export const dynamic = "force-dynamic"` in the root
   layout). This is a deliberate trade: a per-request nonce cannot authorise

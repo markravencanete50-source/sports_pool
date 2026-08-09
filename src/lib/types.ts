@@ -63,6 +63,22 @@ export interface ParlayCard {
   card_picks?: CardPick[];
 }
 
+/**
+ * Game row embedded on a card pick by the cards API
+ * (`card_picks ( ..., games (id, home_team_id, away_team_id, date, status) )`).
+ * Supabase joins are handled defensively as object-or-array elsewhere, so both
+ * shapes are allowed here.
+ */
+export interface CardPickGame {
+  id: string;
+  home_team_id?: string | null;
+  away_team_id?: string | null;
+  date?: string;
+  status?: string;
+  home_score?: number | null;
+  away_score?: number | null;
+}
+
 export interface CardPick {
   id: string;
   card_id: string;
@@ -71,7 +87,7 @@ export interface CardPick {
   total_score_prediction?: number;
   created_at: string;
   updated_at: string;
-  games?: any;
+  games?: CardPickGame | CardPickGame[] | null;
 }
 
 export interface Comment {
@@ -270,7 +286,7 @@ export interface UsePoolsParams {
 }
 
 export interface PoolsListResult {
-  pools: any[];
+  pools: Pool[];
   total: number;
   page: number;
   limit: number;

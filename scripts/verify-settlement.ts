@@ -61,18 +61,18 @@ console.log("\nScoring and tiebreak");
   ];
   const base = { pool: { id: "p", name: "x", prize_pot: 80 }, poolGames: games, platformFeePercentage: 10 };
 
-  const w = computePoolWinners({ ...base, poolCards: cards, picks } as any);
+  const w = computePoolWinners({ ...base, poolCards: cards, picks });
   check("closest total-score prediction wins", w.length === 1 && w[0].userId === "bob", JSON.stringify(w.map((x) => x.userId)));
   check("winner receives pot less platform fee", Number(w[0]?.amount) === 72, String(w[0]?.amount));
 
   // exact tie -> split
   const tied = picks.map((x) => (x.card_id === "ca" && x.game_id === "g1" ? { ...x, total_score_prediction: 42 } : x));
-  const w2 = computePoolWinners({ ...base, poolCards: cards, picks: tied } as any);
+  const w2 = computePoolWinners({ ...base, poolCards: cards, picks: tied });
   check("exact tie splits the pot", w2.length === 2 && w2.every((x) => Number(x.amount) === 36), JSON.stringify(w2.map((x) => x.amount)));
 
   // incomplete card is disqualified, not scored on percentage
   const partial = [...picks.filter((x) => x.card_id !== "cc"), p("cc", "g1", "home_win", 41)];
-  const w3 = computePoolWinners({ ...base, poolCards: cards, picks: partial } as any);
+  const w3 = computePoolWinners({ ...base, poolCards: cards, picks: partial });
   check("card missing picks is disqualified", !w3.some((x) => x.userId === "carol"));
 
   /*
@@ -102,7 +102,7 @@ console.log("\nScoring and tiebreak");
     ...base,
     poolCards: cards.filter((c) => c.id !== "cc"),
     picks: coverage,
-  } as any);
+  });
   check(
     "full tiebreak coverage beats a single lucky prediction",
     w5.length === 1 && w5[0].userId === "alice",
@@ -119,7 +119,7 @@ console.log("\nScoring and tiebreak");
   const allWrong = cards.flatMap((c) =>
     games.map((g) => p(c.id, g.game_id, wrongFor[g.game_id], 30))
   );
-  const w4 = computePoolWinners({ ...base, poolCards: cards, picks: allWrong } as any);
+  const w4 = computePoolWinners({ ...base, poolCards: cards, picks: allWrong });
   check("no winner when nobody scores", w4.length === 0, String(w4.length));
 }
 
@@ -135,7 +135,7 @@ console.log("\nPayout rounding (swept)");
     return computePoolWinners({
       pool: { id: "p", name: "x", prize_pot: pot },
       poolCards: cards, picks, poolGames: games, platformFeePercentage: fee,
-    } as any);
+    });
   };
 
   const pots = [80, 100, 1000 / 9, 33.33, 0.05, 999.99, 20, 61.73, 7];
