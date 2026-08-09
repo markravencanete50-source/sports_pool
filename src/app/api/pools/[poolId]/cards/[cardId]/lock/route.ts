@@ -57,13 +57,17 @@ export async function POST(
       .select("game_id")
       .eq("pool_id", poolId);
 
-    const gameIds = (poolGames ?? []).map((pg: any) => pg.game_id);
+    const gameIds = (poolGames ?? []).map(
+      (pg: { game_id: string }) => pg.game_id
+    );
     const { data: picks } = await supabase
       .from("card_picks")
       .select("game_id")
       .eq("card_id", cardId);
 
-    const pickedGameIds = new Set((picks ?? []).map((p: any) => p.game_id));
+    const pickedGameIds = new Set(
+      (picks ?? []).map((p: { game_id: string }) => p.game_id)
+    );
     const missing = gameIds.filter((id: string) => !pickedGameIds.has(id));
     if (missing.length > 0) {
       return NextResponse.json(

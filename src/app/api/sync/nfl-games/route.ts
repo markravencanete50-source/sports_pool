@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
-import { ESPNTeam, ESPNGame, ESPNScoreboardResponse, GameStatus } from "@/lib/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { ESPNGame, GameStatus } from "@/lib/types";
 import { mapESPNTeamToDB } from "@/lib/constants";
 import { GameStatus as GameStatusEnum, PoolStatus, PoolType } from "@/lib/enums";
 import { getNflScoreboard } from "@/lib/fetch-nfl-scoreboard";
@@ -19,7 +20,7 @@ function getGameStatus(competition: ESPNGame["competitions"][0]): GameStatus {
   return GameStatusEnum.SCHEDULED;
 }
 
-async function syncSpecificGames(supabase: any, gameIds: string[]) {
+async function syncSpecificGames(supabase: SupabaseClient, gameIds: string[]) {
   try {
     const currentYear = new Date().getFullYear();
 
@@ -51,14 +52,14 @@ async function syncSpecificGames(supabase: any, gameIds: string[]) {
     let updatedCount = 0;
 
     for (const gameId of gameIds) {
-      const espnGame = espnGames.find((g: any) => 
+      const espnGame = espnGames.find((g) =>
         g.competitions?.[0]?.id === gameId
       );
 
       if (espnGame) {
         const competition = espnGame.competitions[0];
-        const homeTeam = competition.competitors.find((c: any) => c.homeAway === "home");
-        const awayTeam = competition.competitors.find((c: any) => c.homeAway === "away");
+        const homeTeam = competition.competitors.find((c) => c.homeAway === "home");
+        const awayTeam = competition.competitors.find((c) => c.homeAway === "away");
 
         if (homeTeam && awayTeam) {
           const homeTeamId = mapESPNTeamToDB(homeTeam.team.abbreviation);

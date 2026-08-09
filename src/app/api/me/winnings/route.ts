@@ -71,7 +71,7 @@ export async function GET() {
     winnings.sort((a, b) => b.amount - a.amount);
 
     return NextResponse.json({ winnings }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

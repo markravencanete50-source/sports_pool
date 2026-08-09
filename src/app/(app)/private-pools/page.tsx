@@ -11,6 +11,7 @@ import { Pagination } from "@/components/pools/pagination";
 import { StaggerGroup, StaggerItem } from "@/components/motion/reveal";
 import { usePools } from "@/lib/hooks/use-pools";
 import { PoolType, PoolsListStatusFilter } from "@/lib/enums";
+import type { Pool } from "@/lib/types";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const PAGE_SIZE = 12;
@@ -41,13 +42,21 @@ export default function PrivatePools() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchTerm), SEARCH_DEBOUNCE_MS);
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      // Reset pagination alongside the debounced search update (async, so it
+      // does not run synchronously within the effect body).
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, statusFilter]);
+  // Reset pagination when the status filter changes (handled in the event
+  // handler instead of an effect).
+  const handleStatusFilterChange = (value: PoolsListStatusFilter) => {
+    if (value !== statusFilter) setPage(1);
+    setStatusFilter(value);
+  };
 
   const { data, isLoading, error } = usePools({
     type: PoolType.PRIVATE,
@@ -71,7 +80,7 @@ export default function PrivatePools() {
             searchValue={searchTerm}
             onSearchChange={setSearchTerm}
             statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
+            onStatusFilterChange={handleStatusFilterChange}
             rightElement={
               <Link href="/create-pool">
                 <div className="btn-3d-primary px-6 py-2 text-sm flex items-center gap-2 cursor-pointer">
@@ -99,7 +108,7 @@ export default function PrivatePools() {
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
           statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
+          onStatusFilterChange={handleStatusFilterChange}
           rightElement={
             <Link href="/create-pool">
               <div className="btn-3d-primary px-6 py-2 text-sm flex items-center gap-2 cursor-pointer">
@@ -121,7 +130,7 @@ export default function PrivatePools() {
         ) : pools.length > 0 ? (
           <>
             <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {pools.map((pool: any) => (
+              {pools.map((pool: Pool) => (
                 <StaggerItem key={pool.id}>
                   <PoolCard pool={pool} />
                 </StaggerItem>

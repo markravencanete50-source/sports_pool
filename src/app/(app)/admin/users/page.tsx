@@ -15,25 +15,33 @@ import { Pagination } from "@/components/pools/pagination";
 
 const PAGE_SIZE = 20;
 
+type AuthUser = {
+  id?: string;
+  role?: string | null;
+  app_metadata?: { role?: string | null };
+};
+
 export default function AdminUsersPage() {
   const router = useRouter();
-  const { user, isLoadingUser } = useAuth();
+  const { user: authUser, isLoadingUser } = useAuth();
+  const user = authUser as AuthUser | null | undefined;
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      // Reset pagination alongside the debounced search update (async, so it
+      // does not run synchronously within the effect body).
+      setPage(1);
+    }, 400);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch]);
-
   const isAdmin =
-    (user as any)?.app_metadata?.role === "admin" ||
-    (user as any)?.role === "admin";
+    user?.app_metadata?.role === "admin" ||
+    user?.role === "admin";
   useEffect(() => {
     if (!isLoadingUser && !isAdmin && user !== undefined) {
       router.replace(DASHBOARD_PATH);
@@ -136,7 +144,7 @@ export default function AdminUsersPage() {
                       const isUpdating =
                         updateRoleMutation.isPending &&
                         (updateRoleMutation.variables as { userId: string })?.userId === u.id;
-                      const isSelf = (user as any)?.id === u.id;
+                      const isSelf = user?.id === u.id;
                       return (
                         <tr
                           key={u.id}

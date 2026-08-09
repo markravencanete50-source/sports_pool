@@ -66,7 +66,7 @@ export async function POST(
       .in("email", normalizedEmails);
 
     const resolvedIds = (usersByEmail ?? [])
-      .map((u: any) => u.id)
+      .map((u: { id: string }) => u.id)
       .filter((id: string) => id !== user.id);
 
     if (resolvedIds.length === 0) {
@@ -82,7 +82,9 @@ export async function POST(
       .eq("pool_id", poolId)
       .in("invited_user_id", resolvedIds);
 
-    const existingIds = new Set((existing ?? []).map((r: any) => r.invited_user_id));
+    const existingIds = new Set(
+      (existing ?? []).map((r: { invited_user_id: string }) => r.invited_user_id)
+    );
     const { data: existingParticipants } = await supabase
       .from("pool_participants")
       .select("user_id")
@@ -90,7 +92,7 @@ export async function POST(
       .in("user_id", resolvedIds);
 
     const participantIds = new Set(
-      (existingParticipants ?? []).map((r: any) => r.user_id)
+      (existingParticipants ?? []).map((r: { user_id: string }) => r.user_id)
     );
     const toInvite = resolvedIds.filter(
       (id) => !existingIds.has(id) && !participantIds.has(id)

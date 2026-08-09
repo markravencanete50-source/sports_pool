@@ -5,9 +5,16 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { NavItemProps } from "@/lib/interfaces";
 
-export function NavItem({ href, label, icon: Icon, isActive, isCollapsed }: NavItemProps) {
+export function NavItem({
+  href,
+  label,
+  icon: Icon,
+  isActive,
+  isCollapsed,
+  onNavigate,
+}: NavItemProps & { onNavigate?: () => void }) {
   return (
-    <Link href={href}>
+    <Link href={href} onClick={onNavigate}>
       <div
         className={cn(
           "flex items-center gap-3 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden active:scale-[0.98]",

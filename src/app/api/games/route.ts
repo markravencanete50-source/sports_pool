@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  ESPNTeam,
-  ESPNGame,
-  ESPNScoreboardResponse,
-  GameStatus,
-} from "@/lib/types";
+import { ESPNGame, GameStatus } from "@/lib/types";
 import { mapESPNTeamToDB } from "@/lib/constants";
 import { GameStatus as GameStatusEnum } from "@/lib/enums";
 import { getNflScoreboard } from "@/lib/fetch-nfl-scoreboard";
@@ -67,10 +62,10 @@ export async function GET(request: Request) {
         if (!competition) return null;
 
         const homeTeam = competition.competitors?.find(
-          (c: any) => c.homeAway === "home"
+          (c) => c.homeAway === "home"
         );
         const awayTeam = competition.competitors?.find(
-          (c: any) => c.homeAway === "away"
+          (c) => c.homeAway === "away"
         );
 
         if (!homeTeam || !awayTeam) return null;

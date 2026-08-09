@@ -45,12 +45,16 @@ export default function WithdrawalsPage() {
     pool_name: string;
     amount: number;
   }[];
-  const transactions = (balanceData?.transactions ?? []) as {
-    amount: number;
-    type: string;
-    created_at: string;
-    final_balance: number;
-  }[];
+  const transactions = useMemo(
+    () =>
+      (balanceData?.transactions ?? []) as {
+        amount: number;
+        type: string;
+        created_at: string;
+        final_balance: number;
+      }[],
+    [balanceData]
+  );
   const canRequestPayout = balance >= MINIMUM_PAYOUT_AMOUNT;
 
   const {

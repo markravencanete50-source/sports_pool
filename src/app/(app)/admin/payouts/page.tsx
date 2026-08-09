@@ -11,14 +11,30 @@ import { apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
+type AuthUser = {
+  id?: string;
+  role?: string | null;
+  app_metadata?: { role?: string | null };
+};
+
+type PayoutRequestRow = {
+  id: string;
+  amount: number | string;
+  status: string;
+  created_at: string;
+  users?: { name?: string | null; email?: string | null } | null;
+  pools?: { name?: string | null } | null;
+};
+
 export default function AdminPayoutsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, isLoadingUser } = useAuth();
+  const { user: authUser, isLoadingUser } = useAuth();
+  const user = authUser as AuthUser | null | undefined;
 
   const isAdmin =
-    (user as any)?.app_metadata?.role === "admin" ||
-    (user as any)?.role === "admin";
+    user?.app_metadata?.role === "admin" ||
+    user?.role === "admin";
 
   useEffect(() => {
     if (!isLoadingUser && !isAdmin && user !== undefined) {
@@ -65,11 +81,14 @@ export default function AdminPayoutsPage() {
     },
   });
 
-  const payoutRequests = payoutsData?.payoutRequests ?? [];
+  const payoutRequests = useMemo<PayoutRequestRow[]>(
+    () => payoutsData?.payoutRequests ?? [],
+    [payoutsData]
+  );
   const searchLower = searchTerm.trim().toLowerCase();
   const filteredPayoutRequests = useMemo(() => {
     if (!searchLower) return payoutRequests;
-    return payoutRequests.filter((req: any) => {
+    return payoutRequests.filter((req) => {
       const name = (req.users?.name ?? "").toString().toLowerCase();
       const email = (req.users?.email ?? "").toString().toLowerCase();
       return name.includes(searchLower) || email.includes(searchLower);
@@ -164,7 +183,7 @@ export default function AdminPayoutsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPayoutRequests.map((req: any) => (
+                    {filteredPayoutRequests.map((req) => (
                       <tr
                         key={req.id}
                         className="border-b border-white/5 hover:bg-white/5"

@@ -18,6 +18,13 @@ import { PoolFormData, DateRange } from "@/lib/types";
 import { poolConfig } from "@/lib/config";
 import { PoolType, DateRange as DateRangeEnum } from "@/lib/enums";
 
+type SelectableGame = {
+  id: string;
+  date: string;
+  status?: string | null;
+  week?: number;
+};
+
 export default function CreatePool() {
   const router = useRouter();
   const { user } = useAuth();
@@ -30,7 +37,10 @@ export default function CreatePool() {
     error: gamesError,
   } = useGames(undefined, undefined);
 
-  const allGames = gamesData?.games || [];
+  const allGames = useMemo<SelectableGame[]>(
+    () => gamesData?.games || [],
+    [gamesData]
+  );
   const currentWeek = gamesData?.week;
 
   const [formData, setFormData] = useState<PoolFormData>({
@@ -48,33 +58,36 @@ export default function CreatePool() {
     let filteredGames = allGames;
 
     if (dateRange === DateRangeEnum.UPCOMING) {
-      filteredGames = allGames.filter((game: any) => {
+      filteredGames = allGames.filter((game) => {
         const status = game.status || "scheduled";
         const gameDate = new Date(game.date);
         const notPlayed = status !== "finished";
         return notPlayed && (gameDate >= now || status === "live");
       });
     } else {
-      filteredGames = allGames.filter((game: any) => {
+      filteredGames = allGames.filter((game) => {
         const gameDate = new Date(game.date);
         return gameDate >= now;
       });
     }
 
-    return filteredGames.reduce((acc: any, game: any) => {
-      const dateKey = format(new Date(game.date), "yyyy-MM-dd");
-      if (!acc[dateKey]) {
-        acc[dateKey] = [];
-      }
-      acc[dateKey].push(game);
-      return acc;
-    }, {} as Record<string, any[]>);
+    return filteredGames.reduce<Record<string, SelectableGame[]>>(
+      (acc, game) => {
+        const dateKey = format(new Date(game.date), "yyyy-MM-dd");
+        if (!acc[dateKey]) {
+          acc[dateKey] = [];
+        }
+        acc[dateKey].push(game);
+        return acc;
+      },
+      {}
+    );
   }, [allGames, dateRange]);
 
   const selectedGamesWeeks = useMemo(() => {
     const weeks = new Set<number>();
     formData.selectedGames.forEach((gameId) => {
-      const game = allGames.find((g: any) => g.id === gameId);
+      const game = allGames.find((g) => g.id === gameId);
       if (game?.week) {
         weeks.add(game.week);
       }
@@ -145,8 +158,8 @@ export default function CreatePool() {
       router.push(
         formData.type === PoolType.PUBLIC ? "/public-pools" : "/private-pools"
       );
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to create pool");
+    } catch (error) {
+      toast.error((error as Error | null)?.message || "Failed to create pool");
     }
   };
 
@@ -159,7 +172,7 @@ export default function CreatePool() {
           selectedGames: prev.selectedGames.filter((id) => id !== gameId),
         };
       } else {
-        const game = allGames.find((g: any) => g.id === gameId);
+        const game = allGames.find((g) => g.id === gameId);
         const gameWeek = game?.week;
 
         if (prev.selectedGames.length === 0) {
@@ -167,7 +180,7 @@ export default function CreatePool() {
         }
 
         const existingGameWeeks = prev.selectedGames
-          .map((id) => allGames.find((g: any) => g.id === id)?.week)
+          .map((id) => allGames.find((g) => g.id === id)?.week)
           .filter((w): w is number => w !== undefined);
 
         if (

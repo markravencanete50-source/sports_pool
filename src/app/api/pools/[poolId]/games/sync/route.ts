@@ -49,7 +49,8 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const poolGameIds = pool.pool_games?.map((pg: any) => pg.game_id) || [];
+    const poolGameIds =
+      pool.pool_games?.map((pg: { game_id: string }) => pg.game_id) || [];
 
     if (poolGameIds.length === 0) {
       return NextResponse.json(
@@ -70,14 +71,14 @@ export async function POST(
     const updates = [];
 
     for (const gameId of poolGameIds) {
-      const espnGame = espnGames.find((g: any) => 
+      const espnGame = espnGames.find((g) =>
         g.competitions?.[0]?.id === gameId
       );
 
       if (espnGame) {
         const competition = espnGame.competitions[0];
-        const homeTeam = competition.competitors.find((c: any) => c.homeAway === "home");
-        const awayTeam = competition.competitors.find((c: any) => c.homeAway === "away");
+        const homeTeam = competition.competitors.find((c) => c.homeAway === "home");
+        const awayTeam = competition.competitors.find((c) => c.homeAway === "away");
 
         if (homeTeam && awayTeam) {
           const desc = competition.status.type.description ?? "";

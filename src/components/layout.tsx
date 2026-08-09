@@ -30,14 +30,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { user, isAuthenticated, isLoadingUser } = useAuth();
 
+  // The auth user may carry the role either at the top level (public.users
+  // shape) or in Supabase's app_metadata claim.
+  const roleUser = user as
+    | { app_metadata?: { role?: string }; role?: string }
+    | null
+    | undefined;
   const isAdmin =
-    (user as any)?.app_metadata?.role === "admin" ||
-    (user as any)?.role === "admin";
-
-  // Close the mobile drawer whenever the route changes.
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [pathname]);
+    roleUser?.app_metadata?.role === "admin" || roleUser?.role === "admin";
 
   // Lock body scroll and allow ESC to dismiss while the drawer is open.
   useEffect(() => {
@@ -120,6 +120,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         navItems={navItems}
         activePath={pathname}
         onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+        onNavigate={() => setSidebarOpen(false)}
         user={user}
         isAuthenticated={isAuthenticated}
         isLoadingUser={isLoadingUser}

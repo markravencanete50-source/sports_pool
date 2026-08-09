@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     let rows: { id: string; name: string; city: string; abbreviation: string; logo: string; primary_color: string; secondary_color: string }[];
     try {
       rows = await fetchNflTeamsFromApi();
-    } catch (err) {
+    } catch {
       const fallbackIds = Object.keys(TEAM_MAP) as string[];
       rows = getTeamRowsForAbbrevs(fallbackIds);
     }

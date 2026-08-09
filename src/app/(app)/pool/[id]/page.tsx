@@ -133,13 +133,15 @@ export default function PoolDetailPage() {
   const poolGames = useMemo(() => {
     if (!pool?.pool_games) return [];
     return pool.pool_games
-      .map((pg: any) => pg.games)
-      .filter((game: any) => game !== null && game !== undefined);
+      .map((pg) => pg.games)
+      .filter(
+        (game): game is PoolGameRow => game !== null && game !== undefined
+      );
   }, [pool]);
 
   const endsLabel = useMemo(() => {
     if (poolGames.length === 0) return "Schedule TBD";
-    const lastGame = poolGames.reduce((latest: any, game: any) =>
+    const lastGame = poolGames.reduce((latest, game) =>
       new Date(game.date) > new Date(latest.date) ? game : latest
     );
     return `Ends ${format(new Date(lastGame.date), "EEE, MMM d")}`;
@@ -151,7 +153,7 @@ export default function PoolDetailPage() {
       string,
       { prediction: string; totalScore?: number }
     > = {};
-    selectedCard.card_picks.forEach((pick: any) => {
+    selectedCard.card_picks.forEach((pick) => {
       picksMap[pick.game_id] = {
         prediction: pick.prediction,
         totalScore: pick.total_score_prediction,
@@ -165,9 +167,12 @@ export default function PoolDetailPage() {
     selectedCard?.status === "completed" ||
     selectedCard?.status === "cancelled";
   const effectivePicks = isCardLocked ? cardPicks : pendingPicks;
-  const isPoolCompleted = (pool as any)?.status === "completed";
+  const isPoolCompleted = pool?.status === "completed";
 
-  function getGameResult(game: any, userPrediction: string | undefined): GameResult | null {
+  function getGameResult(
+    game: PoolGameRow,
+    userPrediction: string | undefined
+  ): GameResult | null {
     if (!userPrediction || !game) return null;
     const status = (game.status ?? "").toLowerCase();
     const disrupted = (DISRUPTED_STATUSES as readonly string[]).includes(status);
@@ -191,31 +196,31 @@ export default function PoolDetailPage() {
     !isPoolCompleted &&
     selectedCard?.status === "pending" &&
     poolGames.length > 0 &&
-    poolGames.every((g: any) => pendingPicks[g.id]);
+    poolGames.every((g) => pendingPicks[g.id]);
 
   const handlePick = (gameId: string, prediction: GamePrediction) => {
-    if (isCardLocked || !selectedCardId) return;
+    if (isCardLocked || !effectiveCardId) return;
     setPendingPicks((prev) => ({ ...prev, [gameId]: { prediction } }));
   };
 
   const handleSubmitPicks = async () => {
-    if (!poolId || !selectedCardId || !canSubmitPicks) return;
+    if (!poolId || !effectiveCardId || !canSubmitPicks) return;
     try {
       await Promise.all(
-        poolGames.map((game: any) =>
+        poolGames.map((game) =>
           submitCardPickMutation.mutateAsync({
             poolId,
-            cardId: selectedCardId,
+            cardId: effectiveCardId,
             gameId: game.id,
             prediction: pendingPicks[game.id].prediction,
           })
         )
       );
-      await lockCardMutation.mutateAsync({ poolId, cardId: selectedCardId });
+      await lockCardMutation.mutateAsync({ poolId, cardId: effectiveCardId });
       toast.success("Picks submitted! Your card is locked.");
       refetchCards();
-    } catch (error: any) {
-      toast.error(error?.message ?? "Failed to submit picks");
+    } catch (error) {
+      toast.error((error as Error | null)?.message ?? "Failed to submit picks");
     }
   };
 
@@ -227,8 +232,9 @@ export default function PoolDetailPage() {
         text,
       });
       toast.success("Comment added!");
-    } catch (error: any) {
-      const errorMessage = error?.message || "Failed to add comment";
+    } catch (error) {
+      const errorMessage =
+        (error as Error | null)?.message || "Failed to add comment";
       if (errorMessage.includes("must purchase a card")) {
         toast.error("You must purchase a card to access chat");
       } else {
@@ -250,8 +256,8 @@ export default function PoolDetailPage() {
       toast.success("Pool updated!");
       queryClient.invalidateQueries({ queryKey: ["/api/pools", poolId] });
       setIsEditModalOpen(false);
-    } catch (error: any) {
-      toast.error(error?.message ?? "Failed to update pool");
+    } catch (error) {
+      toast.error((error as Error | null)?.message ?? "Failed to update pool");
       throw error;
     }
   };
@@ -266,6 +272,7 @@ export default function PoolDetailPage() {
     confirmedSessionRef.current = sessionId;
     if (typeof window !== "undefined") sessionStorage.setItem(storageKey, "1");
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot Stripe redirect handler: the confirming flag must be raised before the async confirm call so the purchase UI never flashes
     setIsConfirmingPayment(true);
 
     (async () => {
@@ -324,8 +331,8 @@ export default function PoolDetailPage() {
     );
   }
 
-  const entryFee = (pool as any).entryFee ?? (pool as any).entry_fee ?? 20;
-  const prizePot = (pool as any).prizePot ?? (pool as any).prize_pot ?? 0;
+  const entryFee = pool.entryFee ?? pool.entry_fee ?? 20;
+  const prizePot = pool.prizePot ?? pool.prize_pot ?? 0;
 
   return (
     <Layout>
@@ -369,12 +376,12 @@ export default function PoolDetailPage() {
                   ${prizePot.toLocaleString()}
                 </span>
               </div>
-              {((pool as any)?.created_by === user?.id ||
-                (user as any)?.app_metadata?.role === "admin" ||
-                (user as any)?.role === "admin") && (
+              {(pool.created_by === user?.id ||
+                user?.app_metadata?.role === "admin" ||
+                user?.role === "admin") && (
                 <div className="flex flex-wrap gap-2">
-                  {(pool as any)?.can_edit &&
-                    (pool as any)?.created_by === user?.id && (
+                  {pool.can_edit &&
+                    pool.created_by === user?.id && (
                       <button
                         type="button"
                         onClick={() => setIsEditModalOpen(true)}
@@ -425,7 +432,7 @@ export default function PoolDetailPage() {
               <div className="glass-panel p-4 rounded-xl">
                 <CardSelectorComponent
                   cards={cards}
-                  selectedCardId={selectedCardId}
+                  selectedCardId={effectiveCardId}
                   onSelectCard={setSelectedCardId}
                   onPurchaseNew={() => {
                     document.getElementById("purchase-card-trigger")?.click();
@@ -449,7 +456,7 @@ export default function PoolDetailPage() {
 
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-2xl font-bold font-display uppercase italic">
-                {selectedCardId
+                {effectiveCardId
                   ? `Card ${selectedCard?.card_number || ""} - `
                   : ""}
                 Week {pool.week} Matchups
@@ -467,9 +474,9 @@ export default function PoolDetailPage() {
                   No games selected for this pool yet.
                 </p>
               </div>
-            ) : selectedCardId ? (
+            ) : effectiveCardId ? (
               <div className="grid grid-cols-1 gap-6">
-                {poolGames.map((game: any) => {
+                {poolGames.map((game) => {
                   const pick = effectivePicks[game.id];
                   const selectedPrediction = pick?.prediction as string | undefined;
                   const gameResult =
@@ -480,7 +487,7 @@ export default function PoolDetailPage() {
                   return (
                     <div key={game.id} className="min-h-[240px]">
                       <GameCard
-                        game={game}
+                        game={game as unknown as GameCardProps["game"]}
                         disabled={isCardLocked}
                         onPick={(teamIdOrTie) => {
                           const prediction: GamePrediction | undefined =
@@ -523,7 +530,7 @@ export default function PoolDetailPage() {
               </div>
             )}
 
-            {selectedCardId && (
+            {effectiveCardId && (
               <div className="space-y-4">
                 {canSubmitPicks && (
                   <button
@@ -556,15 +563,15 @@ export default function PoolDetailPage() {
           </div>
 
           <div className="space-y-6">
-            {selectedCardId && (
+            {effectiveCardId && (
               <ProgressCard
                 picksMade={Object.keys(effectivePicks).length}
                 totalGames={poolGames.length}
               />
             )}
 
-            {(pool as any)?.type === "private" &&
-              (pool as any)?.created_by === user?.id && (
+            {pool.type === "private" &&
+              pool.created_by === user?.id && (
                 <PoolInviteByEmail
                   poolId={poolId}
                   onSuccess={() => {
@@ -590,7 +597,7 @@ export default function PoolDetailPage() {
             )}
 
             <CommentSection
-              comments={comments.map((c: any) => ({
+              comments={comments.map((c: PoolCommentRow) => ({
                 id: c.id,
                 userId: c.user_id,
                 text: c.text,

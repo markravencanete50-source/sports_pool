@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPoolFinancials } from "@/lib/pool-financials";
 import { updatePoolWithGamesSchema } from "@/lib/validations";
-import { computePoolWinners } from "@/lib/winners";
 import { NextResponse } from "next/server";
 
 // SECURITY: never embed `users(*)`. That table carries email, role and balance,
@@ -22,6 +21,9 @@ const poolDetailSelect = `
   comments(*, users:profiles!comments_user_id_profiles_fkey(${USER_PUBLIC_COLS})),
   created_by_user:profiles!pools_created_by_profiles_fkey(${USER_PUBLIC_COLS})
 `;
+
+// Row shape of the `.select("id, week")` games query in PATCH.
+type GameWeekRow = { id: string; week: number | null };
 
 export async function GET(
   request: Request,
@@ -61,7 +63,7 @@ export async function GET(
     };
 
     return NextResponse.json({ pool }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -152,7 +154,7 @@ export async function PATCH(
         .select("id, week")
         .in("id", gameIds);
 
-      const foundIds = new Set((games ?? []).map((g: any) => g.id));
+      const foundIds = new Set((games ?? []).map((g: GameWeekRow) => g.id));
       const missing = gameIds.filter((id) => !foundIds.has(id));
       if (missing.length > 0) {
         return NextResponse.json(
@@ -161,7 +163,7 @@ export async function PATCH(
         );
       }
 
-      const weeks = [...new Set((games ?? []).map((g: any) => g.week).filter(Boolean))];
+      const weeks = [...new Set((games ?? []).map((g: GameWeekRow) => g.week).filter(Boolean))];
       if (weeks.length > 1) {
         return NextResponse.json(
           { error: `All games must be from the same week. Found weeks: ${weeks.join(", ")}` },
@@ -239,10 +241,11 @@ export async function PATCH(
     };
 
     return NextResponse.json({ pool: result }, { status: 200 });
-  } catch (error: any) {
-    if (error?.name === "ZodError") {
+  } catch (error) {
+    const thrown = error as { name?: unknown; errors?: unknown } | null | undefined;
+    if (thrown?.name === "ZodError") {
       return NextResponse.json(
-        { error: "Validation error", details: error.errors },
+        { error: "Validation error", details: thrown.errors },
         { status: 400 }
       );
     }
@@ -310,7 +313,7 @@ export async function DELETE(
       { message: "Pool deleted successfully" },
       { status: 200 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

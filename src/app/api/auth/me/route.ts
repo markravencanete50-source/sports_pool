@@ -35,7 +35,7 @@ export async function GET() {
       { user: { ...user, ...(profile ?? {}) } },
       { status: 200 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

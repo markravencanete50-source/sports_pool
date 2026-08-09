@@ -31,9 +31,15 @@ import { Card3D } from "@/components/ui/3d-card";
 import { MyGamesOutcomeFilter } from "@/lib/enums";
 import { MINIMUM_PAYOUT_AMOUNT } from "@/lib/constants";
 import { toast } from "sonner";
+import type { MyGameEntry } from "@/lib/types";
 
 const SEARCH_DEBOUNCE_MS = 400;
 const PAGE_SIZE = 12;
+
+type MyGameCardEntry = MyGameEntry & {
+  claimed?: boolean;
+  claimable?: boolean;
+};
 
 function getMyGamesEmptyMessage(
   outcomeFilter: MyGamesOutcomeFilter,
@@ -80,16 +86,21 @@ export default function MyGamesPage() {
   } = usePayoutAccount({ enabled: isAuthenticated ?? false });
 
   useEffect(() => {
-    const t = setTimeout(
-      () => setDebouncedSearch(searchTerm),
-      SEARCH_DEBOUNCE_MS
-    );
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      // Reset pagination alongside the debounced search update (async, so it
+      // does not run synchronously within the effect body).
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, outcomeFilter]);
+  // Reset pagination when the outcome filter changes (handled in the event
+  // handler instead of an effect).
+  const handleOutcomeFilterChange = (value: MyGamesOutcomeFilter) => {
+    if (value !== outcomeFilter) setPage(1);
+    setOutcomeFilter(value);
+  };
 
   const { data, isLoading, error } = useMeGames(
     {
@@ -181,7 +192,7 @@ export default function MyGamesPage() {
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
           outcomeFilter={outcomeFilter}
-          onOutcomeFilterChange={setOutcomeFilter}
+          onOutcomeFilterChange={handleOutcomeFilterChange}
           rightElement={
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg">
@@ -288,7 +299,7 @@ export default function MyGamesPage() {
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {games.map((g: any) => (
+              {games.map((g: MyGameCardEntry) => (
                 <Card3D key={g.poolId} intensity={5} className="h-full">
                   <div className="h-full glass-panel p-6 rounded-xl flex flex-col gap-4 hover:border-primary/50 hover:shadow-[0_0_25px_rgba(220,20,60,0.12)] transition-all duration-300 group relative overflow-hidden">
                     <div className="absolute -right-8 -top-8 w-32 h-32 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all" />

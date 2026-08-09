@@ -12,6 +12,9 @@ import { usePools } from "@/lib/hooks/use-pools";
 import { useGames } from "@/lib/hooks/use-games";
 import { useMemo } from "react";
 import { PoolType } from "@/lib/enums";
+import type { Pool } from "@/lib/types";
+
+type ScheduleGame = { id: string; date: string };
 
 function PoolGridSkeleton({ cards }: { cards: number }) {
   return (
@@ -30,18 +33,21 @@ export default function DashboardPage() {
   const { data: poolsData, isLoading: isLoadingPools } = usePools({
     limit: 100,
   });
-  const allPools = poolsData?.pools ?? [];
+  const allPools = useMemo<Pool[]>(() => poolsData?.pools ?? [], [poolsData]);
   const { data: gamesData } = useGames(undefined, undefined);
-  const games = (gamesData?.games || []) as any[];
+  const games = useMemo<ScheduleGame[]>(
+    () => gamesData?.games || [],
+    [gamesData]
+  );
 
   const featuredPools = useMemo(() => {
-    return allPools.filter((p: any) => p.type === PoolType.PUBLIC).slice(0, 2);
+    return allPools.filter((p) => p.type === PoolType.PUBLIC).slice(0, 2);
   }, [allPools]);
 
   const featuredPool = useMemo(() => {
-    const publicPools = allPools.filter((p: any) => p.type === PoolType.PUBLIC);
+    const publicPools = allPools.filter((p) => p.type === PoolType.PUBLIC);
     if (publicPools.length === 0) return null;
-    return publicPools.reduce((best: any, p: any) => {
+    return publicPools.reduce((best, p) => {
       const pot = p.prize_pot ?? p.prizePot ?? 0;
       const bestPot = best.prize_pot ?? best.prizePot ?? 0;
       return pot >= bestPot ? p : best;
@@ -49,18 +55,18 @@ export default function DashboardPage() {
   }, [allPools]);
 
   const yourPools = useMemo(() => {
-    return allPools.filter((p: any) => p.type === PoolType.PRIVATE);
+    return allPools.filter((p) => p.type === PoolType.PRIVATE);
   }, [allPools]);
 
   const groupedGames = useMemo(() => {
-    return games.reduce((acc: any, game: any) => {
+    return games.reduce<Record<string, ScheduleGame[]>>((acc, game) => {
       const dateKey = format(new Date(game.date), "yyyy-MM-dd");
       if (!acc[dateKey]) {
         acc[dateKey] = [];
       }
       acc[dateKey].push(game);
       return acc;
-    }, {} as Record<string, any[]>);
+    }, {});
   }, [games]);
 
   const sortedDates = Object.keys(groupedGames).sort();

@@ -19,20 +19,34 @@ import { useCompletePools } from "@/lib/hooks/use-complete-pools";
 import { usePools } from "@/lib/hooks/use-pools";
 import Link from "next/link";
 
+type AuthUser = {
+  id?: string;
+  role?: string | null;
+  app_metadata?: { role?: string | null };
+};
+
+type AdminPoolListItem = {
+  id: string;
+  name: string;
+  week?: number;
+  status?: string;
+};
+
 export default function AdminGamesPage() {
   const router = useRouter();
-  const { user, isLoadingUser } = useAuth();
+  const { user: authUser, isLoadingUser } = useAuth();
+  const user = authUser as AuthUser | null | undefined;
   const syncNFLMutation = useSyncNFLGames();
   const syncTeamsMutation = useSyncTeams();
   const completePoolsMutation = useCompletePools();
   const { data: poolsData } = usePools({ limit: 100 });
   const openPools = (poolsData?.pools ?? []).filter(
-    (p: any) => p.status === "open" || p.status === "active",
+    (p: AdminPoolListItem) => p.status === "open" || p.status === "active",
   );
 
   const isAdmin =
-    (user as any)?.app_metadata?.role === "admin" ||
-    (user as any)?.role === "admin";
+    user?.app_metadata?.role === "admin" ||
+    user?.role === "admin";
 
   useEffect(() => {
     if (!isLoadingUser && !isAdmin && user !== undefined) {
@@ -179,7 +193,7 @@ export default function AdminGamesPage() {
             </p>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-              {openPools.slice(0, 20).map((pool: any) => (
+              {openPools.slice(0, 20).map((pool: AdminPoolListItem) => (
                 <Link
                   key={pool.id}
                   href={`/pool/${pool.id}`}

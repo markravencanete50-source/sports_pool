@@ -41,7 +41,7 @@ function LoginForm() {
       toast.success("Welcome back!");
       const redirect = safeInternalPath(searchParams.get("redirect"));
       setTimeout(() => router.push(redirect), 400);
-    } catch (err: any) {
+    } catch (err) {
       const errorMessage = extractErrorMessage(err);
       toast.error(errorMessage);
     }

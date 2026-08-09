@@ -27,7 +27,7 @@ export async function GET() {
     }
 
     return NextResponse.json({ payoutRequests: data || [] }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       { payoutRequest, message: "Payout requested. Admin will process." },
       { status: 201 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

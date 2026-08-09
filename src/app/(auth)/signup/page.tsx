@@ -37,7 +37,7 @@ export default function Signup() {
       await signup(data);
       toast.success("A verification link has been sent to your email.");
       setTimeout(() => router.push(DASHBOARD_PATH), 500);
-    } catch (err: any) {
+    } catch (err) {
       const errorMessage = extractErrorMessage(err);
       toast.error(errorMessage);
     }

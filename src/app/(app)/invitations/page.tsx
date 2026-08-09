@@ -7,19 +7,28 @@ import { StaggerGroup, StaggerItem } from "@/components/motion/reveal";
 import { useInvitations, useAcceptInvitation, useDeclineInvitation } from "@/lib/hooks/use-invitations";
 import { toast } from "sonner";
 
+type Invitation = {
+  id: string;
+  status: string;
+  pools?: { id?: string; name?: string; entry_fee?: number } | null;
+  inviter?: { name?: string | null; email?: string | null } | null;
+};
+
 export default function InvitationsPage() {
   const { data: invitations = [], isLoading, error } = useInvitations();
   const acceptMutation = useAcceptInvitation();
   const declineMutation = useDeclineInvitation();
 
-  const pending = invitations.filter((i: any) => i.status === "pending");
+  const pending = invitations.filter(
+    (i: Invitation) => i.status === "pending"
+  );
 
   const handleAccept = async (id: string) => {
     try {
       await acceptMutation.mutateAsync(id);
       toast.success("Invitation accepted! You can now join the pool.");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to accept");
+    } catch (e) {
+      toast.error((e as Error | null)?.message ?? "Failed to accept");
     }
   };
 
@@ -27,8 +36,8 @@ export default function InvitationsPage() {
     try {
       await declineMutation.mutateAsync(id);
       toast.success("Invitation declined.");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to decline");
+    } catch (e) {
+      toast.error((e as Error | null)?.message ?? "Failed to decline");
     }
   };
 
@@ -79,7 +88,7 @@ export default function InvitationsPage() {
           </div>
         ) : (
           <StaggerGroup className="grid grid-cols-1 gap-4">
-            {pending.map((inv: any) => {
+            {pending.map((inv: Invitation) => {
               const pool = inv.pools;
               const inviter = inv.inviter;
               const poolName = pool?.name ?? "Private pool";
@@ -137,13 +146,13 @@ export default function InvitationsPage() {
           </StaggerGroup>
         )}
 
-        {invitations.some((i: any) => i.status !== "pending") && (
+        {invitations.some((i: Invitation) => i.status !== "pending") && (
           <div className="pt-8 border-t border-white/10">
             <h2 className="text-lg font-bold mb-4">Past invitations</h2>
             <ul className="space-y-2 text-sm text-muted-foreground">
               {invitations
-                .filter((i: any) => i.status !== "pending")
-                .map((inv: any) => (
+                .filter((i: Invitation) => i.status !== "pending")
+                .map((inv: Invitation) => (
                   <li key={inv.id} className="flex items-center gap-2">
                     <span>
                       {inv.pools?.name ?? "Pool"} —{" "}

@@ -77,7 +77,7 @@ export async function GET(request: Request) {
       { pools, total: total ?? pools.length, page, limit },
       { status: 200 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -161,16 +161,16 @@ export async function POST(request: Request) {
 
       for (const gameId of validatedData.selectedGames) {
         const espnGame = allGames.find(
-          (g: any) => g.competitions?.[0]?.id === gameId
+          (g) => g.competitions?.[0]?.id === gameId
         );
 
         if (espnGame) {
           const competition = espnGame.competitions[0];
           const homeTeam = competition.competitors.find(
-            (c: any) => c.homeAway === "home"
+            (c) => c.homeAway === "home"
           );
           const awayTeam = competition.competitors.find(
-            (c: any) => c.homeAway === "away"
+            (c) => c.homeAway === "away"
           );
 
           if (homeTeam && awayTeam) {
@@ -369,7 +369,9 @@ export async function POST(request: Request) {
           .from("users")
           .select("id")
           .in("email", normalizedEmails);
-        const resolvedIds = (usersByEmail ?? []).map((u: any) => u.id);
+        const resolvedIds = (usersByEmail ?? []).map(
+          (u: { id: string }) => u.id
+        );
         invitedUserIds = [
           ...new Set([...invitedUserIds, ...resolvedIds]),
         ].filter((id) => id !== user.id);

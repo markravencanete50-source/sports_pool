@@ -56,7 +56,7 @@ export async function GET() {
       },
       { status: 200 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -129,7 +129,7 @@ export async function PUT(request: Request) {
       },
       { status: 200 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

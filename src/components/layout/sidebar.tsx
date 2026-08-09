@@ -13,10 +13,11 @@ export function Sidebar({
   navItems,
   activePath,
   onToggleCollapse,
+  onNavigate,
   user,
   isAuthenticated,
   isLoadingUser,
-}: SidebarProps) {
+}: SidebarProps & { onNavigate?: () => void }) {
   return (
     <aside
       id="app-sidebar"
@@ -42,7 +43,7 @@ export function Sidebar({
           )}
         </button>
 
-        <SidebarHeader isCollapsed={isCollapsed} />
+        <SidebarHeader isCollapsed={isCollapsed} onNavigate={onNavigate} />
 
         <nav className="flex-1 py-6 px-3 space-y-1.5 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar">
           {navItems.map((item) => (
@@ -53,6 +54,7 @@ export function Sidebar({
               icon={item.icon}
               isActive={activePath === item.href}
               isCollapsed={isCollapsed}
+              onNavigate={onNavigate}
             />
           ))}
         </nav>

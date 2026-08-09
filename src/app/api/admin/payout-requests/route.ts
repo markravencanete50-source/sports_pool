@@ -37,7 +37,7 @@ export async function GET(request: Request) {
       { payoutRequests: data || [], total: count ?? 0, limit, offset },
       { status: 200 }
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
