@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 const ROLES = ["user", "admin"] as const;
 
@@ -14,6 +15,9 @@ export async function PATCH(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { userId } = await params;
     const supabase = await createClient();
     const auth = await requireAdmin(supabase);

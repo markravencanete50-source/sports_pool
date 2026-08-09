@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 /**
- * Security headers.
+ * Static security headers.
  *
  * The app shipped with none at all, which matters more than usual here: the
  * admin payout-approval screen and the user withdrawal flow are both
@@ -9,47 +9,15 @@ import type { NextConfig } from "next";
  * frame-ancestors / X-Frame-Options they can be framed and clickjacked into
  * approving or requesting a payout.
  *
- * CSP notes:
- *  - 'unsafe-inline' on style-src is required by Tailwind's runtime style
- *    injection and by the inline styles in the design preview.
- *  - 'unsafe-inline'/'unsafe-eval' on script-src is what Next.js needs in dev;
- *    it is dropped in production below. Tighten further with a nonce if the app
- *    later needs inline scripts in prod.
- *  - connect-src must list every external origin the browser talks to. Adding a
- *    new provider (a second payout rail, an analytics vendor) means adding it
- *    here or the request is blocked.
+ * THE CSP IS NOT HERE — see src/lib/csp.ts and src/proxy.ts.
+ *
+ * It carries a per-request nonce so that script-src no longer needs
+ * 'unsafe-inline', and a nonce cannot be emitted from this file because
+ * headers() is evaluated once at build time. Only the headers whose values are
+ * genuinely static remain below.
  */
-const isProd = process.env.NODE_ENV === "production";
-
-const csp = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"} https://js.stripe.com`,
-  // src/app/font-loader.tsx injects a Google Fonts stylesheet at runtime and the
-  // faces are served from gstatic. Both origins must be allowed or the app
-  // silently loses its typography — CSP failures do not throw, they just drop
-  // the resource.
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "img-src 'self' data: blob: https://*.supabase.co https://a.espncdn.com https://*.espncdn.com",
-  "font-src 'self' data: https://fonts.gstatic.com",
-  [
-    "connect-src 'self'",
-    "https://*.supabase.co",
-    "wss://*.supabase.co",
-    "https://api.stripe.com",
-    "https://site.api.espn.com",
-    "https://fonts.googleapis.com",
-    "https://fonts.gstatic.com",
-  ].join(" "),
-  "frame-src https://js.stripe.com https://hooks.stripe.com",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "object-src 'none'",
-  ...(isProd ? ["upgrade-insecure-requests"] : []),
-].join("; ");
 
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

@@ -1,9 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { signupSchema } from "@/lib/validations";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
+    // Throttle automated account-creation floods.
+    const limited = await enforceRateLimit(request, "auth:signup", RATE_LIMITS.authSignup);
+    if (limited) return limited;
+
     const body = await request.json();
     const validatedData = signupSchema.parse(body);
 
@@ -91,17 +96,36 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: userProfile } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", authData.user.id)
-      .single();
+    /*
+     * Verify the profile row exists — but NOT with the caller's session client.
+     *
+     * When email confirmation is enabled, signUp() returns a user with NO
+     * session. The session client is then anonymous, and `users` is restricted
+     * to own-row SELECT, so this read returned nothing and the route answered
+     * HTTP 500 "User profile was not created" on a signup that had in fact
+     * completely succeeded — the account existed and the confirmation email was
+     * already sent.
+     *
+     * Read it back with the privileged client that wrote it. If the service-role
+     * key is not configured we cannot verify, and must not invent a failure.
+     */
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const { data: userProfile } = await createAdminClient()
+        .from("users")
+        .select("id")
+        .eq("id", authData.user.id)
+        .maybeSingle();
 
-    if (!userProfile) {
-      return NextResponse.json(
-        { error: "User profile was not created. Please try again." },
-        { status: 500 }
-      );
+      if (!userProfile) {
+        console.error(
+          `[signup] auth user ${authData.user.id} created but no users row exists`
+        );
+        return NextResponse.json(
+          { error: "User profile was not created. Please try again." },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json(

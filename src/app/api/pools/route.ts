@@ -13,13 +13,16 @@ import { PoolStatus } from "@/lib/enums";
 // check, so the over-select let an anonymous `curl /api/pools?limit=50` harvest
 // the email, admin flag and cash balance of every participant and pool creator,
 // paginated across the whole user base.
+// Display names come from public.profiles, NOT public.users: users is locked to
+// own-row SELECT, so an embedded users(...) resolves to NULL for everyone except
+// the caller and every other player renders as "Unknown".
 const USER_PUBLIC_COLS = "id, name, avatar";
 
 const poolSelect = `
   *,
   pool_games(game_id, games(*)),
-  pool_participants(user_id, users(${USER_PUBLIC_COLS})),
-  created_by_user:users!pools_created_by_fkey(${USER_PUBLIC_COLS})
+  pool_participants(user_id, users:profiles!pool_participants_user_id_profiles_fkey(${USER_PUBLIC_COLS})),
+  created_by_user:profiles!pools_created_by_profiles_fkey(${USER_PUBLIC_COLS})
 `;
 
 const DEFAULT_PAGE = 1;
@@ -142,7 +145,12 @@ export async function POST(request: Request) {
       const { getNflScoreboard } = await import("@/lib/fetch-nfl-scoreboard");
       const currentYear = new Date().getFullYear();
 
-      const espnData = await getNflScoreboard(currentYear);
+      // Fetch the POOL's week, not just ESPN's current week. /api/games (which
+      // populates the create-pool UI) returns current + next week, so without
+      // the week arg a user could select next-week games that this fetch never
+      // returns — they'd fall through unstored and FK-fail the pool_games
+      // insert, making the whole pool un-creatable for any non-current week.
+      const espnData = await getNflScoreboard(currentYear, poolWeek);
       const allGames = espnData.events || [];
 
       const seasonYear = espnData.season?.year || new Date().getFullYear();
@@ -255,10 +263,27 @@ export async function POST(request: Request) {
       }
 
       if (gamesToStore.length > 0) {
+        /*
+         * Reference data (teams, games) is ADMIN-ONLY at the RLS layer, and
+         * rightly so — a game's final score decides who takes the pot.
+         *
+         * But this is an ordinary player creating a pool, so the caller's
+         * session client is denied and the whole creation used to fail: the
+         * games upsert errored, the pool was deleted, and the request returned
+         * 400. Non-admins could not create a pool at all.
+         *
+         * The values written here come from the ESPN feed, never from the
+         * request body, and the caller is already authenticated above. So the
+         * reference-data write is escalated to the service role deliberately —
+         * the same pattern the admin pool-settings route uses.
+         */
+        const { createAdminClient } = await import("@/lib/supabase/admin");
+        const refData = createAdminClient();
+
         const { getTeamRowsForGames } = await import("@/lib/teams-seed");
         const teamRows = getTeamRowsForGames(gamesToStore);
         if (teamRows.length > 0) {
-          const { error: teamsError } = await supabase
+          const { error: teamsError } = await refData
             .from("teams")
             .upsert(teamRows, { onConflict: "id" });
           if (teamsError) {
@@ -266,7 +291,7 @@ export async function POST(request: Request) {
           }
         }
 
-        const { error: gamesError } = await supabase
+        const { error: gamesError } = await refData
           .from("games")
           .upsert(gamesToStore, { onConflict: "id" });
 
@@ -333,7 +358,14 @@ export async function POST(request: Request) {
         const normalizedEmails = validatedData.invitedEmails.map((e) =>
           e.trim().toLowerCase()
         );
-        const { data: usersByEmail } = await supabase
+        // Service-role lookup: users is own-row-only under RLS, so resolving
+        // invitee emails with the caller's session matched nothing and every
+        // email invite was silently dropped at pool creation. Ids are used
+        // internally only and never returned to the caller.
+        const { createAdminClient: adminForEmails } = await import(
+          "@/lib/supabase/admin"
+        );
+        const { data: usersByEmail } = await adminForEmails()
           .from("users")
           .select("id")
           .in("email", normalizedEmails);

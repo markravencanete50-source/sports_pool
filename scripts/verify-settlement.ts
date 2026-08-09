@@ -75,6 +75,40 @@ console.log("\nScoring and tiebreak");
   const w3 = computePoolWinners({ ...base, poolCards: cards, picks: partial } as any);
   check("card missing picks is disqualified", !w3.some((x) => x.userId === "carol"));
 
+  /*
+   * Tiebreak must be COUNT-AWARE.
+   *
+   * total_score_prediction is optional per pick and the tiebreak sums the error
+   * only over games where one was supplied. Comparing raw sums therefore
+   * rewarded predicting LESS: bob, predicting a single total and off by 5, beat
+   * alice, who predicted all four and was off by 3 each (sum 12). Supplying
+   * exactly one prediction became the dominant strategy.
+   *
+   * Both cards below go 4/4, so only the tiebreak separates them. Alice has
+   * full coverage and must win.
+   */
+  const pNo = (card: string, g: string, pred: string) => ({
+    card_id: card, game_id: g, prediction: pred, total_score_prediction: null,
+  });
+  const coverage = [
+    // alice: every total predicted, off by 3 on each (raw sum 12)
+    p("ca", "g1", "home_win", 45), p("ca", "g2", "away_win", 33),
+    p("ca", "g3", "tie", 31),      p("ca", "g4", "home_win", 37),
+    // bob: one total predicted, off by 5 (raw sum 5) — must NOT win on that
+    p("cb", "g1", "home_win", 47), pNo("cb", "g2", "away_win"),
+    pNo("cb", "g3", "tie"),        pNo("cb", "g4", "home_win"),
+  ];
+  const w5 = computePoolWinners({
+    ...base,
+    poolCards: cards.filter((c) => c.id !== "cc"),
+    picks: coverage,
+  } as any);
+  check(
+    "full tiebreak coverage beats a single lucky prediction",
+    w5.length === 1 && w5[0].userId === "alice",
+    JSON.stringify(w5.map((x) => x.userId))
+  );
+
   // All-wrong card wins nothing. Each pick must actually be wrong for the
   // outcome it faces: g1/g2/g4 were decisive so "tie" loses; g3 WAS a tie so it
   // needs a decisive pick to be wrong. (A blanket "away_win" is not all-wrong —

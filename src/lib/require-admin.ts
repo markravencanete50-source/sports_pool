@@ -20,9 +20,21 @@ export async function requireAdmin(
     .select("role")
     .eq("id", user.id)
     .single();
-  const isAdmin =
-    (user.app_metadata?.role as string) === "admin" ||
-    (profile?.role as string) === "admin";
+  /*
+   * The users table is AUTHORITATIVE. The JWT's app_metadata.role claim is
+   * deliberately NOT consulted.
+   *
+   * Supabase cannot revoke an already-issued access token, so honouring the
+   * claim meant a demoted or offboarded admin kept full admin API access until
+   * their token expired (JWT_EXPIRY, an hour by default) even though the role
+   * change had already been written. public.is_admin() in the database was made
+   * table-authoritative for the same reason; this is the matching change at the
+   * API layer so the two agree.
+   *
+   * Both writers keep the table in step: the role route updates users.role and
+   * app_metadata together, and seedAdminUser() writes the users row too.
+   */
+  const isAdmin = (profile?.role as string) === "admin";
   if (!isAdmin) {
     return NextResponse.json(
       { error: "Forbidden. Admin only." },

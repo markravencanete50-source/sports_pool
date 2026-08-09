@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { GameStatus } from "@/lib/enums";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 /**
  * Manually correct a game's outcome. ADMIN ONLY.
@@ -44,6 +45,9 @@ export async function PUT(
   { params }: { params: Promise<{ gameId: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { gameId } = await params;
     const supabase = await createClient();
 

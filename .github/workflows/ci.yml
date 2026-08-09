@@ -1,0 +1,66 @@
+name: CI
+
+# Correctness gate for every push and pull request.
+#
+# WHAT BLOCKS A MERGE, AND WHY:
+#   typecheck  — tsc --noEmit. Catches real breakage (bad shapes, dead symbols).
+#   test       — scripts/verify-settlement.ts. This is the money path: scoring,
+#                tie-breaks, and the cent-exact pot split. It must never regress.
+#   build      — next build. The last line of defence against a deploy-time
+#                failure that only shows up on Vercel.
+#
+#   lint       — eslint. The inherited style backlog (~150 `any`, unused vars,
+#                a few react-hooks findings) is configured as WARNINGS, which do
+#                not fail the run, so this gate blocks only on genuinely NEW
+#                errors. The debt stays visible in the log and is tracked in
+#                README > Known technical debt.
+#
+# The build needs the NEXT_PUBLIC_* vars to exist, but never contacts Supabase or
+# Stripe during a build, so deliberately fake placeholders are used here. No real
+# secret is required to run CI, which keeps forks and PRs working.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the Dockerfile (node:22-alpine) and Next 16's requirement.
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Settlement regression tests
+        run: npm run test
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+          NEXT_PUBLIC_APP_URL: https://placeholder.example.com
+          STRIPE_SECRET_KEY: sk_test_placeholder
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_placeholder
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint

@@ -40,8 +40,6 @@ export async function GET() {
       winningCardId?: string;
     }> = [];
 
-    // Read-only: settlement happens in the cron/sync paths. Triggering it from
-    // here let any player force a re-settlement of someone else's pool.
     for (const pool of completedPools ?? []) {
       const { data: myWin } = await supabase
         .from("pool_winners")
@@ -50,6 +48,14 @@ export async function GET() {
         .eq("user_id", user.id)
         .maybeSingle();
 
+      /*
+       * This page is READ-ONLY. It used to call materializePoolWinners() for
+       * any completed pool where the caller had no winner row — i.e. on every
+       * losing player's page load — which meant an ordinary GET could re-run
+       * settlement, delete the existing winners and pay the pot again.
+       * Settlement belongs to the cron (/api/cron/settle), which is
+       * secret-gated and idempotent. Just read the result here.
+       */
       if (myWin) {
         winnings.push({
           poolId: pool.id,

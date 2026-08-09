@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 function maskEmail(email: string): string {
   const at = email.indexOf("@");
@@ -64,6 +66,12 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "payout:account", RATE_LIMITS.payoutAccount);
+    if (limited) return limited;
+
     const supabase = await createClient();
 
     const {

@@ -201,3 +201,40 @@ services:
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
     command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+
+  # ---------------------------------------------------------------------------
+  # Settlement scheduler.
+  #
+  # WITHOUT THIS SERVICE, A SELF-HOSTED DEPLOYMENT NEVER PAYS ANYONE.
+  #
+  # Settlement is driven entirely by whoever calls /api/cron/settle. On Vercel
+  # that is vercel.json's cron plus the GitHub Actions workflow. This compose
+  # stack has neither, so pools would complete and then sit there holding the
+  # players' entry money with no error raised anywhere.
+  #
+  # Calls the endpoint every 15 minutes. The route is idempotent by design, so
+  # overlapping or repeated runs cannot pay a pool twice.
+  #
+  # Requires CRON_SECRET in .env.docker — the endpoint fails closed (503)
+  # without it, so a missing secret means no settlement, not open settlement.
+  settle-cron:
+    container_name: sp-settle-cron
+    image: alpine:3.20
+    restart: unless-stopped
+    depends_on:
+      nextjs:
+        condition: service_healthy
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+    command: >
+      sh -c 'apk add --no-cache curl >/dev/null 2>&1;
+      while true; do
+        code=$$(curl -s -o /tmp/out -w "%{http_code}" --max-time 300
+                 -H "Authorization: Bearer $$CRON_SECRET"
+                 http://nextjs:3000/api/cron/settle);
+        echo "[settle-cron] $$(date -Iseconds) HTTP $$code";
+        if [ "$$code" != "200" ]; then echo "[settle-cron] FAILED: $$(cat /tmp/out)"; fi;
+        sleep 900;
+      done'
+    networks:
+      - default

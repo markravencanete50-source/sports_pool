@@ -41,9 +41,10 @@ export async function POST(
       .eq("id", user.id)
       .single();
     const isPoolCreator = pool.created_by === user.id;
-    const isAdmin =
-      (user.app_metadata?.role as string) === "admin" ||
-      (currentUserProfile?.role as string) === "admin";
+    // Table-authoritative, matching requireAdmin() and public.is_admin(): the
+    // JWT claim cannot be revoked before it expires, so a demoted admin would
+    // otherwise keep access for up to an hour.
+    const isAdmin = (currentUserProfile?.role as string) === "admin";
     if (!isPoolCreator && !isAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -57,8 +58,12 @@ export async function POST(
       );
     }
 
+    // Fetch the POOL's week, not ESPN's current week. Without the week arg this
+    // returned only the in-progress slate, so syncing a pool from any other week
+    // matched nothing, updated 0 rows, and still returned 200 "synced
+    // successfully" — a silent no-op that reads as success.
     const currentYear = pool.season ?? new Date().getFullYear();
-    const espnData = await getNflScoreboard(currentYear);
+    const espnData = await getNflScoreboard(currentYear, pool.week ?? null);
     const espnGames = espnData.events || [];
 
     let updatedCount = 0;

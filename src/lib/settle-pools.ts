@@ -87,7 +87,7 @@ export async function refreshGameScores(
 
   const { data: pending, error } = await admin
     .from("games")
-    .select("id, season, status, home_score, away_score")
+    .select("id, season, week, status, home_score, away_score")
     .neq("status", GameStatus.FINISHED);
 
   if (error) {
@@ -96,20 +96,45 @@ export async function refreshGameScores(
   }
   if (!pending?.length) return { checked: 0, updated: 0, warnings };
 
-  // Fetch once per distinct season rather than once per game.
-  const seasons = Array.from(
-    new Set(pending.map((g) => g.season).filter((s): s is number => s != null))
-  );
-  if (seasons.length === 0) seasons.push(new Date().getFullYear());
+  /*
+   * Fetch each pending game's OWN (season, week), not just the season.
+   *
+   * getNflScoreboard(season) with no week returns only ESPN's CURRENT week. Any
+   * game that was not marked finished before ESPN advanced its week — cron
+   * downtime, a postponed or flexed game, a late final — then never appeared in
+   * the response again, so its status stayed stale forever, its pool never
+   * completed, and the entry money sat held with no error raised anywhere.
+   *
+   * Grouping by (season, week) keeps this to one request per distinct week
+   * actually awaiting results (normally one), while still reaching back to
+   * older weeks that are lagging.
+   */
+  const CURRENT_SEASON = new Date().getFullYear();
+  const slates = new Map<string, { season: number; week: number | null }>();
+  for (const g of pending) {
+    const season = g.season ?? CURRENT_SEASON;
+    const week = (g as { week?: number | null }).week ?? null;
+    slates.set(`${season}:${week ?? "current"}`, { season, week });
+  }
+
+  // Safety valve: a corrupt backlog must not fan out into hundreds of requests.
+  const MAX_SLATE_FETCHES = 25;
+  const slateList = Array.from(slates.values()).slice(0, MAX_SLATE_FETCHES);
+  if (slates.size > MAX_SLATE_FETCHES) {
+    warnings.push(
+      `${slates.size} distinct (season, week) slates pending; only the first ` +
+        `${MAX_SLATE_FETCHES} were refreshed this run.`
+    );
+  }
 
   const espnById = new Map<
     string,
     { status: string; home: number | null; away: number | null }
   >();
 
-  for (const season of seasons) {
+  for (const { season, week } of slateList) {
     try {
-      const board = await getNflScoreboard(season);
+      const board = await getNflScoreboard(season, week);
       for (const event of board.events ?? []) {
         const competition = event.competitions?.[0];
         if (!competition) continue;
@@ -125,9 +150,9 @@ export async function refreshGameScores(
       // A feed outage must not take the whole job down — pools simply do not
       // settle this cycle and the next run picks them up.
       warnings.push(
-        `ESPN fetch failed for season ${season}: ${
-          e instanceof Error ? e.message : String(e)
-        }`
+        `ESPN fetch failed for season ${season}${
+          week != null ? ` week ${week}` : ""
+        }: ${e instanceof Error ? e.message : String(e)}`
       );
     }
   }

@@ -1,9 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { signinSchema } from "@/lib/validations";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
+    // Throttle password guessing / credential stuffing before touching Auth.
+    const limited = await enforceRateLimit(request, "auth:signin", RATE_LIMITS.authSignin);
+    if (limited) return limited;
+
     const body = await request.json();
     const validatedData = signinSchema.parse(body);
 
@@ -24,9 +29,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // The session stays in the cookie the Supabase client just set. Returning it
-    // here would put a 400-day refresh token into every CDN and proxy log.
-    return NextResponse.json({ user: data.user }, { status: 200 });
+    // Do NOT return `data.session`. It carries the refresh token, which is a
+    // long-lived credential; echoing it into a JSON body puts it somewhere any
+    // XSS or logging sink can reach, when the session is already delivered
+    // safely as an HTTP-only cookie by createClient(). Return only what the UI
+    // needs to render the signed-in state.
+    return NextResponse.json(
+      {
+        user: {
+          id: data.user?.id,
+          email: data.user?.email,
+        },
+      },
+      { status: 200 }
+    );
   } catch (error) {
     if (error instanceof Error && error.name === "ZodError") {
       return NextResponse.json(

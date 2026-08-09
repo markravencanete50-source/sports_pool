@@ -373,6 +373,14 @@ create policy "Chat postable by card holders" on public.comments
 drop policy if exists "Users can insert own payout requests" on public.payout_requests;
 drop policy if exists "Request own payout"                   on public.payout_requests;
 
+-- Also drop the legacy SELECT policy from 20260201140000. "Own payout requests"
+-- above already covers it (same predicate, plus the admin arm), so leaving it in
+-- place is pure redundancy — and it is not in the invariant allowlist at the end
+-- of this file, so on a FRESH database the assertion below found it and aborted
+-- this entire migration. Provisioning from the committed migrations therefore
+-- failed at this point and no later migration ran at all.
+drop policy if exists "Users can view own payout requests" on public.payout_requests;
+
 create policy "Request own payout within balance" on public.payout_requests
   for insert with check (
     auth.uid() = user_id

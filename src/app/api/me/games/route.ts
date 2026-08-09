@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { getUserCardScore } from "@/lib/winners";
+import {
+  attachFinancialsToPools,
+  getPoolsFinancials,
+} from "@/lib/pool-financials";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 12;
@@ -50,11 +54,13 @@ export async function GET(request: Request) {
 
     const poolIds = [...new Set(userCards.map((c) => c.pool_id))];
 
+    // pools.prize_pot and pools.participants are written as 0 when a pool is
+    // created and never updated again, so reading them here showed a $0 pot and
+    // 0 players for every pool on this screen. Both come from
+    // get_pools_financials below, as they do in /api/pools.
     let query = supabase
       .from("pools")
-      .select(
-        "id, name, type, status, entry_fee, participants, prize_pot, week"
-      )
+      .select("id, name, type, status, entry_fee, week")
       .in("id", poolIds)
       .order("created_at", { ascending: false });
 
@@ -68,12 +74,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: poolsError.message }, { status: 400 });
     }
 
-    const poolList = pools ?? [];
+    const financialsMap = await getPoolsFinancials(
+      supabase,
+      (pools ?? []).map((p: { id: string }) => p.id)
+    );
+    const poolList = attachFinancialsToPools(pools ?? [], financialsMap);
     const completedPoolIds = poolList
       .filter((p: { status: string }) => p.status === "completed")
       .map((p: { id: string }) => p.id);
 
-    let winnersMap: Record<
+    const winnersMap: Record<
       string,
       {
         amount: number;
@@ -111,7 +121,7 @@ export async function GET(request: Request) {
     }
 
     const lostPoolIds = completedPoolIds.filter((id) => !winnersMap[id]);
-    let lostScoresMap: Record<string, { correct: number; total: number }> = {};
+    const lostScoresMap: Record<string, { correct: number; total: number }> = {};
     if (lostPoolIds.length > 0) {
       const { data: lostCards } = await supabase
         .from("parlay_cards")
@@ -170,6 +180,7 @@ export async function GET(request: Request) {
         entry_fee?: number;
         participants?: number;
         prize_pot?: number;
+        net_prize_pot?: number;
         week?: number;
       }) => {
         const win = winnersMap[pool.id];
@@ -188,7 +199,10 @@ export async function GET(request: Request) {
           status: pool.status,
           entryFee: pool.entry_fee ?? 0,
           participants: pool.participants ?? 0,
+          // Gross, matching /api/pools and the pool detail page. netPrizePot is
+          // what a winner is actually paid, once the platform fee is taken.
           prizePot: pool.prize_pot ?? 0,
+          netPrizePot: pool.net_prize_pot ?? 0,
           week: pool.week,
           outcome: outcomeValue,
           amount: isApproved ? win.amount : null,

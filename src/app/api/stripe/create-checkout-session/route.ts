@@ -3,6 +3,8 @@ import { getPoolForUser } from "@/lib/pool-access";
 import { getPoolFinancials } from "@/lib/pool-financials";
 import { getStripe } from "@/lib/stripe/config";
 import { createCheckoutSessionSchema } from "@/lib/validations";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { assertSameOrigin } from "@/lib/request-guards";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -14,6 +16,12 @@ const getBaseUrl = (): string => {
 
 export async function POST(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "stripe:checkout", RATE_LIMITS.checkout);
+    if (limited) return limited;
+
     const supabase = await createClient();
     const {
       data: { user },

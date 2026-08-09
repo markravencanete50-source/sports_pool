@@ -1,0 +1,228 @@
+import { NextResponse } from "next/server";
+
+/**
+ * Application-level rate limiting.
+ *
+ * The backend previously had NO throttling anywhere, so the authentication and
+ * money endpoints were open to credential stuffing, password brute-forcing and
+ * request floods.
+ *
+ * Two backends, chosen automatically:
+ *
+ *   1. Upstash Redis (preferred, and the right choice on serverless). When
+ *      UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set, limits are
+ *      enforced GLOBALLY across every serverless instance via a shared store,
+ *      over Upstash's HTTP REST API (no persistent TCP connection, which is
+ *      exactly what Vercel functions need). Uses @upstash/ratelimit's sliding
+ *      window.
+ *
+ *   2. In-memory fallback. When Redis is not configured — local dev, or before
+ *      the env vars are provisioned — it degrades to a per-instance in-memory
+ *      fixed window. Still useful, but PER INSTANCE, so treat it as best-effort.
+ *
+ * The fallback also catches Redis outages: if a Redis call throws, that single
+ * request is limited in memory rather than failing the user's request. Rate
+ * limiting is a protective control, so a store outage must not take auth or
+ * checkout down with it.
+ *
+ * Call sites do not care which backend is active:
+ *
+ *   const limited = await enforceRateLimit(request, "auth:signin", RATE_LIMITS.authSignin);
+ *   if (limited) return limited;
+ */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// In-memory fallback
+// ─────────────────────────────────────────────────────────────────────────────
+type Bucket = { count: number; resetAt: number };
+const store = new Map<string, Bucket>();
+let lastSweep = 0;
+
+/**
+ * Client IP for rate-limit keying.
+ *
+ * SECURITY: the LEFTMOST X-Forwarded-For entry is supplied by the client and is
+ * trivially forged — sending a random value on every request gave each one its
+ * own bucket and defeated the throttle entirely, which is the one thing a
+ * limiter must not allow.
+ *
+ * Order of preference:
+ *   1. A platform header the client cannot set, because the edge overwrites it
+ *      (Vercel's x-vercel-forwarded-for, Cloudflare's cf-connecting-ip).
+ *   2. The RIGHTMOST X-Forwarded-For entry — appended by our own proxy, so it is
+ *      the last hop we actually trust, unlike the leftmost which the caller
+ *      controls.
+ *   3. x-real-ip, then a constant.
+ *
+ * Falling back to a shared constant is deliberate: an unidentifiable caller
+ * shares one bucket rather than getting an unlimited private one.
+ */
+export function getClientIp(request: Request): string {
+  const trusted =
+    request.headers.get("x-vercel-forwarded-for")?.trim() ||
+    request.headers.get("cf-connecting-ip")?.trim();
+  if (trusted) return trusted;
+
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) {
+    const hops = xff.split(",").map((h) => h.trim()).filter(Boolean);
+    const rightmost = hops[hops.length - 1];
+    if (rightmost) return rightmost;
+  }
+
+  const real = request.headers.get("x-real-ip")?.trim();
+  if (real) return real;
+
+  return "unknown";
+}
+
+export type RateLimitOptions = { limit: number; windowMs: number };
+
+export type RateLimitResult =
+  | { ok: true; remaining: number }
+  | { ok: false; retryAfter: number };
+
+function hitMemory(key: string, opts: RateLimitOptions): RateLimitResult {
+  const now = Date.now();
+
+  if (now - lastSweep > 60_000) {
+    for (const [k, b] of store) if (b.resetAt <= now) store.delete(k);
+    lastSweep = now;
+  }
+
+  const bucket = store.get(key);
+  if (!bucket || bucket.resetAt <= now) {
+    store.set(key, { count: 1, resetAt: now + opts.windowMs });
+    return { ok: true, remaining: opts.limit - 1 };
+  }
+
+  if (bucket.count >= opts.limit) {
+    return { ok: false, retryAfter: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)) };
+  }
+
+  bucket.count += 1;
+  return { ok: true, remaining: opts.limit - bucket.count };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Upstash Redis backend (lazy, optional)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// One Ratelimit instance per distinct (limit, window) config, cached for the
+// lifetime of the instance. `any` here avoids a hard type dependency on the
+// package when it is not installed; the shape used below is stable Upstash API.
+const limiterCache = new Map<string, unknown>();
+let upstashUnavailable = false;
+
+async function getUpstashLimiter(
+  opts: RateLimitOptions
+): Promise<{ limit: (id: string) => Promise<{ success: boolean; remaining: number; reset: number }> } | null> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  if (upstashUnavailable) return null;
+
+  const cacheKey = `${opts.limit}:${opts.windowMs}`;
+  const cached = limiterCache.get(cacheKey);
+  if (cached) return cached as never;
+
+  try {
+    const [{ Ratelimit }, { Redis }] = await Promise.all([
+      import("@upstash/ratelimit"),
+      import("@upstash/redis"),
+    ]);
+    const redis = new Redis({ url, token });
+    const seconds = Math.max(1, Math.ceil(opts.windowMs / 1000));
+    const limiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(opts.limit, `${seconds} s`),
+      prefix: "rl",
+      analytics: false,
+    });
+    limiterCache.set(cacheKey, limiter);
+    return limiter as never;
+  } catch (e) {
+    // Package not installed or failed to init: stop trying and use memory.
+    upstashUnavailable = true;
+    console.error(
+      "[rate-limit] Upstash unavailable, falling back to in-memory:",
+      e instanceof Error ? e.message : String(e)
+    );
+    return null;
+  }
+}
+
+/**
+ * Register one hit against `key`. Prefers the shared Redis store; falls back to
+ * in-memory when Redis is unconfigured or a call fails.
+ */
+export async function hit(
+  key: string,
+  opts: RateLimitOptions
+): Promise<RateLimitResult> {
+  const limiter = await getUpstashLimiter(opts);
+  if (limiter) {
+    try {
+      const res = await limiter.limit(key);
+      if (res.success) return { ok: true, remaining: res.remaining };
+      const retryAfter = Math.max(1, Math.ceil((res.reset - Date.now()) / 1000));
+      return { ok: false, retryAfter };
+    } catch (e) {
+      // Transient Redis error: don't fail the request — degrade to memory.
+      console.error(
+        "[rate-limit] Redis limit() failed, using in-memory for this call:",
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+  }
+  return hitMemory(key, opts);
+}
+
+/**
+ * Enforce a named limit keyed by client IP. Returns a ready-to-send 429
+ * NextResponse when the caller is over budget, or null to proceed.
+ *
+ * NOTE: this is async — always `await` it and return the result if truthy.
+ */
+export async function enforceRateLimit(
+  request: Request,
+  bucketName: string,
+  opts: RateLimitOptions
+): Promise<NextResponse | null> {
+  const key = `${bucketName}:${getClientIp(request)}`;
+  const result = await hit(key, opts);
+  if (result.ok) return null;
+
+  return NextResponse.json(
+    { error: "Too many requests. Please slow down and try again shortly." },
+    { status: 429, headers: { "Retry-After": String(result.retryAfter) } }
+  );
+}
+
+/**
+ * Presets, tuned to be well clear of legitimate use while still cutting off
+ * automated abuse. Windows are per client IP.
+ */
+export const RATE_LIMITS = {
+  /** Credential stuffing / password guessing. */
+  authSignin: { limit: 10, windowMs: 5 * 60_000 },
+  /** Account-creation floods. */
+  authSignup: { limit: 6, windowMs: 30 * 60_000 },
+  /** Newsletter subscription spam. */
+  newsletter: { limit: 5, windowMs: 60 * 60_000 },
+  /** Withdrawal-request flooding. */
+  payoutRequest: { limit: 12, windowMs: 60 * 60_000 },
+  /** Payout-account churn. */
+  payoutAccount: { limit: 12, windowMs: 60 * 60_000 },
+  /** Checkout-session creation abuse (each call hits Stripe). */
+  checkout: { limit: 30, windowMs: 60 * 60_000 },
+  /** Payment confirmation polling abuse. */
+  paymentConfirm: { limit: 60, windowMs: 60 * 60_000 },
+  /**
+   * Chat posting. Every message costs an OpenAI Moderation call, so an
+   * unthrottled loop burns the quota — and because moderation fails CLOSED,
+   * tripping OpenAI's own 429 would block chat in every pool at once. Generous
+   * for a human, fatal to a script.
+   */
+  chatPost: { limit: 30, windowMs: 5 * 60_000 },
+} as const;

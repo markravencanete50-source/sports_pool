@@ -34,6 +34,9 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
+# Template only — placeholders, no real values. Must be committed or the
+# documented self-hosted Docker path cannot be reproduced from a clone.
+!.env.docker.example
 
 # vercel
 .vercel
@@ -51,3 +54,8 @@ supabase/dumps/
 supabase/.temp/
 
 .vercel
+
+# Single lockfile policy: this project standardises on npm (package-lock.json).
+# CI runs `npm ci`. Do not commit a second lockfile — two lockfiles resolve to
+# two different dependency trees depending on who installed last.
+bun.lock

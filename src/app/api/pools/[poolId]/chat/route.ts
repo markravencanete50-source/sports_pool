@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { createCommentSchema } from "@/lib/validations";
 import { moderateChatMessage } from "@/lib/chat-moderation";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { assertSameOrigin } from "@/lib/request-guards";
 import { NextResponse } from "next/server";
 
 export async function GET(
@@ -52,10 +54,15 @@ export async function GET(
       );
     }
 
-    // Never `users(*)` — that table carries email, role and balance.
+    // Read author names from public.profiles, NOT public.users.
+    //
+    // users is locked to own-row SELECT (it carries email, role and balance), so
+    // an embedded users(...) resolved to NULL for every author except the
+    // caller and the whole chat rendered as "Unknown". profiles is the
+    // world-readable (id, name, avatar) projection built for exactly this.
     const { data, error } = await supabase
       .from("comments")
-      .select("*, users(id, name, avatar)")
+      .select("*, users:profiles!comments_user_id_profiles_fkey(id, name, avatar)")
       .eq("pool_id", poolId)
       .order("created_at", { ascending: true });
 
@@ -78,6 +85,16 @@ export async function POST(
 ) {
   try {
     const { poolId } = await params;
+
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
+    // Throttle BEFORE the moderation call: each post costs a paid third-party
+    // request, and moderation fails closed, so an unthrottled loop can knock out
+    // chat for every pool at once.
+    const limited = await enforceRateLimit(request, "chat:post", RATE_LIMITS.chatPost);
+    if (limited) return limited;
+
     const supabase = await createClient();
 
     const {
@@ -164,7 +181,7 @@ export async function POST(
         user_id: user.id,
         text: validatedData.text,
       })
-      .select("*, users(id, name, avatar)")
+      .select("*, users:profiles!comments_user_id_profiles_fkey(id, name, avatar)")
       .single();
 
     if (error) {

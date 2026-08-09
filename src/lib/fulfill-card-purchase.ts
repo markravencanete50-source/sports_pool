@@ -131,13 +131,26 @@ export async function fulfillCardPurchase(
     };
   }
 
+  // platform_fee and net_amount are deliberately not set here. They used to be
+  // written as `platform_fee: 0, net_amount: entryFee` on every sale, while
+  // settlement paid the winner prize_pot * (1 - platform_fee_percentage/100).
+  // The fee was genuinely being retained but recorded nowhere, so any revenue
+  // figure taken from this table read $0.
+  //
+  // trg_set_pool_transaction_fee derives both from platform_settings at insert
+  // time. Keeping it in the database means every write path records the fee, and
+  // this path — the Stripe critical section — needs no extra round trip.
+  //
+  // That trigger AND the columns' defaults are created by migration
+  // 20260807000001. Before it, both columns were NOT NULL with no default and no
+  // trigger supplied them, so this insert failed 23502 on any database built
+  // from the migrations — the player was charged and got no card. Do not drop
+  // that migration without also setting the two columns explicitly here.
   const { error: txError } = await supabase.from("pool_transactions").insert({
     pool_id: poolId,
     user_id: userId,
     card_id: card.id,
     amount: entryFee,
-    platform_fee: 0,
-    net_amount: entryFee,
     status: "completed",
     stripe_session_id: session.id,
     payment_id: paymentId,

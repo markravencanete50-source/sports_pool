@@ -33,17 +33,18 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false });
 
     if (search.length > 0) {
-      // , ( ) " are PostgREST or() grammar — strip them so input can't append
-      // its own conditions; then escape LIKE wildcards.
+      // SECURITY: `.or()` takes a PostgREST filter expression, and this term is
+      // interpolated straight into it. Escaping only the LIKE wildcards (% _)
+      // still let the structural metacharacters of that mini-language through —
+      // a comma starts another filter, and parentheses open a nested logic
+      // group — so a value like `,role.eq.admin)` could graft extra clauses
+      // onto the query. Strip those structural characters (and quotes /
+      // backslashes) first, THEN escape the LIKE wildcards.
       const term = search
-        .replace(/[,()"]/g, "")
+        .replace(/[,()"\\]/g, " ")
         .replace(/%/g, "\\%")
         .replace(/_/g, "\\_");
-      if (term.length > 0) {
-        query = query.or(
-          `email.ilike.%${term}%,name.ilike.%${term}%`
-        );
-      }
+      query = query.or(`email.ilike.%${term}%,name.ilike.%${term}%`);
     }
 
     const from = (page - 1) * limit;
