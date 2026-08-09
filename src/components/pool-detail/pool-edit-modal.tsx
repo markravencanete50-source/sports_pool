@@ -11,11 +11,21 @@ type PoolEditModalProps = {
     id: string;
     name: string;
     week: number;
-    pool_games?: Array<{ games?: { id: string } | null } | null>;
+    pool_games?: Array<{
+      games?: { id: string } | null;
+      game_id?: string;
+    } | null>;
   };
   onClose: () => void;
   onSave: (data: { name: string; selectedGames: string[] }) => Promise<void>;
   isSaving: boolean;
+};
+
+// Minimal shape of the API game rows this modal filters and groups.
+type EditableGame = {
+  id: string;
+  date: string;
+  status?: string;
 };
 
 export function PoolEditModal({
@@ -28,7 +38,7 @@ export function PoolEditModal({
   const [selectedGames, setSelectedGames] = useState<string[]>(() => {
     const games = pool.pool_games ?? [];
     return games
-      .map((pg: any) => pg?.games?.id ?? pg?.game_id)
+      .map((pg) => pg?.games?.id ?? pg?.game_id)
       .filter((id): id is string => !!id);
   });
   const [dateRange, setDateRange] = useState<"upcoming" | "all">("upcoming");
@@ -37,12 +47,12 @@ export function PoolEditModal({
     pool.week,
     dateRange === "upcoming" ? "scheduled" : undefined
   );
-  const allGames = gamesData?.games ?? [];
 
   const groupedGames = useMemo(() => {
+    const allGames = (gamesData?.games ?? []) as EditableGame[];
     const filtered =
       dateRange === "upcoming"
-        ? allGames.filter((g: any) => {
+        ? allGames.filter((g) => {
             const status = g.status ?? "scheduled";
             const gameDate = new Date(g.date);
             const now = new Date();
@@ -51,15 +61,15 @@ export function PoolEditModal({
               gameDate > now
             );
           })
-        : allGames.filter((g: any) => new Date(g.date) > new Date());
+        : allGames.filter((g) => new Date(g.date) > new Date());
 
-    return filtered.reduce((acc: Record<string, any[]>, game: any) => {
+    return filtered.reduce<Record<string, EditableGame[]>>((acc, game) => {
       const dateKey = format(new Date(game.date), "yyyy-MM-dd");
       if (!acc[dateKey]) acc[dateKey] = [];
       acc[dateKey].push(game);
       return acc;
     }, {});
-  }, [allGames, dateRange]);
+  }, [gamesData, dateRange]);
 
   const sortedDates = useMemo(
     () => Object.keys(groupedGames).sort(),

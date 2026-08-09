@@ -1,7 +1,6 @@
 "use client";
 
 import { Users, Calendar } from "lucide-react";
-import { Pool } from "@/lib/mock-data";
 import { PoolHeaderProps } from "@/lib/interfaces";
 
 export function PoolHeader({ pool }: PoolHeaderProps) {

@@ -24,22 +24,64 @@ import { PoolInviteByEmail } from "@/components/pool-detail/pool-invite-by-email
 import { PoolEditModal } from "@/components/pool-detail/pool-edit-modal";
 import { GamePrediction } from "@/lib/types";
 import { DISRUPTED_STATUSES } from "@/lib/constants";
-import type { GameResult } from "@/lib/interfaces";
+import type { GameCardProps, GameResult } from "@/lib/interfaces";
 
-export default function PoolDetail() {
+type PoolGameRow = {
+  id: string;
+  date: string;
+  status?: string | null;
+  home_team_id: string;
+  away_team_id: string;
+  home_score?: number | null;
+  away_score?: number | null;
+};
+
+type PoolDetail = {
+  id: string;
+  name: string;
+  type: string;
+  week: number;
+  participants: number;
+  status?: string | null;
+  created_by?: string | null;
+  can_edit?: boolean;
+  entryFee?: number;
+  entry_fee?: number;
+  prizePot?: number;
+  prize_pot?: number;
+  pool_games?: Array<{ games?: PoolGameRow | null }>;
+};
+
+type PoolCommentRow = {
+  id: string;
+  user_id: string;
+  text: string;
+  created_at: string;
+  users?: { id: string; name: string; avatar?: string | null };
+};
+
+type AuthUser = {
+  id?: string;
+  role?: string | null;
+  app_metadata?: { role?: string | null };
+};
+
+export default function PoolDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const poolId = params?.id as string;
-  const { user } = useAuth();
+  const { user: authUser } = useAuth();
+  const user = authUser as AuthUser | null | undefined;
   const queryClient = useQueryClient();
   const confirmedSessionRef = useRef<string | null>(null);
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
 
   const {
-    data: pool,
+    data: poolData,
     isLoading: isLoadingPool,
     error: poolError,
   } = usePool(poolId);
+  const pool = poolData as PoolDetail | undefined;
   const {
     data: cards = [],
     isLoading: isLoadingCards,
@@ -50,7 +92,9 @@ export default function PoolDetail() {
     isLoading: isLoadingComments,
     error: commentsError,
   } = usePoolComments(poolId);
-  const requiresCard = (commentsError as any)?.requiresCard || false;
+  const requiresCard =
+    (commentsError as (Error & { requiresCard?: boolean }) | null)
+      ?.requiresCard || false;
   const addCommentMutation = useAddComment();
   const submitCardPickMutation = useSubmitCardPick();
   const lockCardMutation = useLockCard();
@@ -63,32 +107,28 @@ export default function PoolDetail() {
     Record<string, { prediction: GamePrediction }>
   >({});
 
-  useEffect(() => {
-    if (cards.length > 0 && !selectedCardId) {
-      setSelectedCardId(cards[0].id);
-    }
-  }, [cards, selectedCardId]);
+  // Derived instead of set in an effect: fall back to the first card until the
+  // user explicitly selects one.
+  const effectiveCardId = selectedCardId ?? cards[0]?.id ?? null;
 
-  const selectedCard = cards.find((c) => c.id === selectedCardId);
+  const selectedCard = cards.find((c) => c.id === effectiveCardId);
+  const hasSelectedCard = !!selectedCard;
+  const selectedCardStatus = selectedCard?.status;
+  const selectedCardPicks = selectedCard?.card_picks;
   useEffect(() => {
-    if (!selectedCard) {
-      setPendingPicks({});
-      return;
-    }
-    if (
-      selectedCard.status === "active" ||
-      selectedCard.status === "completed" ||
-      selectedCard.status === "cancelled"
-    ) {
-      setPendingPicks({});
-      return;
-    }
+    const locked =
+      selectedCardStatus === "active" ||
+      selectedCardStatus === "completed" ||
+      selectedCardStatus === "cancelled";
     const fromServer: Record<string, { prediction: GamePrediction }> = {};
-    (selectedCard.card_picks ?? []).forEach((pick: any) => {
-      fromServer[pick.game_id] = { prediction: pick.prediction };
-    });
+    if (hasSelectedCard && !locked) {
+      (selectedCardPicks ?? []).forEach((pick) => {
+        fromServer[pick.game_id] = { prediction: pick.prediction };
+      });
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-seeds the local draft picks from freshly fetched server card data; genuine server-state sync
     setPendingPicks(fromServer);
-  }, [selectedCardId, selectedCard?.status, selectedCard?.card_picks]);
+  }, [effectiveCardId, hasSelectedCard, selectedCardStatus, selectedCardPicks]);
 
   const poolGames = useMemo(() => {
     if (!pool?.pool_games) return [];

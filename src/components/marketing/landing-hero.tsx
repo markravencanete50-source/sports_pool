@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, ShieldCheck, Trophy, Users } from "lucide-react";
@@ -42,11 +43,13 @@ export function LandingHero({
     <section className="relative overflow-hidden border-b border-white/10">
       <div className="absolute inset-0 -z-10">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_hsl(var(--primary)/0.25),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(255,255,255,0.08),_transparent_30%)]" />
-        <img
+        <Image
           src="/generated_images/abstract_red_neon_stadium_background.png"
           alt=""
           aria-hidden="true"
-          decoding="async"
+          fill
+          sizes="100vw"
+          priority
           className="h-full w-full object-cover opacity-15"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/82 to-background" />

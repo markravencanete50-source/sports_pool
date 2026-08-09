@@ -74,6 +74,7 @@ export function UserProfileCard({
       >
         <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center border border-primary/30 flex-shrink-0">
           {user?.avatar ? (
+            // eslint-disable-next-line @next/next/no-img-element -- remote host not allow-listed for the image optimizer; small asset
             <img
               src={user.avatar}
               alt={userName}

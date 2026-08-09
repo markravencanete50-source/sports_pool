@@ -1,6 +1,6 @@
 "use client";
 
-import { TEAMS } from "@/lib/mock-data";
+import { TEAMS, type Game } from "@/lib/mock-data";
 import { format } from "date-fns";
 import { Card3D } from "./ui/3d-card";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,17 @@ function getTeam(abbr: string | undefined): TeamLike | null {
 
 const TIE_PICK_VALUE = "tie";
 
+// API-shaped games carry snake_case fields and joined team rows that the
+// mock-data `Game` type does not declare.
+type ApiGameFields = {
+  home_team_id?: string;
+  away_team_id?: string;
+  home_team?: { name?: string } | null;
+  away_team?: { name?: string } | null;
+  home_score?: number | null;
+  away_score?: number | null;
+};
+
 export function GameCard({
   game,
   onPick,
@@ -31,14 +42,13 @@ export function GameCard({
   disabled,
   gameResult,
 }: GameCardProps) {
-  const homeId = (game as any).home_team_id ?? game.homeTeamId;
-  const awayId = (game as any).away_team_id ?? game.awayTeamId;
+  const g = game as Game & ApiGameFields;
+  const homeId = g.home_team_id ?? game.homeTeamId;
+  const awayId = g.away_team_id ?? game.awayTeamId;
   const homeTeam = getTeam(homeId);
   const awayTeam = getTeam(awayId);
-  const homeName =
-    (game as any).home_team?.name ?? homeTeam?.abbreviation ?? homeId;
-  const awayName =
-    (game as any).away_team?.name ?? awayTeam?.abbreviation ?? awayId;
+  const homeName = g.home_team?.name ?? homeTeam?.abbreviation ?? homeId;
+  const awayName = g.away_team?.name ?? awayTeam?.abbreviation ?? awayId;
 
   if (!homeTeam || !awayTeam) {
     return null;
@@ -53,8 +63,8 @@ export function GameCard({
   const homeWon = actualOutcome === "home_win";
   const awayWon = actualOutcome === "away_win";
   const actualTie = actualOutcome === "tie";
-  const homeScore = gameResult?.homeScore ?? (game as any).home_score ?? (game as any).homeScore;
-  const awayScore = gameResult?.awayScore ?? (game as any).away_score ?? (game as any).awayScore;
+  const homeScore = gameResult?.homeScore ?? g.home_score ?? g.homeScore;
+  const awayScore = gameResult?.awayScore ?? g.away_score ?? g.awayScore;
   const hasScores = typeof homeScore === "number" && typeof awayScore === "number";
 
   return (
@@ -91,12 +101,12 @@ export function GameCard({
             )}
             <span
               className="text-primary font-bold truncate max-w-[120px]"
-              title={String((game as any).odds ?? game.odds ?? "")}
+              title={String(game.odds ?? "")}
             >
               {showResult && hasScores
                 ? `${awayScore} - ${homeScore}`
                 : game.status === "scheduled"
-                  ? ((game as any).odds ?? game.odds)
+                  ? game.odds
                   : "FINAL"}
             </span>
           </div>

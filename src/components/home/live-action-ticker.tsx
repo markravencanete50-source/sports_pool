@@ -3,16 +3,28 @@
 import { useGames } from "@/lib/hooks/use-games";
 import { useMemo } from "react";
 
+// Minimal shape of the API game rows this ticker reads.
+type TickerGame = {
+  id: string;
+  date: string;
+  status?: string;
+  odds?: string | null;
+  homeTeamId?: string;
+  awayTeamId?: string;
+  home_team?: { name?: string } | null;
+  away_team?: { name?: string } | null;
+};
+
 export function LiveActionTicker() {
   const { data: gamesData, isLoading } = useGames();
-  const games = (gamesData?.games || []) as any[];
 
   const upcomingGames = useMemo(() => {
+    const games = (gamesData?.games || []) as TickerGame[];
     return games
-      .filter((game: any) => game.status === "scheduled" || game.status === "upcoming")
-      .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .filter((game) => game.status === "scheduled" || game.status === "upcoming")
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(0, 3);
-  }, [games]);
+  }, [gamesData]);
 
   if (isLoading) {
     return (
@@ -39,7 +51,7 @@ export function LiveActionTicker() {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {upcomingGames.map((game: any) => {
+      {upcomingGames.map((game) => {
         // Get team abbreviations from game data
         const homeName = game.home_team?.name || game.homeTeamId || "TBD";
         const awayName = game.away_team?.name || game.awayTeamId || "TBD";

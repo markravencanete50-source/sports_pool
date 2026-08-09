@@ -16,6 +16,18 @@ import { useGames } from "@/lib/hooks/use-games";
 import { FilterType, ViewType } from "@/lib/types";
 import { NFLScheduleSectionProps } from "@/lib/interfaces";
 
+// Minimal game shape this section reads; covers both API rows (snake_case)
+// and mock/static rows (camelCase).
+type ScheduleGame = {
+  id: string;
+  date: string;
+  status?: string;
+  home_team_id?: string;
+  away_team_id?: string;
+  homeTeamId?: string;
+  awayTeamId?: string;
+};
+
 export function NFLScheduleSection({
   groupedGames: initialGroupedGames,
 }: NFLScheduleSectionProps) {
@@ -28,6 +40,7 @@ export function NFLScheduleSection({
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time post-mount init: the visitor's "now" only exists client-side, so it cannot be derived during the static prerender
     setSelectedWeek((current) => current ?? new Date());
   }, []);
 
@@ -39,30 +52,30 @@ export function NFLScheduleSection({
     : null;
 
   const { data: apiGamesData, isLoading } = useGames(undefined, undefined);
-  const apiGames = (apiGamesData?.games || []) as any[];
-  const gamesToUse =
+  const apiGames = (apiGamesData?.games || []) as ScheduleGame[];
+  const gamesToUse: ScheduleGame[] =
     apiGames.length > 0 ? apiGames : Object.values(initialGroupedGames).flat();
 
   const filteredGames = useMemo(() => {
     const now = new Date();
-    let games: any[] = [...gamesToUse];
+    let games: ScheduleGame[] = [...gamesToUse];
 
     if (filterType === "upcoming") {
-      games = games.filter((g: any) => {
+      games = games.filter((g) => {
         const status = g.status || "scheduled";
         const gameDate = new Date(g.date);
         const notPlayed = status !== "finished";
         return notPlayed && (gameDate >= now || status === "live");
       });
     } else if (filterType === "live") {
-      games = games.filter((g: any) => (g.status || "") === "live");
+      games = games.filter((g) => (g.status || "") === "live");
     } else if (filterType === "finished") {
-      games = games.filter((g: any) => (g.status || "") === "finished");
+      games = games.filter((g) => (g.status || "") === "finished");
     }
 
     if (selectedTeam) {
       games = games.filter(
-        (g: any) =>
+        (g) =>
           g.home_team_id === selectedTeam ||
           g.away_team_id === selectedTeam ||
           g.homeTeamId === selectedTeam ||
@@ -71,19 +84,18 @@ export function NFLScheduleSection({
     }
 
     if (viewType === "week" && weekStart && weekEnd) {
-      games = games.filter((g: any) => {
+      games = games.filter((g) => {
         const gameDate = parseISO(g.date);
         return gameDate >= weekStart && gameDate <= weekEnd;
       });
     }
 
     games.sort(
-      (a: any, b: any) =>
-        new Date(a.date).getTime() - new Date(b.date).getTime()
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
-    const regrouped: Record<string, any[]> = {};
-    games.forEach((game: any) => {
+    const regrouped: Record<string, ScheduleGame[]> = {};
+    games.forEach((game) => {
       const dateKey = format(parseISO(game.date), "yyyy-MM-dd");
       if (!regrouped[dateKey]) regrouped[dateKey] = [];
       regrouped[dateKey].push(game);
@@ -95,7 +107,7 @@ export function NFLScheduleSection({
 
   const allTeams = useMemo(() => {
     const teams = new Set<string>();
-    gamesToUse.forEach((game: any) => {
+    gamesToUse.forEach((game) => {
       if (game.home_team_id) teams.add(game.home_team_id);
       if (game.away_team_id) teams.add(game.away_team_id);
       if (game.homeTeamId) teams.add(game.homeTeamId);

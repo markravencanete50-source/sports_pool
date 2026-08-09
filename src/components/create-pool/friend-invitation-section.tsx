@@ -1,7 +1,6 @@
 "use client";
 
 import { Users } from "lucide-react";
-import { User } from "@/lib/mock-data";
 import { FriendInviteCard } from "./friend-invite-card";
 import { FriendInvitationSectionProps } from "@/lib/interfaces";
 

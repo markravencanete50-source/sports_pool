@@ -1,7 +1,13 @@
 "use client";
 
-import React, { useRef, useState } from "react";
-import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
+import React, { useRef } from "react";
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+  type HTMLMotionProps,
+} from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Card3DProps } from "@/lib/interfaces";
 
@@ -51,7 +57,7 @@ export function Card3D({ children, className, intensity = 20, ...props }: Card3D
         transformStyle: "preserve-3d",
       }}
       className={cn("relative perspective-1000", className)}
-      {...props as any}
+      {...(props as unknown as HTMLMotionProps<"div">)}
     >
       <div style={{ transform: "translateZ(0px)" }} className="h-full w-full">
         {children}

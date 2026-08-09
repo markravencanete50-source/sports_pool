@@ -38,8 +38,9 @@ export function WinnersTicker() {
           <div key={`${winner.id}-${idx}`} className="inline-flex items-center gap-2 mx-8 text-sm font-mono">
             <div className="w-8 h-8 rounded-full overflow-hidden border border-white/10 shadow-[0_0_10px_rgba(0,0,0,0.5)] bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
               {winner.avatar ? (
-                <img 
-                  src={winner.avatar} 
+                // eslint-disable-next-line @next/next/no-img-element -- remote host not allow-listed for the image optimizer; small asset
+                <img
+                  src={winner.avatar}
                   alt={winner.name}
                   className="w-full h-full object-cover"
                   loading="lazy"

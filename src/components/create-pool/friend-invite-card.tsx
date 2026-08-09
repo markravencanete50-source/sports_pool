@@ -1,7 +1,6 @@
 "use client";
 
 import { Check, Plus } from "lucide-react";
-import { User } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { FriendInviteCardProps } from "@/lib/interfaces";
 
