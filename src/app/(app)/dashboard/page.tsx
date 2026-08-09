@@ -13,8 +13,23 @@ import { useGames } from "@/lib/hooks/use-games";
 import { useMemo } from "react";
 import { PoolType } from "@/lib/enums";
 
+function PoolGridSkeleton({ cards }: { cards: number }) {
+  return (
+    <section aria-hidden="true">
+      <div className="skeleton h-8 w-56 mb-6" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {Array.from({ length: cards }).map((_, i) => (
+          <div key={i} className="skeleton h-52" />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function DashboardPage() {
-  const { data: poolsData } = usePools({ limit: 100 });
+  const { data: poolsData, isLoading: isLoadingPools } = usePools({
+    limit: 100,
+  });
   const allPools = poolsData?.pools ?? [];
   const { data: gamesData } = useGames(undefined, undefined);
   const games = (gamesData?.games || []) as any[];
@@ -56,12 +71,20 @@ export default function DashboardPage() {
         <HeroSection featuredPool={featuredPool} />
         <LiveActionTicker />
         <WinnersSection />
-        <FeaturedPoolsSection pools={featuredPools} />
+        {isLoadingPools ? (
+          <PoolGridSkeleton cards={2} />
+        ) : (
+          <FeaturedPoolsSection pools={featuredPools} />
+        )}
         <NFLScheduleSection
           groupedGames={groupedGames}
           sortedDates={sortedDates}
         />
-        <YourActivePoolsSection pools={yourPools} />
+        {isLoadingPools ? (
+          <PoolGridSkeleton cards={3} />
+        ) : (
+          <YourActivePoolsSection pools={yourPools} />
+        )}
       </div>
     </Layout>
   );

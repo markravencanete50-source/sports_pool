@@ -36,7 +36,7 @@ export function CardSelector({
         {cards.length < 3 && (
           <button
             onClick={onPurchaseNew}
-            className="text-xs text-primary hover:text-primary/80 font-medium"
+            className="text-xs text-primary hover:text-primary/80 hover:bg-primary/10 active:scale-95 font-medium px-3 py-2 min-h-9 rounded-lg transition-all"
           >
             + Buy Card ${entryFee}
           </button>

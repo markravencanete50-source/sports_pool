@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
+import { ZodError } from "zod";
 import { Mail, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,11 @@ export function NewsletterSignup() {
       setEmail("");
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Failed to subscribe.";
+        error instanceof ZodError
+          ? "Please enter a valid email address."
+          : error instanceof Error
+            ? error.message
+            : "Failed to subscribe.";
       toast.error(message);
     } finally {
       setIsSubmitting(false);

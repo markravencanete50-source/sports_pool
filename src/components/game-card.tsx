@@ -1,6 +1,6 @@
 "use client";
 
-import { Game, TEAMS } from "@/lib/mock-data";
+import { TEAMS } from "@/lib/mock-data";
 import { format } from "date-fns";
 import { Card3D } from "./ui/3d-card";
 import { cn } from "@/lib/utils";
@@ -106,7 +106,7 @@ export function GameCard({
           <button
             onClick={() => !disabled && onPick?.(awayTeam.id)}
             className={cn(
-              "flex-1 flex flex-col items-center gap-3 p-4 rounded-lg transition-all duration-200 relative",
+              "flex-1 min-w-0 flex flex-col items-center gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-lg transition-all duration-200 relative",
               selectedTeamId === awayTeam.id
                 ? "ring-2 ring-primary ring-offset-2 ring-offset-background bg-primary/15 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
                 : hasPick
@@ -114,15 +114,21 @@ export function GameCard({
                   : "opacity-80 hover:opacity-100 hover:bg-white/15 hover:scale-[1.02] hover:shadow-[0_0_15px_rgba(255,255,255,0.05)]",
               disabled &&
                 "cursor-default hover:bg-transparent hover:scale-100 hover:shadow-none",
+              showResult && awayWon && "ring-2 ring-green-500/60 bg-green-500/10",
             )}
           >
             {selectedTeamId === awayTeam.id && (
-              <span className="absolute top-2 right-2 flex items-center gap-1 rounded bg-primary/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
-                <Check className="h-3 w-3" /> Your pick
+              <span className="absolute top-1 left-1 flex items-center gap-0.5 rounded bg-primary/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary-foreground">
+                <Check className="h-2.5 w-2.5" /> Your pick
+              </span>
+            )}
+            {showResult && awayWon && (
+              <span className="absolute top-2 right-2 flex items-center gap-1 rounded bg-green-500/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                Winner
               </span>
             )}
             <div
-              className="w-16 h-16 rounded-full flex items-center justify-center text-4xl shadow-lg bg-gradient-to-br from-gray-800 to-black border border-white/10 transition-transform duration-200"
+              className="w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-3xl sm:text-4xl shadow-lg bg-gradient-to-br from-gray-800 to-black border border-white/10 transition-transform duration-200"
               style={{
                 boxShadow:
                   selectedTeamId === awayTeam.id
@@ -132,8 +138,11 @@ export function GameCard({
             >
               {awayTeam.logo}
             </div>
-            <div className="text-center">
-              <span className="block font-display font-bold text-xl tracking-wide">
+            <div className="text-center min-w-0 w-full">
+              <span
+                className="block font-display font-bold text-lg sm:text-xl tracking-wide truncate"
+                title={awayName}
+              >
                 {awayTeam.abbreviation}
               </span>
               <span className="text-xs text-muted-foreground font-medium">
@@ -145,7 +154,7 @@ export function GameCard({
           <button
             onClick={() => !disabled && onPick?.(TIE_PICK_VALUE)}
             className={cn(
-              "flex flex-col items-center justify-center gap-1 px-3 py-4 rounded-lg transition-all duration-200 min-w-[72px] relative",
+              "flex flex-col items-center justify-center gap-1 px-2 sm:px-3 py-4 rounded-lg transition-all duration-200 min-w-[56px] sm:min-w-[72px] shrink-0 relative",
               isTieSelected
                 ? "ring-2 ring-primary ring-offset-2 ring-offset-background bg-primary/15 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
                 : hasPick
@@ -182,7 +191,7 @@ export function GameCard({
           <button
             onClick={() => !disabled && onPick?.(homeTeam.id)}
             className={cn(
-              "flex-1 flex flex-col items-center gap-3 p-4 rounded-lg transition-all duration-200 relative",
+              "flex-1 min-w-0 flex flex-col items-center gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-lg transition-all duration-200 relative",
               selectedTeamId === homeTeam.id
                 ? "ring-2 ring-primary ring-offset-2 ring-offset-background bg-primary/15 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
                 : hasPick
@@ -204,7 +213,7 @@ export function GameCard({
               </span>
             )}
             <div
-              className="w-16 h-16 rounded-full flex items-center justify-center text-4xl shadow-lg bg-gradient-to-br from-gray-800 to-black border border-white/10 transition-transform duration-200"
+              className="w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-3xl sm:text-4xl shadow-lg bg-gradient-to-br from-gray-800 to-black border border-white/10 transition-transform duration-200"
               style={{
                 boxShadow:
                   selectedTeamId === homeTeam.id
@@ -214,9 +223,12 @@ export function GameCard({
             >
               {homeTeam.logo}
             </div>
-            <div className="text-center min-w-0">
-              <span className="block font-display font-bold text-xl tracking-wide truncate" title={homeName}>
-                {homeName}
+            <div className="text-center min-w-0 w-full">
+              <span
+                className="block font-display font-bold text-lg sm:text-xl tracking-wide truncate"
+                title={homeName}
+              >
+                {homeTeam.abbreviation}
               </span>
               <span className="text-xs text-muted-foreground font-medium">
                 Home

@@ -1,17 +1,15 @@
 "use client";
 
-import { Calendar, Filter, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import { GameDateHeader } from "./game-date-header";
 import { ScheduleGameCard } from "./schedule-game-card";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   format,
   addDays,
   startOfWeek,
   endOfWeek,
-  isSameDay,
   parseISO,
-  getWeek,
 } from "date-fns";
 import { useGames } from "@/lib/hooks/use-games";
 
@@ -20,15 +18,25 @@ import { NFLScheduleSectionProps } from "@/lib/interfaces";
 
 export function NFLScheduleSection({
   groupedGames: initialGroupedGames,
-  sortedDates: initialSortedDates,
 }: NFLScheduleSectionProps) {
   const [filterType, setFilterType] = useState<FilterType>("upcoming");
   const [viewType, setViewType] = useState<ViewType>("week");
-  const [selectedWeek, setSelectedWeek] = useState(new Date());
+  // Date-dependent UI is rendered only after mount to avoid a hydration
+  // mismatch: this page is statically prerendered, so the build-time "now"
+  // never matches the visitor's clock.
+  const [selectedWeek, setSelectedWeek] = useState<Date | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
 
-  const weekStart = startOfWeek(selectedWeek, { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(selectedWeek, { weekStartsOn: 1 });
+  useEffect(() => {
+    setSelectedWeek((current) => current ?? new Date());
+  }, []);
+
+  const weekStart = selectedWeek
+    ? startOfWeek(selectedWeek, { weekStartsOn: 1 })
+    : null;
+  const weekEnd = selectedWeek
+    ? endOfWeek(selectedWeek, { weekStartsOn: 1 })
+    : null;
 
   const { data: apiGamesData, isLoading } = useGames(undefined, undefined);
   const apiGames = (apiGamesData?.games || []) as any[];
@@ -62,7 +70,7 @@ export function NFLScheduleSection({
       );
     }
 
-    if (viewType === "week") {
+    if (viewType === "week" && weekStart && weekEnd) {
       games = games.filter((g: any) => {
         const gameDate = parseISO(g.date);
         return gameDate >= weekStart && gameDate <= weekEnd;
@@ -97,7 +105,9 @@ export function NFLScheduleSection({
   }, [gamesToUse]);
 
   const navigateWeek = (direction: "prev" | "next") => {
-    setSelectedWeek((prev) => addDays(prev, direction === "next" ? 7 : -7));
+    setSelectedWeek((prev) =>
+      addDays(prev ?? new Date(), direction === "next" ? 7 : -7)
+    );
   };
 
   return (
@@ -158,7 +168,8 @@ export function NFLScheduleSection({
             <select
               value={selectedTeam || ""}
               onChange={(e) => setSelectedTeam(e.target.value || null)}
-              className="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Filter by team"
+              className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 min-h-9 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">All Teams</option>
               {allTeams.map((teamId) => (
@@ -173,16 +184,23 @@ export function NFLScheduleSection({
 
       {/* Week Navigation */}
       {viewType === "week" && (
-        <div className="flex items-center justify-between mb-6 glass-panel p-3 rounded-lg">
+        <div className="flex items-center justify-between mb-6 glass-panel p-2 sm:p-3 rounded-lg">
           <button
             onClick={() => navigateWeek("prev")}
-            className="p-2 hover:bg-white/10 rounded transition-colors"
+            aria-label="Previous week"
+            className="p-2.5 hover:bg-white/10 active:scale-95 rounded-lg transition-all"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
           <div className="text-center">
             <div className="font-bold">
-              {format(weekStart, "MMM d")} - {format(weekEnd, "MMM d, yyyy")}
+              {weekStart && weekEnd ? (
+                <>
+                  {format(weekStart, "MMM d")} - {format(weekEnd, "MMM d, yyyy")}
+                </>
+              ) : (
+                <span className="inline-block h-5 w-40 skeleton align-middle" />
+              )}
             </div>
             <button
               onClick={() => setSelectedWeek(new Date())}
@@ -193,7 +211,8 @@ export function NFLScheduleSection({
           </div>
           <button
             onClick={() => navigateWeek("next")}
-            className="p-2 hover:bg-white/10 rounded transition-colors"
+            aria-label="Next week"
+            className="p-2.5 hover:bg-white/10 active:scale-95 rounded-lg transition-all"
           >
             <ChevronRight className="w-5 h-5" />
           </button>

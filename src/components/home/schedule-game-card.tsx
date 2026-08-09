@@ -20,7 +20,10 @@ const LogoOrPlaceholder = ({ src }: { src: string | null }) => {
           onError={() => setFailed(true)}
         />
       ) : (
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-2xl border border-white/10">
+        <div
+          className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-2xl border border-white/10"
+          aria-hidden="true"
+        >
           🏈
         </div>
       )}

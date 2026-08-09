@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { LiveActionTicker } from "@/components/home/live-action-ticker";
 import { WinnersSection } from "@/components/home/winners-section";
+import { Reveal } from "@/components/motion/reveal";
 import { BackgroundLayer } from "@/components/layout/background-layer";
 import { LandingFooter } from "@/components/marketing/landing-footer";
 import { LandingHero } from "@/components/marketing/landing-hero";
@@ -36,7 +37,7 @@ export default function LandingPage() {
       const bestPot = best.prize_pot ?? best.prizePot ?? 0;
       const poolPot = pool.prize_pot ?? pool.prizePot ?? 0;
       return poolPot >= bestPot ? pool : best;
-    }, publicPools[0]);
+    });
   }, [publicPools]);
 
   const upcomingGamesCount = useMemo(() => {
@@ -72,45 +73,45 @@ export default function LandingPage() {
             <section className="py-16">
               <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div className="glass-panel rounded-3xl p-8">
+                  <Reveal className="glass-panel rounded-3xl p-6 sm:p-8">
                   <p className="text-sm font-semibold uppercase tracking-[0.28em] text-primary">
-                    Why It Converts
+                    Why Players Stay
                   </p>
-                  <h2 className="mt-4 text-3xl font-black italic sm:text-4xl">
+                  <h2 className="mt-4 text-2xl font-black italic sm:text-3xl lg:text-4xl">
                     Built for first-timers, leagues, and repeat players.
                   </h2>
                   <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
-                    The public homepage should prove the product is active fast:
-                    live winners, open pools, weekly games, and a clean route to
-                    sign up when visitors are ready.
+                    Live winners, open pools, and the weekly slate — everything
+                    that makes a pool feel alive, in one place, before you even
+                    sign up.
                   </p>
                   <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
-                      <div className="text-3xl font-black text-white">
+                    <div className="rounded-2xl border border-white/10 bg-black/25 p-5 transition-colors duration-300 hover:border-primary/30">
+                      <div className="text-3xl font-black text-white tabular-nums">
                         {publicPools.length}
                       </div>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        public pools available to browse without friction
+                        public pools open to browse right now
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
-                      <div className="text-3xl font-black text-white">
+                    <div className="rounded-2xl border border-white/10 bg-black/25 p-5 transition-colors duration-300 hover:border-primary/30">
+                      <div className="text-3xl font-black text-white tabular-nums">
                         {upcomingGamesCount}
                       </div>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        upcoming NFL games keeping the page feeling current
+                        upcoming NFL games on this week&apos;s slate
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-white/10 bg-black/25 p-5">
+                    <div className="rounded-2xl border border-white/10 bg-black/25 p-5 transition-colors duration-300 hover:border-primary/30">
                       <div className="text-3xl font-black text-white">24/7</div>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        access to dashboards, invites, payouts, and pool detail
+                        access to dashboards, invites, and payouts
                       </p>
                     </div>
                   </div>
-                </div>
+                </Reveal>
 
-                  <div className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/12 via-black/40 to-black/70 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.2)]">
+                  <Reveal delay={0.12} className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/12 via-black/40 to-black/70 p-6 shadow-[0_20px_80px_rgba(0,0,0,0.2)] sm:p-8">
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary">
                     <ShieldCheck className="h-6 w-6" />
                   </div>
@@ -119,16 +120,22 @@ export default function LandingPage() {
                   </h3>
                   <div className="mt-6 space-y-4 text-sm leading-7 text-muted-foreground">
                     <p>
-                      New player: browse public pools, preview the dashboard, and
-                      create an account when the product feels real.
+                      New player? Browse public pools, preview the dashboard, and
+                      create an account when you&apos;re ready.
                     </p>
                     <p>
-                      Existing player: jump back into <code>/login</code> and
-                      land in the app quickly.
+                      Coming back?{" "}
+                      <Link
+                        href="/login"
+                        className="font-semibold text-primary underline-offset-4 hover:underline"
+                      >
+                        Log in
+                      </Link>{" "}
+                      and land right back in the action.
                     </p>
                     <p>
-                      Organizer or brand: move directly into a white-label pitch
-                      without wading through app chrome.
+                      Organizer or brand? Go straight to a white-label pool built
+                      around your community.
                     </p>
                   </div>
                   <Button asChild className="mt-8 min-h-12 px-5 font-semibold uppercase">
@@ -137,22 +144,22 @@ export default function LandingPage() {
                       <ArrowRight />
                     </Link>
                   </Button>
-                  </div>
+                  </Reveal>
                 </div>
               </div>
             </section>
 
             <section className="py-8">
-              <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <Reveal className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <WinnersSection />
-              </div>
+              </Reveal>
             </section>
 
             <HowItWorks />
 
             <section id="featured-pools" className="scroll-mt-24 py-16">
-              <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                <div className="overflow-hidden rounded-[2rem] border border-primary/25 bg-gradient-to-r from-primary/12 via-red-950/45 to-red-800/35 p-8 shadow-[0_20px_80px_rgba(0,0,0,0.3)] sm:p-10">
+              <Reveal className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div className="overflow-hidden rounded-[2rem] border border-primary/25 bg-gradient-to-r from-primary/12 via-red-950/45 to-red-800/35 p-6 shadow-[0_20px_80px_rgba(0,0,0,0.3)] sm:p-10">
                   <p className="text-sm font-semibold uppercase tracking-[0.28em] text-primary">
                     Trending Pools
                   </p>
@@ -175,11 +182,11 @@ export default function LandingPage() {
                     </Button>
                   </div>
                 </div>
-              </div>
+              </Reveal>
             </section>
 
             <section className="py-8">
-              <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <Reveal className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.28em] text-primary">
@@ -194,22 +201,22 @@ export default function LandingPage() {
                 </Button>
               </div>
                 <LiveActionTicker />
-              </div>
+              </Reveal>
             </section>
 
             <section className="py-16">
-              <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                <div className="overflow-hidden rounded-[2rem] border border-primary/20 bg-gradient-to-r from-primary/15 via-red-950/50 to-red-900/45 p-8 shadow-[0_20px_100px_rgba(0,0,0,0.35)] sm:p-12">
+              <Reveal className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div className="overflow-hidden rounded-[2rem] border border-primary/20 bg-gradient-to-r from-primary/15 via-red-950/50 to-red-900/45 p-6 shadow-[0_20px_100px_rgba(0,0,0,0.35)] sm:p-12">
                 <p className="text-sm font-semibold uppercase tracking-[0.28em] text-primary">
                   Ready For Kickoff
                 </p>
-                <h2 className="mt-4 max-w-3xl text-4xl font-black italic sm:text-5xl">
+                <h2 className="mt-4 max-w-3xl text-3xl font-black italic sm:text-4xl lg:text-5xl">
                   Turn your next NFL pool into something people actually want to
                   come back to.
                 </h2>
-                <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-foreground">
-                  Use the public landing page to acquire players. Use the app at
-                  `/dashboard` to keep them engaged once they are in.
+                <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
+                  Bring your league in, run the weekly slate, and keep everyone
+                  coming back for more all season long.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <Button asChild className="min-h-12 px-6 font-semibold uppercase">
@@ -227,7 +234,7 @@ export default function LandingPage() {
                   </Button>
                 </div>
                 </div>
-              </div>
+              </Reveal>
             </section>
           </div>
         </main>

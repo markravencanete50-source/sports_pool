@@ -4,7 +4,8 @@ import Layout from "@/components/layout";
 import { GameCard } from "@/components/game-card";
 import { CommentSection } from "@/components/comment-section";
 import { useParams, useSearchParams } from "next/navigation";
-import { Clock, Users, Calendar, Loader2, RefreshCw, Pencil } from "lucide-react";
+import { format } from "date-fns";
+import { Users, Calendar, Loader2, RefreshCw, Pencil } from "lucide-react";
 import { ProgressCard } from "@/components/pool-detail/progress-card";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePool, usePoolComments, useAddComment, useUpdatePool } from "@/lib/hooks/use-pools";
@@ -95,6 +96,14 @@ export default function PoolDetail() {
       .map((pg: any) => pg.games)
       .filter((game: any) => game !== null && game !== undefined);
   }, [pool]);
+
+  const endsLabel = useMemo(() => {
+    if (poolGames.length === 0) return "Schedule TBD";
+    const lastGame = poolGames.reduce((latest: any, game: any) =>
+      new Date(game.date) > new Date(latest.date) ? game : latest
+    );
+    return `Ends ${format(new Date(lastGame.date), "EEE, MMM d")}`;
+  }, [poolGames]);
 
   const cardPicks = useMemo(() => {
     if (!selectedCard?.card_picks) return {};
@@ -207,17 +216,6 @@ export default function PoolDetail() {
     }
   };
 
-  const _unusedHandleLockPicks = async () => {
-    if (!poolId || !selectedCardId || !canSubmitPicks) return;
-    try {
-      await lockCardMutation.mutateAsync({ poolId, cardId: selectedCardId });
-      toast.success("Picks locked! You can’t change them now.");
-      refetchCards();
-    } catch (error: any) {
-      toast.error(error?.message ?? "Failed to lock picks");
-    }
-  };
-
   const sessionId = searchParams.get("session_id");
   useEffect(() => {
     if (!sessionId || !poolId) return;
@@ -292,11 +290,11 @@ export default function PoolDetail() {
   return (
     <Layout>
       <div className="space-y-8 pb-20">
-        <div className="glass-panel p-8 rounded-2xl relative overflow-hidden">
+        <div className="glass-panel p-5 sm:p-8 rounded-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 p-32 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
 
           <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6">
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-3 mb-2">
                 <span className="px-2 py-0.5 bg-primary text-white text-[10px] font-bold uppercase tracking-widest rounded">
                   {pool.type}
@@ -305,10 +303,10 @@ export default function PoolDetail() {
                   Week {pool.week}
                 </span>
               </div>
-              <h1 className="text-4xl md:text-5xl font-black font-display italic uppercase tracking-tight mb-4">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black font-display italic uppercase tracking-tight mb-4 break-words">
                 {pool.name}
               </h1>
-              <div className="flex items-center gap-6 text-sm font-medium text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4" />
                   <span className="text-foreground">
@@ -317,17 +315,17 @@ export default function PoolDetail() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
-                  <span>Ends Sunday</span>
+                  <span>{endsLabel}</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col items-end gap-3">
-              <div className="flex flex-col items-end justify-center bg-black/20 p-6 rounded-xl border border-white/5 min-w-[200px]">
+            <div className="flex flex-col items-stretch md:items-end gap-3 shrink-0">
+              <div className="flex flex-col items-start md:items-end justify-center bg-black/20 p-4 sm:p-6 rounded-xl border border-white/5 md:min-w-[200px]">
                 <span className="text-xs text-muted-foreground uppercase font-mono mb-1">
                   Total Prize Pot
                 </span>
-                <span className="text-4xl font-bold text-primary font-mono">
+                <span className="text-3xl sm:text-4xl font-bold text-primary font-mono tabular-nums">
                   ${prizePot.toLocaleString()}
                 </span>
               </div>
@@ -377,13 +375,21 @@ export default function PoolDetail() {
                   Your card(s) will appear here in a moment.
                 </p>
               </div>
+            ) : isLoadingCards ? (
+              <div className="glass-panel p-4 rounded-xl space-y-3" aria-hidden="true">
+                <div className="skeleton h-6 w-32" />
+                <div className="skeleton h-16" />
+                <div className="skeleton h-16" />
+              </div>
             ) : cards.length > 0 ? (
               <div className="glass-panel p-4 rounded-xl">
                 <CardSelectorComponent
                   cards={cards}
                   selectedCardId={selectedCardId}
                   onSelectCard={setSelectedCardId}
-                  onPurchaseNew={() => {}}
+                  onPurchaseNew={() => {
+                    document.getElementById("purchase-card-trigger")?.click();
+                  }}
                   entryFee={entryFee}
                 />
               </div>
@@ -408,13 +414,11 @@ export default function PoolDetail() {
                   : ""}
                 Week {pool.week} Matchups
               </h2>
-              <div className="text-sm text-muted-foreground flex items-center gap-2">
-                {isCardLocked ? (
-                  <span className="text-primary font-medium">Picks locked</span>
-                ) : (
-                  <></>
-                )}
-              </div>
+              {isCardLocked && (
+                <span className="text-sm text-primary font-medium">
+                  Picks locked
+                </span>
+              )}
             </div>
 
             {poolGames.length === 0 ? (

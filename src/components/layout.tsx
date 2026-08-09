@@ -15,7 +15,7 @@ import {
   DollarSign,
   Wallet,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { FlameCursor } from "@/components/ui/flame-cursor";
 import { cn } from "@/lib/utils";
 import { BackgroundLayer } from "./layout/background-layer";
@@ -33,6 +33,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isAdmin =
     (user as any)?.app_metadata?.role === "admin" ||
     (user as any)?.role === "admin";
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
+  // Lock body scroll and allow ESC to dismiss while the drawer is open.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [sidebarOpen]);
 
   const navItems = useMemo(() => {
     const baseItems = [
@@ -72,10 +92,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { href: "/white-label", label: "White Label", icon: Briefcase },
       ];
     }
-  }, [isAuthenticated, isAdmin, user]);
+  }, [isAuthenticated, isAdmin]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-hidden relative font-sans selection:bg-primary selection:text-white">
+    <div className="min-h-screen bg-background text-foreground relative font-sans selection:bg-primary selection:text-white">
       <FlameCursor />
       <BackgroundLayer />
 
@@ -83,6 +103,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
       />
+
+      {/* Scrim behind the mobile drawer: dims content, tap to dismiss */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-[45] bg-black/60 backdrop-blur-sm lg:hidden animate-in fade-in duration-200"
+        />
+      )}
 
       <Sidebar
         isOpen={sidebarOpen}
@@ -97,12 +127,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       <main
         className={cn(
-          "min-h-screen pt-20 lg:pt-0 transition-all duration-300",
-          sidebarOpen ? "blur-sm lg:blur-none" : "",
+          "min-h-screen pt-[calc(5rem+env(safe-area-inset-top))] lg:pt-0 transition-[padding] duration-300",
           isCollapsed ? "lg:pl-20" : "lg:pl-64"
         )}
       >
-        <div className="container mx-auto p-4 lg:p-8 max-w-7xl animate-in fade-in duration-500">
+        <div className="container mx-auto p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] lg:p-8 max-w-7xl animate-in fade-in slide-in-from-bottom-2 duration-500">
           {children}
         </div>
       </main>

@@ -22,7 +22,7 @@ export function UserProfileCard({
       await signout();
       toast.success("Logged out successfully");
       router.push(DASHBOARD_PATH);
-    } catch (error) {
+    } catch {
       toast.error("Failed to log out");
     }
   };
@@ -88,7 +88,7 @@ export function UserProfileCard({
         <div
           className={cn(
             "flex-1 min-w-0 transition-all duration-300",
-            isCollapsed ? "opacity-0 w-0 hidden" : "opacity-100",
+            isCollapsed ? "lg:opacity-0 lg:w-0 lg:hidden opacity-100" : "opacity-100",
           )}
         >
           <p className="font-display text-sm font-bold truncate">
@@ -101,9 +101,10 @@ export function UserProfileCard({
         <button
           onClick={handleLogout}
           disabled={isSigningOut}
+          aria-label="Sign out"
           className={cn(
-            "h-4 w-4 text-muted-foreground hover:text-destructive cursor-pointer flex-shrink-0 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed",
-            isCollapsed ? "hidden" : "block",
+            "h-9 w-9 -mr-1.5 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:scale-95 cursor-pointer flex-shrink-0 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed",
+            isCollapsed ? "lg:hidden flex" : "flex",
           )}
           title="Sign out"
         >

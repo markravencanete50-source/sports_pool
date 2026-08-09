@@ -13,7 +13,7 @@ import {
 import { usePayoutAccount } from "@/lib/hooks/use-payout-account";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Loader2,
@@ -59,7 +59,7 @@ function getMyGamesEmptyMessage(
 
 export default function MyGamesPage() {
   const router = useRouter();
-  const { user, isLoadingUser, isAuthenticated } = useAuth();
+  const { isLoadingUser, isAuthenticated } = useAuth();
   const requestPayoutMutation = useRequestPayout();
   const claimPayoutMutation = useClaimPayout();
   const [searchTerm, setSearchTerm] = useState("");
@@ -208,16 +208,17 @@ export default function MyGamesPage() {
                       min={MINIMUM_PAYOUT_AMOUNT}
                       max={balance}
                       step="0.01"
+                      aria-label="Payout amount"
                       placeholder={`Min $${MINIMUM_PAYOUT_AMOUNT}`}
                       value={payoutAmount}
                       onChange={(e) => setPayoutAmount(e.target.value)}
-                      className="w-24 bg-black/20 border border-white/10 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="flex-1 min-w-0 sm:flex-none sm:w-28 bg-black/20 border border-white/10 rounded-lg px-2 py-2 min-h-10 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                     <button
                       type="button"
                       onClick={handleRequestPayout}
                       disabled={requestPayoutMutation.isPending}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 text-sm disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-2 min-h-10 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:scale-[0.98] transition-all text-sm disabled:opacity-50 shrink-0"
                     >
                       {requestPayoutMutation.isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -325,7 +326,7 @@ export default function MyGamesPage() {
                       </h3>
                     </Link>
 
-                    <div className="relative z-10 flex items-center gap-6 py-3 border-y border-white/5 justify-between">
+                    <div className="relative z-10 flex flex-wrap items-center gap-x-6 gap-y-3 py-3 border-y border-white/5 justify-between">
                       {(g.correct != null && g.total != null) ||
                       g.amount != null ? (
                         <>
@@ -425,8 +426,8 @@ export default function MyGamesPage() {
         )}
 
         {showLinkPayoutModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md">
-            <div className="glass-panel rounded-xl border border-white/10 p-6 w-full max-w-md shadow-xl">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="glass-panel rounded-xl border border-white/10 p-6 w-full max-w-md max-h-[85dvh] overflow-y-auto shadow-xl animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-300">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold flex items-center gap-2">
                   <Wallet className="w-5 h-5 text-primary" />

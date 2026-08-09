@@ -8,11 +8,11 @@ import { NeonFootballLogo } from "@/components/ui/neon-football-logo";
 
 export function HeroSection({ featuredPool }: { featuredPool?: Pool | null }) {
   return (
-    <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-black to-gray-900 p-8 md:p-12 border border-white/10 shadow-2xl group">
+    <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-black to-gray-900 p-6 sm:p-8 md:p-12 border border-white/10 shadow-2xl group">
       <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-primary/20 to-transparent skew-x-12 transform translate-x-20 pointer-events-none" />
       <div className="relative z-10 max-w-2xl space-y-6">
           <div className="relative inline-block">
-            <h1 className="text-5xl md:text-6xl font-black font-display tracking-tighter text-white italic uppercase relative z-10">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-black font-display tracking-tighter text-white italic uppercase relative z-10">
               Dominate the{" "}
               <span className="text-primary neon-text">Gridiron</span>
             </h1>
@@ -22,7 +22,7 @@ export function HeroSection({ featuredPool }: { featuredPool?: Pool | null }) {
             <div className="absolute -bottom-2 left-0 w-full h-1 bg-orange-500/20 blur-md animate-pulse pointer-events-none z-0" />
           </div>
 
-          <p className="text-xl text-muted-foreground font-medium leading-relaxed relative z-10">
+          <p className="text-lg sm:text-xl text-muted-foreground font-medium leading-relaxed relative z-10">
             Join the ultimate NFL betting community. Predict winners, climb
             the leaderboard, and take home the pot.
           </p>
@@ -46,7 +46,10 @@ export function HeroSection({ featuredPool }: { featuredPool?: Pool | null }) {
       </div>
 
       {/* Right Side - Animated Logo (Absolutely Positioned) */}
-      <div className="absolute top-0 right-0 w-1/2 h-full hidden lg:flex items-center justify-center pointer-events-none">
+      <div
+        className="absolute top-0 right-0 w-1/2 h-full hidden lg:flex items-center justify-center pointer-events-none"
+        aria-hidden="true"
+      >
         <div className="relative w-full h-full max-w-md flex items-center justify-center translate-x-8 xl:translate-x-12">
           {/* Animated background glow */}
           <div className="absolute inset-0 flex items-center justify-center">

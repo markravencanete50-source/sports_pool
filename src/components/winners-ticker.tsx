@@ -30,8 +30,8 @@ export function WinnersTicker() {
 
   return (
     <div className="w-full overflow-hidden bg-black/40 border-y border-white/5 backdrop-blur-sm py-3 mb-8 select-none relative group">
-      <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
-      <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
+      <div className="absolute left-0 top-0 bottom-0 w-10 sm:w-24 lg:w-32 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
+      <div className="absolute right-0 top-0 bottom-0 w-10 sm:w-24 lg:w-32 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
 
       <div className="flex animate-marquee whitespace-nowrap group-hover:[animation-play-state:paused]">
         {displayWinners.map((winner, idx) => (

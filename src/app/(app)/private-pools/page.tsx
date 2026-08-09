@@ -2,12 +2,13 @@
 
 import Layout from "@/components/layout";
 import { PoolCard } from "@/components/pool-card";
-import { Plus, Lock, Loader2 } from "lucide-react";
+import { Plus, Lock } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { PoolsPageHeader } from "@/components/pools/pools-page-header";
 import { EmptyState } from "@/components/pools/empty-state";
 import { Pagination } from "@/components/pools/pagination";
+import { StaggerGroup, StaggerItem } from "@/components/motion/reveal";
 import { usePools } from "@/lib/hooks/use-pools";
 import { PoolType, PoolsListStatusFilter } from "@/lib/enums";
 
@@ -109,16 +110,23 @@ export default function PrivatePools() {
         />
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <div
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            aria-hidden="true"
+          >
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="skeleton h-52" />
+            ))}
           </div>
         ) : pools.length > 0 ? (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {pools.map((pool: any) => (
-                <PoolCard key={pool.id} pool={pool} />
+                <StaggerItem key={pool.id}>
+                  <PoolCard pool={pool} />
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerGroup>
             <Pagination
               page={page}
               totalPages={totalPages}

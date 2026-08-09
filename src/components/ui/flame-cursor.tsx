@@ -2,13 +2,27 @@
 
 import { useEffect } from 'react';
 
+const MAX_LIVE_PARTICLES = 40;
+
 export function FlameCursor() {
   useEffect(() => {
+    // Only a decorative mouse effect: skip on touch devices and for users
+    // who prefer reduced motion.
+    if (
+      !window.matchMedia("(pointer: fine)").matches ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+
     let lastX = 0;
     let lastY = 0;
     let lastTime = 0;
+    let liveParticles = 0;
 
     const createParticle = (x: number, y: number) => {
+      if (liveParticles >= MAX_LIVE_PARTICLES) return;
+      liveParticles++;
       const particle = document.createElement('div');
       particle.classList.add('flame-particle');
       
@@ -36,6 +50,7 @@ export function FlameCursor() {
       // Cleanup
       setTimeout(() => {
         particle.remove();
+        liveParticles--;
       }, 600);
     };
 

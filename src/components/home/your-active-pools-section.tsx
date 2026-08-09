@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Card3D } from "@/components/ui/3d-card";
 import { PoolCard } from "@/components/pool-card";
-import { Pool } from "@/lib/mock-data";
 import { YourActivePoolsSectionProps } from "@/lib/interfaces";
 
 export function YourActivePoolsSection({
@@ -13,11 +12,11 @@ export function YourActivePoolsSection({
     <section>
       <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
         <Card3D intensity={20} className="inline-block w-8 h-8">
-          <span className="text-2xl">🏈</span>
+          <span className="text-2xl" aria-hidden="true">🏈</span>
         </Card3D>
         Your Active Pools
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {pools.map((pool) => (
           <PoolCard key={pool.id} pool={pool} />
         ))}

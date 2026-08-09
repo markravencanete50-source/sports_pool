@@ -1,23 +1,28 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DASHBOARD_PATH } from "@/lib/routes";
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md mx-4">
-        <CardContent className="pt-6">
-          <div className="flex mb-4 gap-2">
-            <AlertCircle className="h-8 w-8 text-red-500" />
-            <h1 className="text-2xl font-bold text-gray-900">404 Page Not Found</h1>
-          </div>
-
-          <p className="mt-4 text-sm text-gray-600">
-            The page you're looking for doesn't exist.
-          </p>
-        </CardContent>
-      </Card>
+    <div className="min-h-screen w-full flex items-center justify-center bg-background text-foreground px-4">
+      <div className="glass-panel w-full max-w-md rounded-3xl p-8 text-center animate-in fade-in zoom-in-95 duration-500">
+        <p className="font-display text-7xl font-black italic text-primary neon-text">
+          404
+        </p>
+        <h1 className="mt-4 text-2xl font-bold">Fumble! Page not found.</h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          The page you&apos;re looking for doesn&apos;t exist or has moved.
+        </p>
+        <Button asChild className="mt-8 min-h-11 px-6 font-semibold uppercase">
+          <Link href={DASHBOARD_PATH}>
+            <ArrowLeft />
+            Back to Dashboard
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }

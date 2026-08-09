@@ -42,6 +42,7 @@ export function CardPurchaseButton({
   return (
     <div className="space-y-2">
       <Button
+        id="purchase-card-trigger"
         onClick={() => setIsOpen(true)}
         className="w-full bg-primary hover:bg-primary/90"
         disabled={disabled}
@@ -51,8 +52,13 @@ export function CardPurchaseButton({
       </Button>
 
       {isOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 ">
-          <div className="bg-card text-card-foreground border border-border rounded-xl p-6 max-w-md w-full space-y-4 shadow-xl relative -top-20">
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsOpen(false);
+          }}
+        >
+          <div className="bg-card text-card-foreground border border-border rounded-xl p-6 max-w-md w-full max-h-[85dvh] overflow-y-auto space-y-4 shadow-xl animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-300">
             <h3 className="text-xl font-bold">Purchase Parlay Card</h3>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">

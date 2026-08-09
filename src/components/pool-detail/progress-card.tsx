@@ -3,7 +3,7 @@
 import { ProgressCardProps } from "@/lib/interfaces";
 
 export function ProgressCard({ picksMade, totalGames }: ProgressCardProps) {
-  const percentage = (picksMade / totalGames) * 100;
+  const percentage = totalGames > 0 ? (picksMade / totalGames) * 100 : 0;
 
   return (
     <div className="glass-panel p-6 rounded-xl">

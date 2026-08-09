@@ -3,6 +3,7 @@
 import Layout from "@/components/layout";
 import { Mail, Loader2, Check, X } from "lucide-react";
 import Link from "next/link";
+import { StaggerGroup, StaggerItem } from "@/components/motion/reveal";
 import { useInvitations, useAcceptInvitation, useDeclineInvitation } from "@/lib/hooks/use-invitations";
 import { toast } from "sonner";
 
@@ -61,8 +62,10 @@ export default function InvitationsPage() {
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <div className="grid grid-cols-1 gap-4" aria-hidden="true">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="skeleton h-24" />
+            ))}
           </div>
         ) : pending.length === 0 ? (
           <div className="glass-panel rounded-xl p-12 text-center">
@@ -75,7 +78,7 @@ export default function InvitationsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
+          <StaggerGroup className="grid grid-cols-1 gap-4">
             {pending.map((inv: any) => {
               const pool = inv.pools;
               const inviter = inv.inviter;
@@ -84,9 +87,9 @@ export default function InvitationsPage() {
               const inviterName = inviter?.name ?? inviter?.email ?? "Someone";
 
               return (
-                <div
+                <StaggerItem
                   key={inv.id}
-                  className="glass-panel rounded-xl p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+                  className="glass-panel rounded-xl p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-colors duration-300 hover:border-primary/30"
                 >
                   <div>
                     <h2 className="font-bold text-lg">{poolName}</h2>
@@ -128,10 +131,10 @@ export default function InvitationsPage() {
                       Decline
                     </button>
                   </div>
-                </div>
+                </StaggerItem>
               );
             })}
-          </div>
+          </StaggerGroup>
         )}
 
         {invitations.some((i: any) => i.status !== "pending") && (

@@ -13,19 +13,19 @@ export function PoolCard({ pool }: { pool: Pool }) {
     <Link href={`/pool/${pool.id}`}>
       <div className="cursor-pointer h-full">
         <Card3D className="h-full" intensity={5}>
-          <div className="h-full glass-panel p-6 rounded-xl flex flex-col gap-4 hover:border-primary hover:shadow-[0_0_25px_rgba(220,20,60,0.15)] hover:bg-white/5 transition-all duration-300 group relative overflow-hidden">
-            
+          <div className="h-full glass-panel p-6 rounded-xl flex flex-col gap-4 hover:border-primary hover:shadow-[0_0_25px_hsl(var(--primary)/0.2)] hover:bg-white/5 transition-all duration-300 group relative overflow-hidden">
+
             {/* Decorative background glow */}
             <div className="absolute -right-10 -top-10 w-40 h-40 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-all duration-500" />
 
-            <div className="flex justify-between items-start z-10">
-              <div>
+            <div className="flex justify-between items-start gap-3 z-10">
+              <div className="min-w-0">
                 <span className="inline-block px-2 py-1 rounded bg-white/5 border border-white/10 text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
                   {pool.type} Pool
                 </span>
-                <h3 className="text-xl font-bold truncate pr-4">{pool.name}</h3>
+                <h3 className="text-xl font-bold truncate">{pool.name}</h3>
               </div>
-              <div className="flex flex-col items-end">
+              <div className="flex flex-col items-end shrink-0">
                 <span className="text-xs text-muted-foreground uppercase font-mono">Entry</span>
                 <span className="text-lg font-bold text-primary">${entryFee}</span>
               </div>

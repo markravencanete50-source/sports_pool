@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, TrendingUp } from "lucide-react";
 import { PoolCard } from "@/components/pool-card";
-import { Pool } from "@/lib/mock-data";
+import { StaggerGroup, StaggerItem } from "@/components/motion/reveal";
 import { FeaturedPoolsSectionProps } from "@/lib/interfaces";
 
 export function FeaturedPoolsSection({ pools }: FeaturedPoolsSectionProps) {
@@ -20,11 +20,13 @@ export function FeaturedPoolsSection({ pools }: FeaturedPoolsSectionProps) {
           </span>
         </Link>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <StaggerGroup className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {pools.map((pool) => (
-          <PoolCard key={pool.id} pool={pool} />
+          <StaggerItem key={pool.id}>
+            <PoolCard pool={pool} />
+          </StaggerItem>
         ))}
-      </div>
+      </StaggerGroup>
     </section>
   );
 }

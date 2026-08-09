@@ -51,10 +51,10 @@ export function SitePageShell({
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-primary">
                 {eyebrow}
               </div>
-              <h1 className="mt-6 max-w-4xl text-5xl font-black italic leading-[0.95] sm:text-6xl">
+              <h1 className="mt-6 max-w-4xl text-4xl font-black italic leading-[0.98] sm:text-5xl md:text-6xl sm:leading-[0.95]">
                 {title}
               </h1>
-              <p className="mt-6 max-w-3xl text-lg leading-8 text-muted-foreground sm:text-xl">
+              <p className="mt-6 max-w-3xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8 lg:text-xl">
                 {description}
               </p>
             </div>

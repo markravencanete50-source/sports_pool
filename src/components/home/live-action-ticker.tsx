@@ -48,9 +48,9 @@ export function LiveActionTicker() {
         return (
           <div
             key={game.id}
-            className="glass-panel p-4 rounded-xl flex items-center justify-between"
+            className="glass-panel p-4 rounded-xl flex items-center justify-between gap-3 transition-all duration-300 hover:border-primary/30 hover:-translate-y-0.5"
           >
-            <div className="flex flex-col">
+            <div className="flex flex-col min-w-0">
               <span className="text-xs text-muted-foreground font-mono uppercase">
                 Upcoming
               </span>
@@ -58,7 +58,7 @@ export function LiveActionTicker() {
                 {homeName} vs {awayName}
               </span>
             </div>
-            <div className="bg-black/30 px-3 py-1 rounded text-xs font-mono text-primary border border-primary/20">
+            <div className="bg-black/30 px-3 py-1 rounded text-xs font-mono text-primary border border-primary/20 shrink-0">
               {odds}
             </div>
           </div>
