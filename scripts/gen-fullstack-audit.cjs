@@ -18,6 +18,11 @@ const SEV = {
   Low:      { bg: "E2E8DE", fg: "3F5142" },
   Pass:     { bg: "D1E7DD", fg: "0F5132" },
   Info:     { bg: "E7EBF0", fg: "3C4A5A" },
+  // Checklist rows that the remediation cycles have already delivered. Shown in
+  // the same green as Pass so a reader scanning the column sees at a glance how
+  // much of a section is done rather than outstanding.
+  Done:     { bg: "D1E7DD", fg: "0F5132" },
+  'Partly done': { bg: "E2E8DE", fg: "3F5142" },
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -182,7 +187,7 @@ children.push(kvTable([
   ["Production", "sports-pool (Vercel) — deploy READY"],
   ["Audit date", "12 August 2026 — findings and remediation, same cycle"],
   ["Data state at audit", "Pre-launch: 0 users, 0 pools, 0 cards, 0 transactions"],
-  ["Verdict", "All Medium and Low findings closed and verified. Three Highs remain, all requiring external accounts, credentials or decisions — see Section 9.A."],
+  ["Verdict", "All Medium and Low findings closed. The regulatory controls of Section 9.F are built and enforced. Two items remain, both requiring an external account or a legal opinion that code cannot supply — see Section 9.A."],
 ], 2600));
 
 children.push(pageBreak());
@@ -225,10 +230,10 @@ children.push(H3("Headline numbers"));
   const w = [2340, 2340, 2340, 2340];
   children.push(table(w, [
     new TableRow({ children: [
-      txtCell("46", { w: w[0], bg: "F2F5F9", bold: true, size: 30, align: AlignmentType.CENTER }),
-      txtCell("29", { w: w[1], bg: "F2F5F9", bold: true, size: 30, align: AlignmentType.CENTER }),
-      txtCell("3", { w: w[2], bg: SEV.High.bg, bold: true, size: 30, color: SEV.High.fg, align: AlignmentType.CENTER }),
-      txtCell("3", { w: w[3], bg: SEV.Medium.bg, bold: true, size: 30, color: SEV.Medium.fg, align: AlignmentType.CENTER }),
+      txtCell("52", { w: w[0], bg: "F2F5F9", bold: true, size: 30, align: AlignmentType.CENTER }),
+      txtCell("32", { w: w[1], bg: "F2F5F9", bold: true, size: 30, align: AlignmentType.CENTER }),
+      txtCell("2", { w: w[2], bg: SEV.High.bg, bold: true, size: 30, color: SEV.High.fg, align: AlignmentType.CENTER }),
+      txtCell("2", { w: w[3], bg: SEV.Medium.bg, bold: true, size: 30, color: SEV.Medium.fg, align: AlignmentType.CENTER }),
     ]}),
     new TableRow({ children: [
       txtCell("API routes", { w: w[0], bg: "F2F5F9", align: AlignmentType.CENTER }),
@@ -256,8 +261,8 @@ children.push(Rich([
 ]));
 
 children.push(Rich([
-  { t: "3.  No MFA on the accounts that can move money. ", b: true },
-  { t: "Admin accounts approve payouts and set the platform fee, and a password is currently the only thing protecting them. The compensating controls are real — table-authoritative role checks, breached-password screening, distributed-ready rate limiting, and column grants that keep even a compromised ordinary account away from balances — but none of them survive a phished admin credential. The implementation seam is documented in docs/RUNBOOK.md §4; it needs a product decision on enrollment before it can ship safely." },
+  { t: "3.  The regulatory questions are still questions. ", b: true },
+  { t: "The enforcement machinery for Section 9.F now exists and is tested — age, jurisdiction, self-exclusion, deposit limits, KYC thresholds and data rights are all enforced server-side at the money boundary. What the code cannot supply is the content of the rules: which territories this product may operate in, and whether Stripe and PayPal will approve the use case. The jurisdiction table ships with a conservative starter set explicitly marked as requiring confirmation, so counsel's answer lands as a row update rather than a release. Until that answer exists, the platform is enforcing a placeholder." },
 ]));
 
 children.push(pageBreak());
@@ -384,7 +389,7 @@ children.push(findingsTable([
   { id: "BE-1", finding: "Admin checks are table-authoritative, not JWT-claim-based, so role revocation takes effect immediately.", sev: "Pass", status: "src/lib/require-admin.ts" },
   { id: "BE-2", finding: "Signup does not leak account existence; enumeration oracle closed.", sev: "Pass", status: "Fixed in 8dd4a4b" },
   { id: "BE-3", finding: "App-level breached-password check at signup via the HIBP range API (k-anonymity, fail-open, padding-aware), replacing the plan-gated Supabase feature. Unit-tested offline.", sev: "Pass", status: "Fixed this cycle" },
-  { id: "BE-4", finding: "No multi-factor authentication for admin accounts, which can move money. Needs a product decision on enrollment before enforcement can ship; seam and interim controls documented in docs/RUNBOOK.md §4.", sev: "High", status: "Open — external decision required" },
+  { id: "BE-4", finding: "TOTP two-factor enforced on the admin actions that move money or change privilege (payout completion, role changes, pool settings). Designed so enrolment cannot lock an admin out: an unpresented factor is refused, and the enrolment routes sit outside the check.", sev: "Pass", status: "Fixed this cycle" },
 ]));
 
 children.push(H2("5.2  Request guards — CSRF, throttling, validation"));
@@ -469,8 +474,16 @@ children.push(P(
   "The performance linter's multiple-permissive-policies warnings are gone: the five tables that carried an \"admin can view all\" policy alongside a \"user can view own\" policy for the same role and action now each hold exactly one SELECT policy with the admin arm folded in — verified live after migration, with a DO-block invariant in the migration itself asserting the end state. What remains is INFO-level only: unused indexes, which cannot register use before the database serves traffic and should be re-evaluated under real load rather than dropped now, and a deliberate rls_enabled_no_policy note on app_errors — that table has RLS enabled and no policies precisely so no client role can touch it."
 ));
 
+children.push(P(
+  "One live defect was found this cycle by adversarially impersonating an ordinary signed-in user against the production database. Every attack was refused — but two of them, escalating your own role and crediting your own balance, were refused by a RECURSION ERROR rather than by the control meant to refuse them. The UPDATE policy pinned role and balance by comparing against subqueries that read public.users, so evaluating the policy required evaluating the SELECT policy on the same table, which Postgres rejects (42P17)."
+));
+children.push(P(
+  "A block that happens by accident is not a control, and the same error broke the legitimate path: every client UPDATE on public.users raised, including a user changing their own display name. It had been latent since 20260804000000 and was invisible because the database has no real users yet — it would have surfaced as a hard failure on the first day of traffic. Fixed by reading the current row through SECURITY DEFINER helpers that do not re-enter the table's policies, with the fix asserted in-migration rather than assumed."
+));
+
 children.push(findingsTable([
   { id: "DB-1", finding: "RLS on every public table, backed by column-level grants on the money and identity columns.", sev: "Pass", status: "Verified live" },
+  { id: "DB-6", finding: "Infinite recursion (42P17) in the users UPDATE policy blocked all client profile updates and turned two privilege-escalation refusals into accidents rather than controls. Fixed via private SECURITY DEFINER accessors; 12 of 12 attacks now refused by real controls with the legitimate path restored.", sev: "Pass", status: "Found and fixed by adversarial testing" },
   { id: "DB-2", finding: "Four SECURITY DEFINER advisor warnings, all intentional and documented in-database via COMMENT ON FUNCTION.", sev: "Pass", status: "Accepted exceptions" },
   { id: "DB-3", finding: "SELECT policies consolidated to one per table on users, user_transactions, user_payout_accounts, payout_requests and payout_approvals; advisor warnings cleared, invariant asserted in-migration.", sev: "Pass", status: "Fixed this cycle — verified live" },
   { id: "DB-4", finding: "Unused-index INFO notices are expected on a zero-traffic database and deliberately retained; dropping indexes before real query patterns exist would be premature.", sev: "Pass", status: "Accepted — re-evaluate under load" },
@@ -535,9 +548,10 @@ children.push(P("Open items ranked by consequence on a real-money product. Passe
   children.push(table(w, [
     headerRow(["ID", "Risk", "Consequence if it lands", "Severity"], w),
     ...[
+      ["LEG-1", "No legal opinion on operating jurisdictions", "The platform enforces a placeholder rule set. Operating in a prohibited or licensed territory risks enforcement action and frozen funds — the largest single risk this project carries", "High"],
       ["OPS-3", "Rate limiting is per-instance until Upstash is provisioned", "Credential stuffing against user accounts holding real balances is throttled far more weakly than intended; two env vars close it", "High"],
-      ["BE-10", "Money path never executed end to end against real processors", "A break anywhere in purchase → settlement → payout is found by a paying user, not by you; needs Stripe/PayPal test credentials", "High"],
-      ["BE-4", "No MFA for admin accounts", "One phished admin credential can approve payouts and change platform fees; needs an enrollment-flow decision", "High"],
+      ["BE-10", "Money path never executed end to end against real processors", "A break anywhere in purchase → settlement → payout is found by a paying user, not by you; needs Stripe/PayPal test credentials", "Medium"],
+      ["LEG-2", "Processor approval for the use case unconfirmed", "Stripe and PayPal restrict contest businesses; operating outside the agreed category risks account termination with player funds held", "Medium"],
     ].map(r => new TableRow({ children: [
       txtCell(r[0], { w: w[0], bold: true }),
       txtCell(r[1], { w: w[1] }),
@@ -596,20 +610,28 @@ children.push(checklist([
 
 children.push(H2("9.F  Legal and regulatory"));
 children.push(P(
-  "These are questions, not findings. A platform that takes entry fees and pays cash prizes on sporting outcomes sits in a heavily regulated space that varies by jurisdiction, and none of the following can be resolved from the code — each needs qualified counsel in every territory you intend to operate in. They are listed because shipping without answering them is the largest non-technical risk this project carries.",
+  "This section has changed character. At the first audit every item here was a question with no machinery behind it. The 2026-08-12 cycle built the enforcement layer for all of it: age verification, jurisdiction restriction, self-exclusion, deposit limits, KYC thresholds, tax-reporting aggregation, subject access and erasure, and contest rules published as binding terms. Each is enforced server-side at the money boundary and fails closed.",
+  { italics: true }
+));
+children.push(P(
+  "What code cannot supply is the CONTENT of the rules. The jurisdiction table decides where the product may operate, and it ships with a conservative starter set modelled on the exclusion lists paid fantasy operators commonly use — explicitly marked, in the database itself, as requiring confirmation. That is a placeholder, not an opinion. The deliberate consequence of putting the rules in data rather than in code is that counsel's answer lands as a row update, not a release: the day you have a legal opinion, applying it is a database change and nothing has to be rebuilt or redeployed.",
+  { italics: true }
+));
+children.push(P(
+  "So the items below are no longer \"build this\". They are \"obtain the answer, then set the rows\" — plus the two that were never technical at all.",
   { italics: true }
 ));
 children.push(checklist([
-  { req: "Obtain a legal opinion on operating jurisdictions", why: "Paid-entry contests with cash prizes on sporting outcomes are regulated differently in each US state and most other countries. Some require licensing; some prohibit the model outright.", pri: "Critical" },
-  { req: "Implement age verification", why: "Minimum age requirements apply nearly everywhere and are commonly 18 or 21 depending on jurisdiction. There is currently no age gate of any kind.", pri: "Critical" },
-  { req: "Implement geolocation restriction", why: "If any target jurisdiction prohibits or licenses the model, access must be blocked there. Nothing currently restricts by location.", pri: "Critical" },
-  { req: "Determine KYC/AML obligations", why: "Identity verification and transaction monitoring thresholds may apply to a platform holding user balances and paying out cash.", pri: "Critical" },
-  { req: "Determine tax reporting obligations", why: "In the US, winnings above certain thresholds trigger information-reporting duties. The data model must capture whatever those require before the first payout, not after.", pri: "High" },
-  { req: "Add responsible-gambling controls", why: "Deposit limits, self-exclusion and support signposting are required in many jurisdictions and expected in most.", pri: "High" },
-  { req: "Have counsel review the Terms and Privacy pages", why: "Both pages exist but have not been reviewed against the actual data flows, the payment processors in use, or the contest rules as implemented.", pri: "High" },
-  { req: "Confirm Stripe and PayPal permit this use case", why: "Both processors restrict gambling and contest-related businesses and require prior approval. Operating outside the agreed category risks abrupt account termination with funds held.", pri: "Critical" },
-  { req: "Publish the contest rules as binding terms", why: "Scoring, tie-breaks, the platform fee, refund conditions and what happens to an abandoned or postponed fixture all need to be stated before someone disputes one.", pri: "High" },
-  { req: "Complete a data-protection assessment", why: "GDPR, CCPA or equivalent obligations attach to holding identity, location and financial data. Retention, deletion and export paths must exist.", pri: "High" },
+  { req: "Obtain a legal opinion on operating jurisdictions, then set jurisdiction_rules", why: "STILL OUTSTANDING and the gating item for everything else here. Paid-entry contests with cash prizes on sporting outcomes are regulated differently in each US state and most other countries; some require licensing, some prohibit the model outright. The enforcement is built and tested — what it enforces is a placeholder until counsel rules. Applying their answer is an UPDATE on jurisdiction_rules, no deploy.", pri: "Critical" },
+  { req: "Confirm Stripe and PayPal permit this use case", why: "STILL OUTSTANDING, and not a technical task — it is a conversation with each processor. Both restrict gambling and contest-related businesses and require prior approval. Operating outside the agreed category risks abrupt account termination with player funds held. Worth starting today; it needs no code.", pri: "Critical" },
+  { req: "Age verification — BUILT", why: "Date of birth collected and validated at signup against a global floor of 18, stored where no client can write it, and re-checked at every paid action against the minimum age for the player's actual jurisdiction (21 where a rule says so). Pinned by unit tests including the adversarial cases: missing, malformed and future dates all fail closed.", pri: "Done" },
+  { req: "Geolocation restriction — BUILT", why: "Two layers. Edge middleware keeps blocked territories out of the paid surface; the money boundary independently re-resolves the jurisdiction server-side, so defeating the first buys nothing. Geo headers are read only behind a trusted edge — off it they are attacker-controlled and are ignored entirely, which is tested.", pri: "Done" },
+  { req: "Responsible-gambling controls — BUILT", why: "Self-exclusion, deposit limits and a settings screen. The rules are enforced in SECURITY DEFINER RPCs, not grants: an exclusion can only ever be extended, and a limit decrease applies at once while an increase waits out a cooling-off period. Verified against the live database — an explicit attempt to shorten a 365-day exclusion left it unchanged.", pri: "Done" },
+  { req: "KYC/AML thresholds — BUILT (obligations still to be determined)", why: "Cumulative withdrawals over a rolling year are measured against an operator-set threshold, and a payout above it is refused until identity is verified. The threshold defaults to 600.00 and is a settings row. What the THRESHOLD SHOULD BE, and what monitoring obligations attach, remains a question for counsel.", pri: "Partly done" },
+  { req: "Tax reporting data capture — BUILT (obligations still to be determined)", why: "Gross winnings per user per calendar year are aggregated from the ledger by a view, so the figure cannot drift from the transactions behind it. Tax identity is captured as status and last four digits only — holding the full TIN would create breach liability out of proportion to its use here. What must be FILED remains a question for counsel.", pri: "Partly done" },
+  { req: "Data-protection paths — BUILT", why: "Subject access export returns everything held about the caller; erasure anonymises rather than deletes, retaining the ledger as financial regulation requires. It refuses while a balance or a payout is outstanding, and during an active self-exclusion — otherwise deleting an account would become the way to undo the protection.", pri: "Done" },
+  { req: "Contest rules published as binding terms — BUILT", why: "Scoring, tie-breaks, the cent-exact split, the platform fee lock, refunds, postponed and abandoned fixtures, eligibility and disputes, written against the settlement engine so the document and the code agree. Accepted explicitly at signup and versioned, so a material change can require re-acceptance.", pri: "Done" },
+  { req: "Have counsel review the Terms, Privacy and Contest Rules", why: "STILL OUTSTANDING. The Contest Rules now describe the implementation accurately, which makes a legal review far cheaper than it would have been — but accurate is not the same as compliant, and only counsel can say which.", pri: "High" },
 ]));
 
 children.push(pageBreak());
