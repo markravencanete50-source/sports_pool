@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createPoolSchema } from "@/lib/validations";
+import { assertSameOrigin } from "@/lib/request-guards";
 import {
   attachFinancialsToPools,
   getPoolsFinancials,
@@ -87,6 +88,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const supabase = await createClient();
 
     const {

@@ -46,9 +46,22 @@ let lastSweep = 0;
  * own bucket and defeated the throttle entirely, which is the one thing a
  * limiter must not allow.
  *
+ * A platform edge header (Vercel's x-vercel-forwarded-for, Cloudflare's
+ * cf-connecting-ip) is only trustworthy when the request ACTUALLY transited that
+ * edge, because the edge overwrites it. Off that platform — a self-host reachable
+ * at origin, a preview, a misrouted deployment — the very same header is fully
+ * client-controlled again, so trusting it unconditionally reopened the exact
+ * bypass the leftmost-XFF note above warns about: send a random
+ * x-vercel-forwarded-for per request and every request lands in its own bucket.
+ *
+ * So each platform header is gated on an explicit signal that we sit behind that
+ * platform's edge:
+ *   - Vercel sets process.env.VERCEL on every deployment.
+ *   - A Cloudflare-fronted self-host (see docker-compose.yml's cloudflared
+ *     service) must set TRUSTED_PROXY=cloudflare so cf-connecting-ip is honoured.
+ *
  * Order of preference:
- *   1. A platform header the client cannot set, because the edge overwrites it
- *      (Vercel's x-vercel-forwarded-for, Cloudflare's cf-connecting-ip).
+ *   1. The platform header, but only when we are provably behind that platform.
  *   2. The RIGHTMOST X-Forwarded-For entry — appended by our own proxy, so it is
  *      the last hop we actually trust, unlike the leftmost which the caller
  *      controls.
@@ -58,10 +71,14 @@ let lastSweep = 0;
  * shares one bucket rather than getting an unlimited private one.
  */
 export function getClientIp(request: Request): string {
-  const trusted =
-    request.headers.get("x-vercel-forwarded-for")?.trim() ||
-    request.headers.get("cf-connecting-ip")?.trim();
-  if (trusted) return trusted;
+  if (process.env.VERCEL) {
+    const vercel = request.headers.get("x-vercel-forwarded-for")?.trim();
+    if (vercel) return vercel;
+  }
+  if (process.env.TRUSTED_PROXY?.trim().toLowerCase() === "cloudflare") {
+    const cf = request.headers.get("cf-connecting-ip")?.trim();
+    if (cf) return cf;
+  }
 
   const xff = request.headers.get("x-forwarded-for");
   if (xff) {

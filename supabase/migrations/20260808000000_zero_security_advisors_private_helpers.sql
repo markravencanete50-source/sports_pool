@@ -103,6 +103,32 @@ revoke execute on function public.guard_pool_settlement_columns() from public, a
 revoke execute on function public.update_updated_at_column()      from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
+-- 2b. Attach the guard triggers
+--
+-- A guard function enforces nothing until it is wired to its table with CREATE
+-- TRIGGER, and NO migration ever did that — the two functions above were only
+-- ever defined, never attached. On a fresh build invariant (e) at the bottom of
+-- this file then failed (it asserts both triggers exist), aborting `supabase db
+-- reset` here and leaving the last two migrations un-applied. On the live
+-- database the triggers had been wired up out of band, which is exactly the
+-- schema/migration drift these files fight; committing the CREATE TRIGGER makes
+-- a rebuilt database enforce the same rule the assertion demands. Idempotent so
+-- it is safe whether or not the trigger already exists.
+--
+-- Both guards exempt service_role (auth.uid() is null) and admins, so every
+-- server-side money path is unaffected; they only stop a client-scoped UPDATE
+-- from touching settlement/identity columns that RLS column-grants already lock.
+drop trigger if exists trg_guard_invitation_immutable on public.pool_invitations;
+create trigger trg_guard_invitation_immutable
+  before update on public.pool_invitations
+  for each row execute function public.guard_invitation_immutable();
+
+drop trigger if exists trg_guard_pool_settlement_columns on public.pools;
+create trigger trg_guard_pool_settlement_columns
+  before update on public.pools
+  for each row execute function public.guard_pool_settlement_columns();
+
+-- ---------------------------------------------------------------------------
 -- 3. Grant hygiene
 -- ---------------------------------------------------------------------------
 revoke truncate, references, trigger on all tables in schema public from public, anon, authenticated;
@@ -123,11 +149,26 @@ declare
 begin
   -- (a) No SECURITY DEFINER function left in the exposed schema that a client
   --     role can execute. This is exactly what advisor lints 0028/0029 flag.
+  --
+  --     EXCEPTION — get_public_winners and claim_pool_payout are deliberately
+  --     SECURITY DEFINER in public AND client-executable: they ARE the app's
+  --     RPC surface (winners ticker / withdrawal claim), reached at
+  --     /rest/v1/rpc, and they must run as definer to bypass RLS in a controlled
+  --     way (claim moves a balance; the ticker reads pool_winners after its
+  --     direct read policy was dropped). Both are safe — they derive identity
+  --     from auth.uid(), pin search_path, and validate every path. Every OTHER
+  --     SECURITY DEFINER helper was moved to `private` (is_admin,
+  --     is_pool_participant, has_parlay_card_in_pool) or revoked from client
+  --     roles (credit/debit_user_balance, the trigger guards), so the check
+  --     still catches any NEW leak. Without this allowlist a fresh build aborted
+  --     right here, because these two are created earlier by
+  --     20260807000000_add_missing_rpcs and legitimately trip the raw check.
   select string_agg(p.proname, ', ' order by p.proname)
     into v_bad
   from pg_proc p
   where p.pronamespace = 'public'::regnamespace
     and p.prosecdef
+    and p.proname not in ('get_public_winners', 'claim_pool_payout')
     and (has_function_privilege('anon',          p.oid, 'execute')
       or has_function_privilege('authenticated', p.oid, 'execute'));
   if v_bad is not null then

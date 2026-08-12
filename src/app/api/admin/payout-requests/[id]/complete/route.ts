@@ -124,6 +124,56 @@ export async function PATCH(
     }
 
     /*
+     * ATOMIC CLAIM — flip pending -> processing in one conditional UPDATE before
+     * any money moves.
+     *
+     * The status read at the top and the idempotency read above are a
+     * check-then-act: two admins (or one double-clicked button) can both see
+     * 'pending' with no transaction row and both fall through to the debit. The
+     * atomic debit stops an OVERDRAFT, but not a double SEND — with a balance >=
+     * 2x the amount both debits succeed, and the only thing then between that and
+     * paying twice is PayPal happening to reject the duplicate sender_batch_id.
+     * Claim the row first: exactly one UPDATE matches status = 'pending', so the
+     * loser matches no row and returns here having moved nothing.
+     */
+    const { data: claimed, error: claimError } = await admin
+      .from("payout_requests")
+      .update({ status: "processing" })
+      .eq("id", payoutRequestId)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (claimError) {
+      console.error("[payout-complete] claim failed:", claimError.message);
+      return NextResponse.json(
+        { error: "Could not start processing this payout" },
+        { status: 500 }
+      );
+    }
+    if (!claimed) {
+      return NextResponse.json(
+        { error: "Payout request is already being processed" },
+        { status: 409 }
+      );
+    }
+
+    // Undo the claim so the request is retryable when we stop BEFORE any money
+    // has moved (a failed debit reservation). Never call this once PayPal has
+    // been asked to send.
+    const releaseClaim = async () => {
+      const { error: releaseError } = await admin
+        .from("payout_requests")
+        .update({ status: "pending" })
+        .eq("id", payoutRequestId)
+        .eq("status", "processing");
+      if (releaseError) {
+        console.error(
+          `[payout-complete] failed to release claim on ${payoutRequestId} back to pending: ${releaseError.message}`
+        );
+      }
+    };
+
+    /*
      * SECURITY — ordering is the whole point here.
      *
      * This route used to call PayPal FIRST and check the balance afterwards, so
@@ -145,6 +195,7 @@ export async function PATCH(
 
     if (debitError) {
       console.error("[payout-complete] debit failed:", debitError.message);
+      await releaseClaim();
       return NextResponse.json(
         { error: "Could not reserve funds for this payout" },
         { status: 500 }
@@ -152,8 +203,9 @@ export async function PATCH(
     }
 
     // NULL means the conditional UPDATE matched no row: insufficient funds.
-    // Nothing has been sent at this point.
+    // Nothing has been sent at this point, so return the request to pending.
     if (debitedBalance === null || debitedBalance === undefined) {
+      await releaseClaim();
       return NextResponse.json(
         { error: "User balance is insufficient for this payout" },
         { status: 400 }

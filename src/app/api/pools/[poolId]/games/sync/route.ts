@@ -2,12 +2,16 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { GameStatus } from "@/lib/enums";
 import { getNflScoreboard } from "@/lib/fetch-nfl-scoreboard";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ poolId: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { poolId } = await params;
     const supabase = await createClient();
 

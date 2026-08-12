@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 const inviteEmailsSchema = z.object({
   emails: z.array(z.string().email()).min(1, "At least one email is required"),
@@ -11,6 +12,9 @@ export async function POST(
   { params }: { params: Promise<{ poolId: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { poolId } = await params;
     const supabase = await createClient();
 

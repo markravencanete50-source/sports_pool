@@ -606,6 +606,7 @@ export default function PoolDetailPage() {
               }))}
               onAddComment={handleAddComment}
               isLoading={isLoadingComments}
+              isPosting={addCommentMutation.isPending}
               requiresCard={requiresCard}
               currentUserId={user?.id}
               onPurchaseCard={() => {

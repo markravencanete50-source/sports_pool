@@ -1,8 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
+import { assertSameOrigin } from "@/lib/request-guards";
 import { NextResponse } from "next/server";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    // Stops a cross-site page from forcibly signing the user out.
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const supabase = await createClient();
     const { error } = await supabase.auth.signOut();
 

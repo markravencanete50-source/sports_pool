@@ -5,10 +5,11 @@ import { formatDistanceToNow } from "date-fns";
 import { Send, Loader2 } from "lucide-react";
 import { CommentSectionProps } from "@/lib/interfaces";
 
-export function CommentSection({ 
-  comments, 
-  onAddComment, 
+export function CommentSection({
+  comments,
+  onAddComment,
   isLoading,
+  isPosting = false,
   requiresCard = false,
   onPurchaseCard,
   currentUserId = null,
@@ -17,7 +18,7 @@ export function CommentSection({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!text.trim() || isPosting) return;
     onAddComment(text);
     setText("");
   };
@@ -93,12 +94,16 @@ export function CommentSection({
             placeholder="Type a message... (Don't share your card details!)"
             className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
           />
-          <button 
+          <button
             type="submit"
             className="p-2 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!text.trim()}
+            disabled={!text.trim() || isPosting}
           >
-            <Send className="w-4 h-4" />
+            {isPosting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
           </button>
         </form>
       )}
