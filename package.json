@@ -17,7 +17,7 @@
     "test": "tsx scripts/verify-settlement.ts",
     "verify:settlement": "tsx scripts/verify-settlement.ts",
     "check": "npm run typecheck && npm run test && npm run lint",
-    "docs:generate": "node scripts/gen-handover-doc.cjs && node scripts/gen-security-report.cjs && node scripts/gen-backend-explainer.cjs && node scripts/gen-backend-technical.cjs"
+    "docs:generate": "node scripts/gen-handover-doc.cjs && node scripts/gen-security-report.cjs && node scripts/gen-backend-explainer.cjs && node scripts/gen-backend-technical.cjs && node scripts/gen-fullstack-audit.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
