@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { signinSchema, signupSchema } from "@/lib/validations";
 import { useRouter } from "next/navigation";
 import { DASHBOARD_PATH } from "@/lib/routes";
+import { clearRealtimeToken } from "@/lib/supabase/realtime-client";
 
 export function useAuth() {
   const queryClient = useQueryClient();
@@ -55,6 +56,10 @@ export function useAuth() {
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/me"], null);
       queryClient.clear(); // Clear all cached queries
+      // The server cleared the session cookie; drop the realtime access token
+      // held in memory too, so a subscription cannot keep using the signed-out
+      // user's token until it happens to expire.
+      clearRealtimeToken();
       router.push(DASHBOARD_PATH);
     },
   });
