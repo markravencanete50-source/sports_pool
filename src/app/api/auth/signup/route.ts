@@ -1,10 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { signupSchema } from "@/lib/validations";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { assertSameOrigin } from "@/lib/request-guards";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     // Throttle automated account-creation floods.
     const limited = await enforceRateLimit(request, "auth:signup", RATE_LIMITS.authSignup);
     if (limited) return limited;
@@ -31,7 +35,18 @@ export async function POST(request: Request) {
     });
 
     if (authError) {
-      return NextResponse.json({ error: authError.message }, { status: 400 });
+      /*
+       * Do NOT return Supabase's message verbatim. With email confirmation
+       * disabled it says "User already registered", which turns this endpoint
+       * into a user-enumeration oracle: anyone can test an address and learn
+       * whether it holds an account on a real-money gambling site. Log the real
+       * reason for operators; answer the caller generically.
+       */
+      console.error("[signup] auth error:", authError.message);
+      return NextResponse.json(
+        { error: "Could not create the account. Check your details and try again." },
+        { status: 400 }
+      );
     }
 
     if (!authData.user) {
@@ -128,8 +143,14 @@ export async function POST(request: Request) {
       }
     }
 
+    // Return only what the UI needs. The full authData.user carries
+    // app_metadata (including role), user_metadata and identity records — none
+    // of which the client needs, and all of which is needless exposure.
     return NextResponse.json(
-      { user: authData.user, message: "Account created successfully" },
+      {
+        user: { id: authData.user.id, email: authData.user.email },
+        message: "Account created successfully",
+      },
       { status: 201 }
     );
   } catch (error) {

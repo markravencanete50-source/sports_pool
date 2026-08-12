@@ -1,11 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { id: invitationId } = await params;
     const supabase = await createClient();
 

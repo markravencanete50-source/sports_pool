@@ -30,6 +30,8 @@ export interface CommentSectionProps {
   comments: Comment[];
   onAddComment: (text: string) => void;
   isLoading?: boolean;
+  /** True while a post is in flight, so the composer can block double-sends. */
+  isPosting?: boolean;
   requiresCard?: boolean;
   onPurchaseCard?: () => void;
   currentUserId?: string | null;

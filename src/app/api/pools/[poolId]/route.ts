@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPoolFinancials } from "@/lib/pool-financials";
 import { updatePoolWithGamesSchema } from "@/lib/validations";
+import { assertSameOrigin } from "@/lib/request-guards";
 import { NextResponse } from "next/server";
 
 // SECURITY: never embed `users(*)`. That table carries email, role and balance,
@@ -76,6 +77,9 @@ export async function PATCH(
   { params }: { params: Promise<{ poolId: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { poolId } = await params;
     const supabase = await createClient();
 
@@ -261,6 +265,9 @@ export async function DELETE(
   { params }: { params: Promise<{ poolId: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { poolId } = await params;
     const supabase = await createClient();
 

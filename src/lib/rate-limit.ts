@@ -46,9 +46,22 @@ let lastSweep = 0;
  * own bucket and defeated the throttle entirely, which is the one thing a
  * limiter must not allow.
  *
+ * A platform edge header (Vercel's x-vercel-forwarded-for, Cloudflare's
+ * cf-connecting-ip) is only trustworthy when the request ACTUALLY transited that
+ * edge, because the edge overwrites it. Off that platform — a self-host reachable
+ * at origin, a preview, a misrouted deployment — the very same header is fully
+ * client-controlled again, so trusting it unconditionally reopened the exact
+ * bypass the leftmost-XFF note above warns about: send a random
+ * x-vercel-forwarded-for per request and every request lands in its own bucket.
+ *
+ * So each platform header is gated on an explicit signal that we sit behind that
+ * platform's edge:
+ *   - Vercel sets process.env.VERCEL on every deployment.
+ *   - A Cloudflare-fronted self-host (see docker-compose.yml's cloudflared
+ *     service) must set TRUSTED_PROXY=cloudflare so cf-connecting-ip is honoured.
+ *
  * Order of preference:
- *   1. A platform header the client cannot set, because the edge overwrites it
- *      (Vercel's x-vercel-forwarded-for, Cloudflare's cf-connecting-ip).
+ *   1. The platform header, but only when we are provably behind that platform.
  *   2. The RIGHTMOST X-Forwarded-For entry — appended by our own proxy, so it is
  *      the last hop we actually trust, unlike the leftmost which the caller
  *      controls.
@@ -58,10 +71,14 @@ let lastSweep = 0;
  * shares one bucket rather than getting an unlimited private one.
  */
 export function getClientIp(request: Request): string {
-  const trusted =
-    request.headers.get("x-vercel-forwarded-for")?.trim() ||
-    request.headers.get("cf-connecting-ip")?.trim();
-  if (trusted) return trusted;
+  if (process.env.VERCEL) {
+    const vercel = request.headers.get("x-vercel-forwarded-for")?.trim();
+    if (vercel) return vercel;
+  }
+  if (process.env.TRUSTED_PROXY?.trim().toLowerCase() === "cloudflare") {
+    const cf = request.headers.get("cf-connecting-ip")?.trim();
+    if (cf) return cf;
+  }
 
   const xff = request.headers.get("x-forwarded-for");
   if (xff) {
@@ -225,4 +242,23 @@ export const RATE_LIMITS = {
    * for a human, fatal to a script.
    */
   chatPost: { limit: 30, windowMs: 5 * 60_000 },
+  /**
+   * Pool creation. Any authenticated user may create pools (the route does this
+   * with the service role by design), so nothing else bounds how many a single
+   * account can spawn. Unthrottled it is public-lobby spam.
+   */
+  poolCreate: { limit: 20, windowMs: 60 * 60_000 },
+  /**
+   * Pool game sync. Each call makes SERVER-SIDE requests to ESPN, so this is a
+   * request amplifier: one cheap call from a client becomes outbound traffic
+   * from our IP, and hammering it risks ESPN rate-limiting the whole app —
+   * which is what settlement reads scores from.
+   */
+  gamesSync: { limit: 20, windowMs: 60 * 60_000 },
+  /**
+   * Payout claiming. The claim itself is atomic and idempotent, so this is not
+   * guarding correctness — it stops a money endpoint from being used as a free
+   * database-load generator.
+   */
+  claimPayout: { limit: 30, windowMs: 60 * 60_000 },
 } as const;

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { createClient } from "@/lib/supabase/client";
+import { getRealtimeClient } from "@/lib/supabase/realtime-client";
 import {
   CreatePoolInput,
   UpdatePoolWithGamesInput,
@@ -110,7 +110,9 @@ export function usePoolComments(poolId: string) {
 
   useEffect(() => {
     if (!poolId) return;
-    const supabase = createClient();
+    // Authenticates via a short-lived token from /api/auth/realtime-token, not
+    // the session cookie — the cookie is httpOnly and unreadable here by design.
+    const supabase = getRealtimeClient();
     const channel = supabase
       .channel(`comments:pool_id=eq.${poolId}`)
       .on(

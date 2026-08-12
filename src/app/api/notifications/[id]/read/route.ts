@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 /**
  * Mark one notification as read.
@@ -26,6 +27,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { id } = await params;
     const supabase = await createClient();
 

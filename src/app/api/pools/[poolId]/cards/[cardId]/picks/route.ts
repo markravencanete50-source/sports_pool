@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { assertSameOrigin } from "@/lib/request-guards";
 
 const submitCardPickSchema = z.object({
   gameId: z.string(),
@@ -13,6 +14,9 @@ export async function POST(
   { params }: { params: Promise<{ poolId: string; cardId: string }> }
 ) {
   try {
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     const { poolId, cardId } = await params;
     const supabase = await createClient();
 

@@ -103,6 +103,19 @@ begin
 end;
 $$;
 
+-- Re-apply the revokes from 20260807000001.
+--
+-- `create or replace function` RESETS the function's ACL, so replacing these two
+-- above silently handed EXECUTE back to PUBLIC (and therefore anon/authenticated)
+-- — re-exposing them at /rest/v1/rpc as SECURITY DEFINER functions after an
+-- earlier migration had deliberately locked them down. A trigger fires in the
+-- table owner's context and never checks the DML caller's EXECUTE privilege, so
+-- no client role needs this grant. Without these two lines the invariant in
+-- 20260808000000_zero_security_advisors aborts the build, which is exactly the
+-- regression it exists to catch.
+revoke all on function public.set_pool_transaction_fee() from public, anon, authenticated;
+revoke all on function public.set_pool_platform_fee()    from public, anon, authenticated;
+
 
 -- ---------------------------------------------------------------------------
 -- 3. HIGH — self-issued invitation unlocks any private pool
@@ -165,6 +178,15 @@ grant insert on public.newsletter_subscribers to anon, authenticated;
 -- rewrite them is a data-integrity hole with no legitimate use.
 drop policy if exists "Authenticated users can insert teams" on public.teams;
 drop policy if exists "Authenticated users can update teams" on public.teams;
+
+-- Drop the NEW names too before recreating them. 20260807000000_close_stale
+-- already creates both policies (it runs first — same date, earlier filename),
+-- so dropping only the legacy "Authenticated users can ..." names left these in
+-- place and the CREATE below failed with 42710 "policy already exists",
+-- aborting this migration on any database built from the committed set.
+-- `create policy` has no IF NOT EXISTS, so drop-then-create is the house pattern.
+drop policy if exists "Only admins can insert teams" on public.teams;
+drop policy if exists "Only admins can update teams" on public.teams;
 
 create policy "Only admins can insert teams" on public.teams
   for insert with check (public.is_admin());

@@ -1,10 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { signinSchema } from "@/lib/validations";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { assertSameOrigin } from "@/lib/request-guards";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
+    // Refuse cross-site login attempts (login CSRF) before doing any work.
+    const csrf = assertSameOrigin(request);
+    if (csrf) return csrf;
+
     // Throttle password guessing / credential stuffing before touching Auth.
     const limited = await enforceRateLimit(request, "auth:signin", RATE_LIMITS.authSignin);
     if (limited) return limited;
