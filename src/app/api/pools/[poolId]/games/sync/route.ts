@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { GameStatus } from "@/lib/enums";
 import { getNflScoreboard } from "@/lib/fetch-nfl-scoreboard";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function POST(
   request: Request,
@@ -11,6 +12,12 @@ export async function POST(
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    // Each call fans out into server-side ESPN requests, so an unthrottled
+    // caller turns this into a traffic amplifier from our IP — and getting
+    // rate-limited by ESPN would starve settlement of scores.
+    const limited = await enforceRateLimit(request, "games:sync", RATE_LIMITS.gamesSync);
+    if (limited) return limited;
 
     const { poolId } = await params;
     const supabase = await createClient();

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createPoolSchema } from "@/lib/validations";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import {
   attachFinancialsToPools,
   getPoolsFinancials,
@@ -90,6 +91,11 @@ export async function POST(request: Request) {
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    // Pool creation runs with the service role by design, so RLS does not bound
+    // how many pools one account can spawn. This does.
+    const limited = await enforceRateLimit(request, "pool:create", RATE_LIMITS.poolCreate);
+    if (limited) return limited;
 
     const supabase = await createClient();
 

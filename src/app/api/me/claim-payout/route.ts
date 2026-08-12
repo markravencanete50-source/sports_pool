@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 /**
  * Claim an approved winning into the user's balance.
@@ -61,6 +62,12 @@ export async function POST(request: Request) {
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    // The claim itself is atomic and idempotent, so this guards load rather
+    // than correctness: a money endpoint should not double as a free way to
+    // hammer the database.
+    const limited = await enforceRateLimit(request, "payout:claim", RATE_LIMITS.claimPayout);
+    if (limited) return limited;
 
     const supabase = await createClient();
 

@@ -242,4 +242,23 @@ export const RATE_LIMITS = {
    * for a human, fatal to a script.
    */
   chatPost: { limit: 30, windowMs: 5 * 60_000 },
+  /**
+   * Pool creation. Any authenticated user may create pools (the route does this
+   * with the service role by design), so nothing else bounds how many a single
+   * account can spawn. Unthrottled it is public-lobby spam.
+   */
+  poolCreate: { limit: 20, windowMs: 60 * 60_000 },
+  /**
+   * Pool game sync. Each call makes SERVER-SIDE requests to ESPN, so this is a
+   * request amplifier: one cheap call from a client becomes outbound traffic
+   * from our IP, and hammering it risks ESPN rate-limiting the whole app —
+   * which is what settlement reads scores from.
+   */
+  gamesSync: { limit: 20, windowMs: 60 * 60_000 },
+  /**
+   * Payout claiming. The claim itself is atomic and idempotent, so this is not
+   * guarding correctness — it stops a money endpoint from being used as a free
+   * database-load generator.
+   */
+  claimPayout: { limit: 30, windowMs: 60 * 60_000 },
 } as const;
