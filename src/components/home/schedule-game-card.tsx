@@ -13,7 +13,7 @@ const LogoOrPlaceholder = ({ src }: { src: string | null }) => {
   return (
     <div className="w-12 h-12 flex-shrink-0 flex items-center justify-center">
       {showImg ? (
-        // eslint-disable-next-line @next/next/no-img-element -- remote host not allow-listed for the image optimizer; small asset
+        // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions -- remote host not allow-listed for the image optimizer; onError is a resource-load event (fallback swap), not a user interaction
         <img
           src={src}
           alt=""

@@ -13,7 +13,7 @@ const LogoOrPlaceholder = ({ src }: { src: string | null }) => {
   return (
     <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center">
       {showImg ? (
-        // eslint-disable-next-line @next/next/no-img-element -- remote host not allow-listed for the image optimizer; small asset
+        // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions -- remote host not allow-listed for the image optimizer; onError is a resource-load event (fallback swap), not a user interaction
         <img
           src={src}
           alt=""
@@ -52,14 +52,28 @@ export function GameSelectionItem({
   const awayLogoUrl = awayTeam.logo || (awayTeamId ? getTeamLogoUrl(awayTeamId) : null);
 
   return (
+    /*
+     * role="button" + manual key handling rather than a native <button>: the
+     * card CONTAINS the per-team pick buttons, and interactive elements cannot
+     * nest. The card itself toggles selection; inner controls stopPropagation.
+     */
     <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
       className={cn(
-        "bg-white/5 backdrop-blur-sm border rounded-xl p-4 transition-all duration-200 group relative overflow-hidden cursor-pointer",
+        "bg-white/5 backdrop-blur-sm border rounded-xl p-4 transition-all duration-200 group relative overflow-hidden cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         isSelected
           ? "bg-primary/10 border-primary/50 shadow-lg shadow-primary/10"
           : "border-white/10 hover:border-white/20 hover:bg-white/10",
       )}
       onClick={onToggleSelection}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onToggleSelection();
+        }
+      }}
     >
       <div className="relative">
         {/* Header: Time and Odds */}
@@ -78,9 +92,10 @@ export function GameSelectionItem({
         {/* Teams with Prediction Options */}
         <div className="space-y-3 mb-3">
           {/* Away Team - Win Option */}
-          <div
+          <button
+            type="button"
             className={cn(
-              "flex items-center gap-3 cursor-pointer transition-all rounded-lg p-2.5 border-2",
+              "w-full text-left flex items-center gap-3 cursor-pointer transition-all rounded-lg p-2.5 border-2",
               pickEnabled &&
                 isSelected &&
                 (selectedPrediction === "away_win" ||
@@ -118,12 +133,13 @@ export function GameSelectionItem({
                   <div className="w-2 h-2 rounded-full bg-white"></div>
                 </div>
               )}
-          </div>
+          </button>
 
           {/* VS (or Tie) Option */}
-          <div
+          <button
+            type="button"
             className={cn(
-              "flex items-center justify-center gap-2 cursor-pointer transition-all rounded-lg p-2.5 border-2",
+              "w-full flex items-center justify-center gap-2 cursor-pointer transition-all rounded-lg p-2.5 border-2",
               pickEnabled && isSelected && selectedPrediction === "tie"
                 ? "bg-yellow-500/20 text-yellow-500 border-yellow-500 shadow-lg scale-[1.02]"
                 : isSelected
@@ -148,12 +164,13 @@ export function GameSelectionItem({
                 <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
               </div>
             )}
-          </div>
+          </button>
 
           {/* Home Team - Win Option */}
-          <div
+          <button
+            type="button"
             className={cn(
-              "flex items-center gap-3 cursor-pointer transition-all rounded-lg p-2.5 border-2",
+              "w-full text-left flex items-center gap-3 cursor-pointer transition-all rounded-lg p-2.5 border-2",
               pickEnabled &&
                 isSelected &&
                 (selectedPrediction === "home_win" ||
@@ -191,7 +208,7 @@ export function GameSelectionItem({
                   <div className="w-2 h-2 rounded-full bg-white"></div>
                 </div>
               )}
-          </div>
+          </button>
         </div>
 
         {/* Total Score Prediction (Optional Tie-Breaker) - only when picking */}
@@ -229,7 +246,10 @@ export function GameSelectionItem({
           <div className="text-xs text-muted-foreground">
             {format(gameDate, "EEE, MMM d")}
           </div>
-          <div
+          <button
+            type="button"
+            aria-pressed={isSelected}
+            aria-label={isSelected ? "Deselect this game" : "Select this game"}
             className={cn(
               "w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all cursor-pointer",
               isSelected
@@ -243,7 +263,7 @@ export function GameSelectionItem({
             onMouseDown={(e) => e.stopPropagation()}
           >
             <Check className="w-3.5 h-3.5" />
-          </div>
+          </button>
         </div>
 
         {pickEnabled && isSelected && !selectedTeamId && (

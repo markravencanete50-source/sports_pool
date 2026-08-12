@@ -261,4 +261,58 @@ export const RATE_LIMITS = {
    * database-load generator.
    */
   claimPayout: { limit: 30, windowMs: 60 * 60_000 },
+  /**
+   * Admin payout completion. Each call can move real money out through PayPal.
+   * The route is already idempotent per payout request, so this is not guarding
+   * correctness either — it bounds how fast a stolen admin session can drain
+   * the float. Set generously on purpose: throttling an admin out of paying
+   * legitimate withdrawals is a worse failure than the abuse it prevents, and
+   * the abuse already requires a compromised admin account.
+   */
+  payoutComplete: { limit: 120, windowMs: 60 * 60_000 },
+  /**
+   * Team roster sync. Same request-amplifier shape as gamesSync: one cheap
+   * inbound call becomes outbound ESPN traffic from our IP.
+   */
+  teamsSync: { limit: 10, windowMs: 60 * 60_000 },
+  /**
+   * Sending pool invitations. Each call writes invitation rows and notifies
+   * OTHER users, so unthrottled this is a spam vector pointed at your own
+   * userbase rather than at the database.
+   */
+  inviteSend: { limit: 30, windowMs: 60 * 60_000 },
+  /** Accepting or declining an invitation — state churn on someone else's pool. */
+  invitationRespond: { limit: 60, windowMs: 60 * 60_000 },
+  /**
+   * Marking notifications read. Legitimately high volume — opening a busy
+   * inbox fires one call per item — so this sits well above human use and only
+   * cuts off a loop.
+   */
+  notificationRead: { limit: 240, windowMs: 60 * 60_000 },
+  /**
+   * Pick writes: the hottest authenticated path in the app. Up to 9 games x 3
+   * cards, freely re-edited until kickoff, and because every bucket here is
+   * keyed by client IP several users may legitimately share one (household,
+   * campus, office NAT). Deliberately generous — the goal is to stop a script,
+   * not a family.
+   */
+  cardPicks: { limit: 300, windowMs: 60 * 60_000 },
+  /** Card locking — once per card in normal use. */
+  cardLock: { limit: 60, windowMs: 60 * 60_000 },
+  /** Pool edit/delete by its owner or an admin. */
+  poolMutate: { limit: 60, windowMs: 60 * 60_000 },
+  /**
+   * Admin configuration writes — role changes, pool settings, manual game
+   * outcomes. Few admins and low legitimate volume, but each is a lever on
+   * money or privilege. Same reasoning as payoutComplete on the ceiling:
+   * high enough that real admin work never trips it.
+   */
+  adminMutate: { limit: 120, windowMs: 60 * 60_000 },
+  /**
+   * Client error reports (/api/client-errors). Unauthenticated by design —
+   * the reports that matter most come from broken sessions — so the limit is
+   * what bounds the blast radius. A render-error loop on one client is capped
+   * here; a real user hitting distinct errors never gets close.
+   */
+  clientError: { limit: 20, windowMs: 10 * 60_000 },
 } as const;

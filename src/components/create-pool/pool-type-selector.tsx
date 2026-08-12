@@ -10,10 +10,12 @@ export function PoolTypeSelector({
 }: PoolTypeSelectorProps) {
   return (
     <div className="grid grid-cols-2 gap-4">
-      <div
+      <button
+        type="button"
         onClick={() => onTypeChange("public")}
+        aria-pressed={poolType === "public"}
         className={cn(
-          "cursor-pointer p-4 rounded-xl border transition-all duration-300 flex flex-col gap-2 group",
+          "w-full text-left cursor-pointer p-4 rounded-xl border transition-all duration-300 flex flex-col gap-2 group",
           poolType === "public"
             ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(220,20,60,0.2)]"
             : "bg-black/20 border-white/10 hover:bg-white/10 hover:border-primary/50 hover:shadow-[0_0_20px_rgba(220,20,60,0.15)]",
@@ -35,12 +37,14 @@ export function PoolTypeSelector({
             Open to everyone. Climb the global leaderboard.
           </div>
         </div>
-      </div>
+      </button>
 
-      <div
+      <button
+        type="button"
         onClick={() => onTypeChange("private")}
+        aria-pressed={poolType === "private"}
         className={cn(
-          "cursor-pointer p-4 rounded-xl border transition-all duration-300 flex flex-col gap-2 group",
+          "w-full text-left cursor-pointer p-4 rounded-xl border transition-all duration-300 flex flex-col gap-2 group",
           poolType === "private"
             ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(220,20,60,0.2)]"
             : "bg-black/20 border-white/10 hover:bg-white/10 hover:border-primary/50 hover:shadow-[0_0_20px_rgba(220,20,60,0.15)]",
@@ -62,7 +66,7 @@ export function PoolTypeSelector({
             Invite-only. Play with your friends and family.
           </div>
         </div>
-      </div>
+      </button>
     </div>
   );
 }

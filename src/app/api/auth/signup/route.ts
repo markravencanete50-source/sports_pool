@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { signupSchema } from "@/lib/validations";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { checkPasswordBreached } from "@/lib/password-breach";
 import { assertSameOrigin } from "@/lib/request-guards";
 import { NextResponse } from "next/server";
 
@@ -15,6 +16,24 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const validatedData = signupSchema.parse(body);
+
+    /*
+     * Screen against known-breached passwords (HIBP k-anonymity — the password
+     * never leaves this server; see src/lib/password-breach.ts). Supabase's
+     * native version of this check is plan-gated, so it runs here instead.
+     * Fails open if HIBP is unreachable; the zod strength policy above still
+     * applies unconditionally.
+     */
+    const breach = await checkPasswordBreached(validatedData.password);
+    if (breach.breached) {
+      return NextResponse.json(
+        {
+          error:
+            "That password has appeared in a known data breach and cannot be used here. Please choose a different one.",
+        },
+        { status: 400 }
+      );
+    }
 
     const supabase = await createClient();
 

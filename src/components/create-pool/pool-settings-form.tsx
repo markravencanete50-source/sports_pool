@@ -12,10 +12,14 @@ export function PoolSettingsForm({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div className="space-y-2">
-        <label className="text-xs font-mono uppercase text-muted-foreground flex items-center gap-2">
+        <label
+          htmlFor="pool-entry-fee"
+          className="text-xs font-mono uppercase text-muted-foreground flex items-center gap-2"
+        >
           <DollarSign className="w-3 h-3" /> Entry Fee ($)
         </label>
         <input
+          id="pool-entry-fee"
           type="number"
           min="0"
           value={entryFee}
@@ -25,10 +29,14 @@ export function PoolSettingsForm({
       </div>
 
       <div className="space-y-2">
-        <label className="text-xs font-mono uppercase text-muted-foreground flex items-center gap-2">
+        <label
+          htmlFor="pool-max-participants"
+          className="text-xs font-mono uppercase text-muted-foreground flex items-center gap-2"
+        >
           <Users className="w-3 h-3" /> Max Participants
         </label>
         <select
+          id="pool-max-participants"
           value={maxParticipants}
           onChange={(e) => onMaxParticipantsChange(e.target.value)}
           className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-primary transition-all appearance-none"

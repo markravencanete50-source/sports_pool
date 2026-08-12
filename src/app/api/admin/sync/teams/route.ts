@@ -6,11 +6,15 @@ import { fetchNflTeamsFromApi } from "@/lib/fetch-nfl-teams";
 import { TEAM_MAP } from "@/lib/constants";
 import { getTeamRowsForAbbrevs } from "@/lib/teams-seed";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "teams:sync", RATE_LIMITS.teamsSync);
+    if (limited) return limited;
 
     const supabase = await createClient();
     const auth = await requireAdmin(supabase);

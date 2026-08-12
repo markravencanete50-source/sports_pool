@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { payoutAccountSchema } from "@/lib/validations";
 
 function maskEmail(email: string): string {
   const at = email.indexOf("@");
@@ -83,24 +84,14 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const method = body.method;
-    const identifier =
-      typeof body.identifier === "string" ? body.identifier.trim() : "";
-
-    if (method !== "paypal") {
+    const parsed = payoutAccountSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Only PayPal is supported for now" },
+        { error: parsed.error.issues[0]?.message ?? "Invalid payout account" },
         { status: 400 }
       );
     }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(identifier)) {
-      return NextResponse.json(
-        { error: "Enter a valid PayPal email address" },
-        { status: 400 }
-      );
-    }
+    const { identifier } = parsed.data;
 
     const now = new Date().toISOString();
     const { error: upsertError } = await supabase
@@ -109,7 +100,7 @@ export async function PUT(request: Request) {
         {
           user_id: user.id,
           method: "paypal",
-          identifier: identifier.toLowerCase(),
+          identifier, // schema already trims + lowercases
           updated_at: now,
         },
         { onConflict: "user_id" }

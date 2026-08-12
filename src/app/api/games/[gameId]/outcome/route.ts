@@ -4,6 +4,7 @@ import { GameStatus } from "@/lib/enums";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 /**
  * Manually correct a game's outcome. ADMIN ONLY.
@@ -47,6 +48,9 @@ export async function PUT(
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "admin:mutate", RATE_LIMITS.adminMutate);
+    if (limited) return limited;
 
     const { gameId } = await params;
     const supabase = await createClient();

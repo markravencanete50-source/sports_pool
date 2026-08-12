@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 const submitCardPickSchema = z.object({
   gameId: z.string(),
@@ -16,6 +17,9 @@ export async function POST(
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "card:picks", RATE_LIMITS.cardPicks);
+    if (limited) return limited;
 
     const { poolId, cardId } = await params;
     const supabase = await createClient();

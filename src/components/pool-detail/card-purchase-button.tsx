@@ -53,6 +53,12 @@ export function CardPurchaseButton({
 
       {isOpen && (
         <div
+          /*
+           * Backdrop click-to-close is a pointer convenience; the keyboard
+           * path is the Cancel button inside the dialog. presentation opts
+           * this wrapper out of the a11y tree rather than faking a button.
+           */
+          role="presentation"
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsOpen(false);

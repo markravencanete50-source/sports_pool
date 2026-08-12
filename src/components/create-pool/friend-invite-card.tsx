@@ -10,10 +10,12 @@ export function FriendInviteCard({
   onToggle,
 }: FriendInviteCardProps) {
   return (
-    <div
+    <button
+      type="button"
       onClick={onToggle}
+      aria-pressed={isInvited}
       className={cn(
-        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all duration-200",
+        "w-full text-left flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all duration-200",
         isInvited
           ? "bg-primary/10 border-primary"
           : "bg-black/20 border-white/5 hover:bg-white/15 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)]",
@@ -33,6 +35,6 @@ export function FriendInviteCard({
       ) : (
         <Plus className="w-4 h-4 text-muted-foreground" />
       )}
-    </div>
+    </button>
   );
 }

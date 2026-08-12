@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { MINIMUM_PAYOUT_AMOUNT } from "@/lib/constants";
+import { payoutRequestSchema } from "@/lib/validations";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/request-guards";
 
@@ -54,10 +55,9 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const amountParam = body.amount;
-    const amount =
-      typeof amountParam === "number" ? amountParam : parseFloat(amountParam);
-    if (!Number.isFinite(amount) || amount < MINIMUM_PAYOUT_AMOUNT) {
+    const parsed = payoutRequestSchema.safeParse(body);
+    const amount = parsed.success ? parsed.data.amount : NaN;
+    if (!parsed.success || amount < MINIMUM_PAYOUT_AMOUNT) {
       return NextResponse.json(
         { error: `Minimum payout amount is $${MINIMUM_PAYOUT_AMOUNT}` },
         { status: 400 }

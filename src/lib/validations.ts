@@ -121,6 +121,51 @@ export const confirmPaymentSchema = z.object({
     .startsWith("cs_", "Invalid Stripe session ID"),
 });
 
+/*
+ * Money / account-mutation bodies. These five routes previously hand-rolled
+ * their checks (`typeof body.x === "string"` and friends), which worked but
+ * left no shared contract and made each route's error shape subtly different.
+ * Everything a client can PUT/POST/PATCH now parses through a schema here.
+ */
+
+export const payoutAccountSchema = z.object({
+  // Only PayPal today. z.literal keeps the 400 message honest if a client
+  // sends another method, rather than silently coercing.
+  method: z.literal("paypal", {
+    errorMap: () => ({ message: "Only PayPal is supported for now" }),
+  }),
+  identifier: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Enter a valid PayPal email address")
+    .max(320),
+});
+
+export const payoutRequestSchema = z.object({
+  // coerce: the UI has historically sent the amount as a string.
+  // The business floor (MINIMUM_PAYOUT_AMOUNT) stays in the route so the
+  // error message can quote the configured value.
+  amount: z.coerce.number().finite().positive(),
+});
+
+export const claimPayoutSchema = z.object({
+  poolId: z.string().uuid("Invalid pool ID format"),
+});
+
+export const updateUserRoleSchema = z.object({
+  role: z.enum(["user", "admin"], {
+    errorMap: () => ({ message: "Invalid role. Use 'admin' or 'user'." }),
+  }),
+});
+
+export const completePayoutSchema = z.object({
+  comment: z.string().trim().max(500, "Comment too long").optional(),
+});
+
+/** Route params that must be UUIDs (notification ids, invitation ids, …). */
+export const uuidParamSchema = z.string().uuid("Invalid id format");
+
 export type SignupInput = z.infer<typeof signupSchema>;
 export type SigninInput = z.infer<typeof signinSchema>;
 export type NewsletterSignupInput = z.infer<typeof newsletterSignupSchema>;

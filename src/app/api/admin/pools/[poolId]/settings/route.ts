@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { updatePoolSchema } from "@/lib/validations";
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 /**
  * SECURITY: this route lives under /api/admin/ but authorized on pool
@@ -24,6 +25,9 @@ export async function PUT(
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "admin:mutate", RATE_LIMITS.adminMutate);
+    if (limited) return limited;
 
     const { poolId } = await params;
     const supabase = await createClient();

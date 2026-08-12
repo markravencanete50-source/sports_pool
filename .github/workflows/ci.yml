@@ -48,7 +48,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Settlement regression tests
+      - name: Unit + settlement regression tests
         run: npm run test
 
       - name: Build

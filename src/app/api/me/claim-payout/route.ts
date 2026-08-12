@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/request-guards";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { claimPayoutSchema } from "@/lib/validations";
 
 /**
  * Claim an approved winning into the user's balance.
@@ -80,10 +81,14 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const poolId = body.poolId;
-    if (!poolId || typeof poolId !== "string") {
-      return NextResponse.json({ error: "poolId is required" }, { status: 400 });
+    const parsed = claimPayoutSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "poolId is required" },
+        { status: 400 }
+      );
     }
+    const { poolId } = parsed.data;
 
     const { data, error } = await supabase.rpc("claim_pool_payout", {
       p_pool_id: poolId,

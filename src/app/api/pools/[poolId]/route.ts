@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPoolFinancials } from "@/lib/pool-financials";
 import { updatePoolWithGamesSchema } from "@/lib/validations";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 // SECURITY: never embed `users(*)`. That table carries email, role and balance,
@@ -79,6 +80,9 @@ export async function PATCH(
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "pool:mutate", RATE_LIMITS.poolMutate);
+    if (limited) return limited;
 
     const { poolId } = await params;
     const supabase = await createClient();
@@ -267,6 +271,9 @@ export async function DELETE(
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "pool:mutate", RATE_LIMITS.poolMutate);
+    if (limited) return limited;
 
     const { poolId } = await params;
     const supabase = await createClient();

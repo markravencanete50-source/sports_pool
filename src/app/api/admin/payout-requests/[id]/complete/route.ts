@@ -8,6 +8,9 @@ import {
   assertPayoutModeSafe,
 } from "@/lib/paypal";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { completePayoutSchema, uuidParamSchema } from "@/lib/validations";
+import { recordAppError, logEvent } from "@/lib/log";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function PATCH(
   request: Request,
@@ -17,15 +20,31 @@ export async function PATCH(
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
 
+    const limited = await enforceRateLimit(request, "payout:complete", RATE_LIMITS.payoutComplete);
+    if (limited) return limited;
+
     const { id: payoutRequestId } = await params;
     const supabase = await createClient();
     const auth = await requireAdmin(supabase);
     if (auth instanceof NextResponse) return auth;
     const { user } = auth;
 
+    if (!uuidParamSchema.safeParse(payoutRequestId).success) {
+      return NextResponse.json(
+        { error: "Invalid payout request id" },
+        { status: 400 }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
-    const comment =
-      typeof body.comment === "string" ? body.comment.trim() || null : null;
+    const parsed = completePayoutSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid request body" },
+        { status: 400 }
+      );
+    }
+    const comment = parsed.data.comment || null;
 
     const admin = createAdminClient();
 
@@ -230,6 +249,11 @@ export async function PATCH(
         paypalError instanceof Error
           ? paypalError.message
           : "PayPal payout failed";
+      logEvent("error", "payout.paypal_failed", {
+        payoutRequestId,
+        amount,
+        reason: message,
+      });
 
       // Compensating action: the money never left, so return the reservation.
       const { error: refundError } = await admin.rpc("credit_user_balance", {
@@ -241,6 +265,14 @@ export async function PATCH(
           `[payout-complete] CRITICAL: debited ${amount} for user ${payoutRequest.user_id} ` +
             `but PayPal failed AND the refund failed (${refundError.message}). MANUAL CORRECTION REQUIRED.`
         );
+        await recordAppError({
+          source: "server",
+          message:
+            `CRITICAL payout state: debited ${amount} for user ${payoutRequest.user_id}, ` +
+            `PayPal failed AND refund failed (${refundError.message}). Manual correction required.`,
+          digest: payoutRequestId,
+          url: "/api/admin/payout-requests/complete",
+        });
       }
 
       await admin

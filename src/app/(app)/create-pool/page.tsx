@@ -253,10 +253,14 @@ export default function CreatePool() {
                 className="glass-panel p-8 rounded-2xl space-y-8"
               >
                 <div className="space-y-2">
-                  <label className="text-xs font-mono uppercase text-muted-foreground">
+                  <label
+                    htmlFor="pool-name"
+                    className="text-xs font-mono uppercase text-muted-foreground"
+                  >
                     Pool Name
                   </label>
                   <input
+                    id="pool-name"
                     type="text"
                     required
                     value={formData.name}

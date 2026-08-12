@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { uuidParamSchema } from "@/lib/validations";
 
 export async function POST(
   request: Request,
@@ -10,7 +12,17 @@ export async function POST(
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
 
-    const { poolId, cardId } = await params;
+    const limited = await enforceRateLimit(request, "card:lock", RATE_LIMITS.cardLock);
+    if (limited) return limited;
+
+    const rawParams = await params;
+    const poolParsed = uuidParamSchema.safeParse(rawParams.poolId);
+    const cardParsed = uuidParamSchema.safeParse(rawParams.cardId);
+    if (!poolParsed.success || !cardParsed.success) {
+      return NextResponse.json({ error: "Card not found" }, { status: 404 });
+    }
+    const poolId = poolParsed.data;
+    const cardId = cardParsed.data;
     const supabase = await createClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();

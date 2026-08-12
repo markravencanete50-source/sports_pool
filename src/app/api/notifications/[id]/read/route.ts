@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { uuidParamSchema } from "@/lib/validations";
 
 /**
  * Mark one notification as read.
@@ -19,9 +21,6 @@ import { assertSameOrigin } from "@/lib/request-guards";
  * than a silent success.
  */
 
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -29,6 +28,9 @@ export async function PUT(
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "notification:read", RATE_LIMITS.notificationRead);
+    if (limited) return limited;
 
     const { id } = await params;
     const supabase = await createClient();
@@ -42,7 +44,7 @@ export async function PUT(
     }
 
     // Postgres raises 22P02 on a malformed uuid, which would surface as a 500.
-    if (!UUID.test(id)) {
+    if (!uuidParamSchema.safeParse(id).success) {
       return NextResponse.json(
         { error: "Invalid notification id" },
         { status: 400 }

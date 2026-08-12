@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fulfillCardPurchase } from "@/lib/fulfill-card-purchase";
+import { recordAppError, logEvent } from "@/lib/log";
 import { getStripe } from "@/lib/stripe/config";
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
@@ -72,9 +73,16 @@ export async function POST(request: Request) {
       // A charge landed that we could not turn into a card (pool closed, card
       // limit hit). Retrying will not fix it — ACK so Stripe stops, and log
       // loudly for operator refund.
-      console.error(
-        `[stripe-webhook] FULFILMENT FAILED — MANUAL REVIEW REQUIRED: ${result.error}`
-      );
+      logEvent("error", "stripe.fulfilment_failed", {
+        sessionId,
+        reason: result.error,
+      });
+      await recordAppError({
+        source: "server",
+        message: `Stripe fulfilment failed — manual refund review required: ${result.error}`,
+        digest: sessionId,
+        url: "/api/stripe/webhook",
+      });
       return NextResponse.json({ received: true, fulfilled: false });
     }
 

@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { uuidParamSchema } from "@/lib/validations";
 
 export async function POST(
   request: Request,
@@ -10,7 +12,15 @@ export async function POST(
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
 
-    const { id: invitationId } = await params;
+    const limited = await enforceRateLimit(request, "invitation:respond", RATE_LIMITS.invitationRespond);
+    if (limited) return limited;
+
+    const rawId = (await params).id;
+    const parsedId = uuidParamSchema.safeParse(rawId);
+    if (!parsedId.success) {
+      return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
+    }
+    const invitationId = parsedId.data;
     const supabase = await createClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();

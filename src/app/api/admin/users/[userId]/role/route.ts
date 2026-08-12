@@ -3,12 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
 import { assertSameOrigin } from "@/lib/request-guards";
-
-const ROLES = ["user", "admin"] as const;
-
-function isRole(value: unknown): value is (typeof ROLES)[number] {
-  return typeof value === "string" && ROLES.includes(value as (typeof ROLES)[number]);
-}
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { updateUserRoleSchema, uuidParamSchema } from "@/lib/validations";
 
 export async function PATCH(
   request: Request,
@@ -18,20 +14,28 @@ export async function PATCH(
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
 
+    const limited = await enforceRateLimit(request, "admin:mutate", RATE_LIMITS.adminMutate);
+    if (limited) return limited;
+
     const { userId } = await params;
     const supabase = await createClient();
     const auth = await requireAdmin(supabase);
     if (auth instanceof NextResponse) return auth;
     const { user } = auth;
 
+    if (!uuidParamSchema.safeParse(userId).success) {
+      return NextResponse.json({ error: "Invalid user id" }, { status: 400 });
+    }
+
     const body = await request.json().catch(() => ({}));
-    const role = body.role;
-    if (!isRole(role)) {
+    const parsed = updateUserRoleSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid role. Use 'admin' or 'user'." },
+        { error: parsed.error.issues[0]?.message ?? "Invalid role" },
         { status: 400 }
       );
     }
+    const { role } = parsed.data;
 
     if (userId === user.id && role === "user") {
       return NextResponse.json(

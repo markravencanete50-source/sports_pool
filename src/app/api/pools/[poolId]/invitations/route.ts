@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 const inviteEmailsSchema = z.object({
   emails: z.array(z.string().email()).min(1, "At least one email is required"),
@@ -14,6 +15,9 @@ export async function POST(
   try {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
+
+    const limited = await enforceRateLimit(request, "invite:send", RATE_LIMITS.inviteSend);
+    if (limited) return limited;
 
     const { poolId } = await params;
     const supabase = await createClient();
