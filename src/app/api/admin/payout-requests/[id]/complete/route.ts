@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
+import { recordAdminAction } from "@/lib/compliance/audit";
 import {
   createPayPalPayout,
   isPayPalConfigured,
@@ -25,7 +26,7 @@ export async function PATCH(
 
     const { id: payoutRequestId } = await params;
     const supabase = await createClient();
-    const auth = await requireAdmin(supabase);
+    const auth = await requireAdmin(supabase, { requireMfa: true });
     if (auth instanceof NextResponse) return auth;
     const { user } = auth;
 
@@ -346,6 +347,19 @@ export async function PATCH(
           `MANUAL RECONCILIATION REQUIRED.`
       );
     }
+
+    await recordAdminAction({
+      actorId: user.id,
+      action: "payout.completed",
+      targetType: "payout_request",
+      targetId: payoutRequestId,
+      after: {
+        amount,
+        paypalBatchId: batchId,
+        recipient: payoutRequest.user_id,
+        finalBalance,
+      },
+    });
 
     return NextResponse.json(
       {

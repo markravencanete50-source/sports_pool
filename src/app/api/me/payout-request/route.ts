@@ -4,6 +4,7 @@ import { MINIMUM_PAYOUT_AMOUNT } from "@/lib/constants";
 import { payoutRequestSchema } from "@/lib/validations";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { assertCompliance } from "@/lib/compliance";
 
 export async function GET() {
   try {
@@ -63,6 +64,20 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    /*
+     * Eligibility gate on the way out. `payout` additionally evaluates the KYC
+     * threshold: once cumulative withdrawals in a rolling year reach the
+     * configured figure, identity verification is required before more money
+     * leaves. Checked before the balance is touched.
+     */
+    const complianceBlock = await assertCompliance({
+      userId: user.id,
+      headers: request.headers,
+      action: "payout",
+      amount,
+    });
+    if (complianceBlock) return complianceBlock;
 
     const { data: profile, error: profileError } = await supabase
       .from("users")

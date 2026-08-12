@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
+import { recordAdminAction } from "@/lib/compliance/audit";
 import { assertSameOrigin } from "@/lib/request-guards";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { updateUserRoleSchema, uuidParamSchema } from "@/lib/validations";
@@ -19,7 +20,7 @@ export async function PATCH(
 
     const { userId } = await params;
     const supabase = await createClient();
-    const auth = await requireAdmin(supabase);
+    const auth = await requireAdmin(supabase, { requireMfa: true });
     if (auth instanceof NextResponse) return auth;
     const { user } = auth;
 
@@ -68,6 +69,14 @@ export async function PATCH(
         { status: 400 }
       );
     }
+
+    await recordAdminAction({
+      actorId: user.id,
+      action: "user.role_changed",
+      targetType: "user",
+      targetId: userId,
+      after: { role },
+    });
 
     return NextResponse.json({ role }, { status: 200 });
   } catch {

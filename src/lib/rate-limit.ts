@@ -315,4 +315,26 @@ export const RATE_LIMITS = {
    * here; a real user hitting distinct errors never gets close.
    */
   clientError: { limit: 20, windowMs: 10 * 60_000 },
+  /**
+   * Responsible-gambling settings. Generous — a user adjusting limits or
+   * applying a self-exclusion must never be throttled out of protecting
+   * themselves — but bounded so the RPC cannot be used as a write amplifier.
+   */
+  responsibleGaming: { limit: 30, windowMs: 60 * 60_000 },
+  /**
+   * Subject access exports. Each one reads nine tables, so it is expensive;
+   * a person exercising a statutory right needs it a handful of times, not
+   * continuously.
+   */
+  dataExport: { limit: 5, windowMs: 60 * 60_000 },
+  /** Account deletion. Irreversible, so a low ceiling costs nothing. */
+  accountDeletion: { limit: 5, windowMs: 24 * 60 * 60_000 },
+  /** Starting MFA enrolment. Cheap, but no reason to allow a flood of factors. */
+  mfa: { limit: 10, windowMs: 60 * 60_000 },
+  /**
+   * Verifying a TOTP code. This one is a brute-force surface: six digits is a
+   * million combinations, and a 30-second window means an unthrottled attacker
+   * with a stolen password could grind it. Tight by design.
+   */
+  mfaVerify: { limit: 8, windowMs: 15 * 60_000 },
 } as const;

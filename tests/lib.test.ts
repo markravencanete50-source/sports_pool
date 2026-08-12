@@ -144,12 +144,57 @@ test("production CSP carries the nonce and never 'unsafe-inline' in script-src",
 // ─── validations: password policy + money schemas ────────────────────────────
 
 test("signup password policy enforces length, case mix and digit", () => {
-  const base = { name: "Test User", email: "t@example.com" };
+  // An adult DOB and accepted terms, so only the password varies.
+  const base = {
+    name: "Test User",
+    email: "t@example.com",
+    dateOfBirth: "1990-01-01",
+    acceptTerms: true as const,
+  };
   assert.ok(!signupSchema.safeParse({ ...base, password: "short1A" }).success);
   assert.ok(!signupSchema.safeParse({ ...base, password: "alllowercase1" }).success);
   assert.ok(!signupSchema.safeParse({ ...base, password: "ALLUPPERCASE1" }).success);
   assert.ok(!signupSchema.safeParse({ ...base, password: "NoDigitsHere" }).success);
   assert.ok(signupSchema.safeParse({ ...base, password: "GoodPassw0rd" }).success);
+});
+
+test("signup enforces the age gate server-side", () => {
+  const base = {
+    name: "Test User",
+    email: "t@example.com",
+    password: "GoodPassw0rd",
+    acceptTerms: true as const,
+  };
+  const yearsAgo = (n: number) => {
+    const d = new Date();
+    d.setUTCFullYear(d.getUTCFullYear() - n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  assert.ok(signupSchema.safeParse({ ...base, dateOfBirth: yearsAgo(30) }).success);
+  assert.ok(signupSchema.safeParse({ ...base, dateOfBirth: yearsAgo(18) }).success,
+    "exactly 18 is allowed");
+  assert.ok(!signupSchema.safeParse({ ...base, dateOfBirth: yearsAgo(17) }).success,
+    "17 is refused");
+
+  // The gate cannot be skipped by omitting or malforming the field.
+  assert.ok(!signupSchema.safeParse(base).success, "missing DOB is refused");
+  assert.ok(!signupSchema.safeParse({ ...base, dateOfBirth: "" }).success);
+  assert.ok(!signupSchema.safeParse({ ...base, dateOfBirth: "not-a-date" }).success);
+  assert.ok(!signupSchema.safeParse({ ...base, dateOfBirth: "2099-01-01" }).success,
+    "a future DOB is refused rather than treated as very old");
+});
+
+test("signup requires explicit acceptance of the terms", () => {
+  const base = {
+    name: "Test User",
+    email: "t@example.com",
+    password: "GoodPassw0rd",
+    dateOfBirth: "1990-01-01",
+  };
+  assert.ok(!signupSchema.safeParse(base).success, "omitted acceptance is refused");
+  assert.ok(!signupSchema.safeParse({ ...base, acceptTerms: false }).success);
+  assert.ok(signupSchema.safeParse({ ...base, acceptTerms: true }).success);
 });
 
 test("payout account schema normalises and rejects junk", () => {

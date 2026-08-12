@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/require-admin";
+import { recordAdminAction } from "@/lib/compliance/audit";
 import { updatePoolSchema } from "@/lib/validations";
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/request-guards";
@@ -32,7 +33,7 @@ export async function PUT(
     const { poolId } = await params;
     const supabase = await createClient();
 
-    const auth = await requireAdmin(supabase);
+    const auth = await requireAdmin(supabase, { requireMfa: true });
     if (auth instanceof NextResponse) return auth;
 
     const { data: pool } = await supabase
@@ -75,6 +76,14 @@ export async function PUT(
         { status: 400 }
       );
     }
+
+    await recordAdminAction({
+      actorId: auth.user.id,
+      action: "pool.settings_changed",
+      targetType: "pool",
+      targetId: poolId,
+      after: data as unknown,
+    });
 
     return NextResponse.json({ pool: data }, { status: 200 });
   } catch (error) {

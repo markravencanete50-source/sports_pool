@@ -5,6 +5,7 @@ import { getStripe } from "@/lib/stripe/config";
 import { createCheckoutSessionSchema } from "@/lib/validations";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { assertCompliance } from "@/lib/compliance";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -103,6 +104,20 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
+
+    /*
+     * Eligibility gate. Placed here, after the authoritative fee is known, so
+     * the deposit-limit check measures the amount actually about to be charged
+     * rather than whatever the client proposed. Everything upstream of this
+     * point is read-only; nothing has been charged yet when it refuses.
+     */
+    const complianceBlock = await assertCompliance({
+      userId: user.id,
+      headers: request.headers,
+      action: "deposit",
+      amount: authoritativeFee,
+    });
+    if (complianceBlock) return complianceBlock;
 
     const minimumEntryFee = platformSettings?.minimum_entry_fee ?? 20;
     if (authoritativeFee < minimumEntryFee) {

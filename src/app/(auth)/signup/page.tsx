@@ -12,6 +12,7 @@ import { extractErrorMessage } from "@/lib/error-utils";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { DASHBOARD_PATH } from "@/lib/routes";
+import Link from "next/link";
 
 export default function Signup() {
   const { signup, isSigningUp, signupError, isAuthenticated, isLoadingUser } =
@@ -95,6 +96,40 @@ export default function Signup() {
           {...register("password")}
           error={errors.password?.message}
         />
+        {/*
+          Age gate. The browser control is a convenience — the same date is
+          re-validated server-side by signupSchema, and every paid action
+          re-checks it against the minimum age for the player's actual
+          jurisdiction, so editing this field in devtools buys nothing.
+        */}
+        <FormInput
+          label="Date of birth"
+          type="date"
+          max={new Date().toISOString().slice(0, 10)}
+          {...register("dateOfBirth")}
+          error={errors.dateOfBirth?.message}
+        />
+
+        <div className="space-y-2">
+          <div className="flex items-start gap-3">
+            <input
+              id="accept-terms"
+              type="checkbox"
+              {...register("acceptTerms")}
+              className="mt-1 size-4 shrink-0 rounded border-white/20 bg-black/20 accent-primary focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <label htmlFor="accept-terms" className="text-xs text-muted-foreground leading-relaxed">
+              I am of legal age in my jurisdiction and I accept the{" "}
+              <Link href="/terms" className="text-primary hover:underline">Terms</Link>,{" "}
+              <Link href="/contest-rules" className="text-primary hover:underline">Contest Rules</Link>{" "}
+              and <Link href="/privacy" className="text-primary hover:underline">Privacy Policy</Link>.
+            </label>
+          </div>
+          {errors.acceptTerms?.message && (
+            <p className="text-xs text-destructive">{errors.acceptTerms.message}</p>
+          )}
+        </div>
+
         <button
           type="submit"
           disabled={isSigningUp}

@@ -162,6 +162,57 @@ export async function POST(request: Request) {
       }
     }
 
+    /*
+     * Compliance state is written with the privileged client, never by the
+     * caller: user_compliance carries no client write grant at all, precisely
+     * so a user cannot back-date their own age or pre-accept terms they were
+     * never shown. Registration geo is captured here because it is evidence of
+     * where the account was opened, which a regulator will ask for later.
+     */
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const { resolveGeo } = await import("@/lib/compliance/geo");
+      const geo = resolveGeo(request.headers);
+      const admin = createAdminClient();
+
+      const { data: settings } = await admin
+        .from("compliance_settings")
+        .select("current_tos_version")
+        .eq("id", true)
+        .maybeSingle();
+
+      const { error: complianceError } = await admin.from("user_compliance").upsert(
+        {
+          user_id: authData.user.id,
+          date_of_birth: validatedData.dateOfBirth,
+          age_verified_at: new Date().toISOString(),
+          registration_country: geo.country,
+          registration_region: geo.region,
+          tos_accepted_at: new Date().toISOString(),
+          tos_version:
+            (settings as { current_tos_version?: string } | null)?.current_tos_version ?? null,
+        },
+        { onConflict: "user_id" }
+      );
+
+      if (complianceError) {
+        /*
+         * The auth user and profile already exist at this point. Failing the
+         * whole signup would strand them; instead the account exists without
+         * compliance state, and the gate FAILS CLOSED on a missing date of
+         * birth, so no money can move until this is repaired. Loud log, and it
+         * lands in app_errors for an operator.
+         */
+        const { recordAppError } = await import("@/lib/log");
+        await recordAppError({
+          source: "server",
+          message: `Signup completed but compliance row failed for ${authData.user.id}: ${complianceError.message}`,
+          url: "/api/auth/signup",
+          userId: authData.user.id,
+        });
+      }
+    }
+
     // Return only what the UI needs. The full authData.user carries
     // app_metadata (including role), user_metadata and identity records — none
     // of which the client needs, and all of which is needless exposure.

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/request-guards";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { claimPayoutSchema } from "@/lib/validations";
+import { assertCompliance } from "@/lib/compliance";
 
 /**
  * Claim an approved winning into the user's balance.
@@ -89,6 +90,20 @@ export async function POST(request: Request) {
       );
     }
     const { poolId } = parsed.data;
+
+    /*
+     * A self-excluded player must not be able to pull winnings back into an
+     * account they have asked to be shut out of; the credit would be an
+     * invitation to return. Evaluated as `play` rather than `payout` — this
+     * moves money into the balance, not out of the platform, so the KYC
+     * threshold does not apply here. It applies at withdrawal.
+     */
+    const complianceBlock = await assertCompliance({
+      userId: user.id,
+      headers: request.headers,
+      action: "play",
+    });
+    if (complianceBlock) return complianceBlock;
 
     const { data, error } = await supabase.rpc("claim_pool_payout", {
       p_pool_id: poolId,

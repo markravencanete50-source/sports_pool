@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { poolConfig } from "./config";
 import { PoolType, PoolStatus, GamePrediction } from "./enums";
+import { isPlausibleDateOfBirth, meetsMinimumAge } from "./compliance/age";
 
 export const signupSchema = z.object({
   email: z
@@ -26,6 +27,23 @@ export const signupSchema = z.object({
     .regex(/[A-Z]/, "Password must contain an uppercase letter")
     .regex(/[0-9]/, "Password must contain a number"),
   name: z.string().min(2, "Name must be at least 2 characters"),
+  /*
+   * Age gate. 18 is the global floor enforced here; jurisdictions that require
+   * more (21 in several US states) are enforced at the money boundary by the
+   * compliance gate, which knows where the player actually is. Signing up is
+   * not itself a regulated act — buying a card is — so this schema deliberately
+   * enforces only the floor and leaves the higher bar to the gate.
+   *
+   * Validated server-side on every signup: this schema is the one the route
+   * parses, so a hand-rolled POST cannot skip it.
+   */
+  dateOfBirth: z
+    .string()
+    .refine((d) => isPlausibleDateOfBirth(d), "Enter a valid date of birth")
+    .refine((d) => meetsMinimumAge(d, 18), "You must be at least 18 to create an account"),
+  acceptTerms: z.literal(true, {
+    errorMap: () => ({ message: "You must accept the Terms and Contest Rules" }),
+  }),
 });
 
 export const signinSchema = z.object({

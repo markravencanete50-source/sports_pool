@@ -26,6 +26,62 @@ const PROTECTED_PATHS = [
 /** Signed-in AND role=admin. */
 const ADMIN_PATHS = ["/admin"];
 
+/**
+ * Paths where a paid contest is actually reachable, for geo-restriction.
+ *
+ * This is the OUTER layer of jurisdiction control and deliberately the weaker
+ * one: it keeps players in prohibited territories from wandering into the paid
+ * product, which is a courtesy and a licensing signal. It is NOT what protects
+ * the money — every money route independently calls assertCompliance(), which
+ * re-resolves the jurisdiction server-side. Someone who defeats this still
+ * cannot buy a card.
+ *
+ * The two layers have opposite failure postures on purpose. Here, over-blocking
+ * is expensive (a legitimate visitor hits a wall), so an unknown location passes
+ * through. At the money boundary, under-blocking is expensive (an unlicensed
+ * wager), so an unknown location fails closed. Neither posture is right in both
+ * places.
+ */
+const GEO_RESTRICTED_PATHS = [
+  "/dashboard",
+  "/public-pools",
+  "/private-pools",
+  "/create-pool",
+  "/pool",
+  "/my-games",
+  "/winnings",
+  "/invitations",
+];
+
+/**
+ * Blocked territories as "US-WA,US-NV,GB" — country, or country-region.
+ *
+ * A cache of jurisdiction_rules, not a second source of truth: the edge cannot
+ * afford a database round trip per request. When unset this layer is inert,
+ * which is the correct default — it fails OPEN here precisely because the money
+ * boundary fails CLOSED.
+ */
+function geoBlocklist(): Set<string> {
+  const raw = process.env.COMPLIANCE_BLOCKED_REGIONS?.trim();
+  if (!raw) return new Set();
+  return new Set(raw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
+}
+
+function isGeoBlocked(request: NextRequest): boolean {
+  // Only trust these headers behind Vercel's edge, which overwrites whatever
+  // the client sent. Off Vercel they are attacker-controlled.
+  if (!process.env.VERCEL) return false;
+  const blocklist = geoBlocklist();
+  if (blocklist.size === 0) return false;
+
+  const country = request.headers.get("x-vercel-ip-country")?.toUpperCase();
+  if (!country) return false;
+  const raw = request.headers.get("x-vercel-ip-country-region")?.toUpperCase() ?? "";
+  const region = raw.includes("-") ? raw.split("-").pop()! : raw;
+
+  return blocklist.has(country) || (Boolean(region) && blocklist.has(`${country}-${region}`));
+}
+
 export async function proxy(request: NextRequest) {
   /*
    * Per-request CSP nonce.
@@ -91,6 +147,16 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const matches = (paths: string[]) =>
     paths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+
+  if (matches(GEO_RESTRICTED_PATHS) && isGeoBlocked(request)) {
+    // Rewrite rather than redirect: the URL stays put, so a shared link does
+    // not turn into an explanation page for everyone who follows it.
+    return withCsp(
+      NextResponse.rewrite(new URL("/unavailable", request.url), {
+        request: { headers: requestHeaders },
+      })
+    );
+  }
 
   const needsAuth = matches(PROTECTED_PATHS);
   const needsAdmin = matches(ADMIN_PATHS);
