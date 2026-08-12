@@ -88,11 +88,18 @@ revoke insert, update, delete on public.platform_settings from anon, authenticat
 -- service_role (auth.uid() is null) and admins, so no server-side path changes;
 -- they only stop a client-scoped UPDATE from editing settlement/identity columns.
 -- ---------------------------------------------------------------------------
+-- NOTE the legacy name. The live database already carried a pools guard, but
+-- under the out-of-band name `trg_guard_pool_settlement` — no repo migration
+-- ever created that spelling. Dropping only the `..._columns` name would leave
+-- the legacy trigger in place and add a second one beside it, so the guard
+-- function would fire twice per UPDATE. Drop both spellings, then create
+-- exactly one. (Verified after apply: pools carries a single guard trigger.)
 drop trigger if exists trg_guard_invitation_immutable on public.pool_invitations;
 create trigger trg_guard_invitation_immutable
   before update on public.pool_invitations
   for each row execute function public.guard_invitation_immutable();
 
+drop trigger if exists trg_guard_pool_settlement         on public.pools;
 drop trigger if exists trg_guard_pool_settlement_columns on public.pools;
 create trigger trg_guard_pool_settlement_columns
   before update on public.pools
