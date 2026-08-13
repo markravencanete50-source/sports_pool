@@ -9,7 +9,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { signupSchema, SignupInput } from "@/lib/validations";
 import { toast } from "sonner";
 import { extractErrorMessage } from "@/lib/error-utils";
-import { useEffect } from "react";
+import { FormErrorDialog } from "@/components/auth/form-error-dialog";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DASHBOARD_PATH } from "@/lib/routes";
 import Link from "next/link";
@@ -33,15 +34,58 @@ export default function Signup() {
     resolver: zodResolver(signupSchema),
   });
 
+  /**
+   * Human labels for the modal, so it reads "Date of birth" rather than
+   * "dateOfBirth". Kept in form order — the list should match what the user is
+   * looking at, not object-key order.
+   */
+  const FIELD_LABELS: Record<string, string> = {
+    name: "Name",
+    email: "Email",
+    password: "Password",
+    dateOfBirth: "Date of birth",
+    acceptTerms: "Terms and Contest Rules",
+  };
+
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+  const [submitErrors, setSubmitErrors] = useState<
+    Array<{ field: string; message: string }>
+  >([]);
+
   const onSubmit = async (data: SignupInput) => {
     try {
       await signup(data);
       toast.success("A verification link has been sent to your email.");
       setTimeout(() => router.push(DASHBOARD_PATH), 500);
     } catch (err) {
+      // A server rejection (email already taken, breached password, an
+      // under-age date that only the server re-checks) deserves the same
+      // treatment as a client-side one: say so where the user is looking.
       const errorMessage = extractErrorMessage(err);
-      toast.error(errorMessage);
+      setSubmitErrors([{ field: "Could not create your account", message: errorMessage }]);
+      setErrorDialogOpen(true);
     }
+  };
+
+  /**
+   * Fired by react-hook-form when the schema rejects the submission.
+   *
+   * Without this the button silently does nothing: on a phone the offending
+   * field is usually scrolled off-screen, so the only feedback is red text the
+   * user cannot see. Focusing the first bad field is the other half — closing
+   * the modal should leave them somewhere useful, not back where they were.
+   */
+  const onInvalid = (formErrors: typeof errors) => {
+    const ordered = Object.keys(FIELD_LABELS)
+      .filter((key) => formErrors[key as keyof SignupInput])
+      .map((key) => ({
+        field: FIELD_LABELS[key],
+        message:
+          formErrors[key as keyof SignupInput]?.message ?? "This field is not valid.",
+      }));
+
+    setSubmitErrors(ordered);
+    setErrorDialogOpen(true);
   };
 
   // Show loading state while checking auth
@@ -68,7 +112,7 @@ export default function Signup() {
         footerText="Already have an account?"
         footerLinkText="Log In"
         footerLinkHref="/login"
-        onSubmit={handleSubmit(onSubmit)}
+        onSubmit={handleSubmit(onSubmit, onInvalid)}
       >
         {signupError && (
           <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg">
@@ -138,6 +182,12 @@ export default function Signup() {
           {isSigningUp ? "Creating account..." : "Create Account"}
         </button>
       </AuthForm>
+
+      <FormErrorDialog
+        open={errorDialogOpen}
+        onOpenChange={setErrorDialogOpen}
+        errors={submitErrors}
+      />
     </Layout>
   );
 }

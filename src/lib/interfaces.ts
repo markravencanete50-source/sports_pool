@@ -239,6 +239,13 @@ export interface FormInputProps
   label: string;
   rightElement?: ReactNode;
   error?: string;
+  /**
+   * Show a reveal toggle inside the field. Defaults to true for
+   * type="password", which is where it is actually wanted — someone typing a
+   * password they cannot see, against rules they cannot check, is the most
+   * common reason a signup is abandoned.
+   */
+  revealToggle?: boolean;
 }
 
 export interface ProgressCardProps {

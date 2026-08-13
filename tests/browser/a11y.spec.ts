@@ -189,6 +189,68 @@ test.describe("keyboard operability", () => {
   });
 });
 
+test.describe("password reveal", () => {
+  test("the password can be shown and hidden, by mouse and by keyboard", async ({ page }) => {
+    await gotoPublic(page, "/signup");
+
+    const password = page.getByLabel("Password", { exact: false });
+    const toggle = page.getByRole("button", { name: /show password/i });
+
+    await expect(password).toHaveAttribute("type", "password");
+    await expect(toggle).toBeVisible();
+    // aria-pressed is what makes the state audible; an icon alone is not.
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    await toggle.click();
+    await expect(password, "clicking reveal must switch the field to plain text").toHaveAttribute("type", "text");
+    await expect(page.getByRole("button", { name: /hide password/i })).toHaveAttribute("aria-pressed", "true");
+
+    // Reachable without a mouse, and Enter must not submit the form.
+    await page.getByRole("button", { name: /hide password/i }).focus();
+    await page.keyboard.press("Enter");
+    await expect(password).toHaveAttribute("type", "password");
+    await expect(page, "the reveal button must not submit the form").toHaveURL(/\/signup/);
+  });
+});
+
+test.describe("rejected submissions are visible", () => {
+  test("submitting an invalid form opens a dialog naming every problem", async ({ page }) => {
+    await gotoPublic(page, "/signup");
+
+    // Deliberately wrong in two different ways, one of which (the date) sits
+    // below the fold on a phone — the case where inline red text is invisible
+    // and the button appears to do nothing.
+    const tooYoung = new Date();
+    tooYoung.setFullYear(tooYoung.getFullYear() - 10);
+
+    await page.getByLabel("Name", { exact: false }).fill("Modal Tester");
+    await page.getByLabel("Email", { exact: false }).fill(`e2e-${Date.now()}@example.com`);
+    await page.getByLabel("Password", { exact: false }).fill("weak");
+    await page.getByLabel("Date of birth", { exact: false }).fill(tooYoung.toISOString().slice(0, 10));
+
+    await page.getByRole("button", { name: /create account/i }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog, "an invalid submission must say so, not silently do nothing").toBeVisible();
+
+    // Every failing field is named, including the ones off-screen.
+    await expect(dialog).toContainText(/password/i);
+    await expect(dialog).toContainText(/date of birth/i);
+    await expect(dialog).toContainText(/terms/i);
+
+    // Dismissible by keyboard, and it must not have created anything.
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(page).toHaveURL(/\/signup/);
+  });
+
+  test("the dialog does not appear when the form is valid so far", async ({ page }) => {
+    await gotoPublic(page, "/signup");
+    // Nothing submitted yet: no dialog should be mounted.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+});
+
 test.describe("the age gate is real in the browser", () => {
   test("an under-18 date of birth is rejected client-side with a visible reason", async ({ page }) => {
     await gotoPublic(page, "/signup");
