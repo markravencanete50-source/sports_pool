@@ -171,6 +171,42 @@ describe("e2e smoke", () => {
       }
     });
 
+    test("every admin route refuses an anonymous caller", { skip }, async () => {
+      // tests/routes.test.ts proves each of these CALLS requireAdmin. This
+      // proves the deployed build actually refuses — the static check cannot
+      // see a misconfigured middleware matcher or a bad build, and a sampled
+      // handful cannot see the one route that was missed.
+      const uuid = "00000000-0000-4000-8000-000000000000";
+      // Methods match what each handler actually exports. Using the wrong verb
+      // would return 405, which looks like a refusal but never reaches the auth
+      // guard — the test would pass while proving nothing.
+      const adminRoutes: Array<[string, string]> = [
+        ["GET", "/api/admin/users"],
+        ["GET", "/api/admin/payout-requests"],
+        ["PATCH", `/api/admin/users/${uuid}/role`],
+        ["PATCH", `/api/admin/payout-requests/${uuid}/complete`],
+        ["PUT", `/api/admin/pools/${uuid}/settings`],
+        ["POST", "/api/admin/sync/teams"],
+      ];
+
+      for (const [method, path] of adminRoutes) {
+        const res = await get(path, {
+          method,
+          headers: { "content-type": "application/json", origin: BASE! },
+          body: method === "GET" ? undefined : JSON.stringify({}),
+        });
+        assert.ok(
+          [401, 403, 404].includes(res.status),
+          `${method} ${path} must refuse an anonymous caller, got ${res.status}`
+        );
+        assert.notEqual(
+          res.status,
+          405,
+          `${method} ${path} answered 405, so this assertion never reached the auth guard — fix the method`
+        );
+      }
+    });
+
     test("secret-gated crons refuse an unauthenticated caller", { skip }, async () => {
       for (const path of ["/api/cron/settle", "/api/cron/reconcile", "/api/cron/alert"]) {
         const res = await get(path);
