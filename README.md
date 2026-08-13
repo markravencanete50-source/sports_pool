@@ -164,9 +164,13 @@ default:
 | `npm run build` | Production build |
 | `npm run start` | Serve the production build |
 | `npm run typecheck` | `tsc --noEmit` — **blocking in CI** |
-| `npm test` | Settlement regression suite — **blocking in CI** |
-| `npm run lint` | ESLint — **blocking in CI**. Pre-existing style debt is configured as warnings, so this blocks only on new errors |
-| `npm run check` | typecheck + test + lint, all at once |
+| `npm test` | 34 unit tests + the settlement regression suite — **blocking in CI** |
+| `npm run lint` | ESLint including 21 jsx-a11y rules at error severity — **blocking in CI** |
+| `npm run check:migrations` | Blocks duplicate migration version prefixes — **blocking in CI**. Supabase keys the ledger by that prefix, so two files sharing one are *one* migration and the second is silently skipped |
+| `npm run check:crons` | Blocks a sub-daily schedule in `vercel.json` — **blocking in CI**. On the Hobby plan Vercel *refuses to create the deployment*, producing no build and no error to read |
+| `npm run check` | typecheck + migrations + crons + test + lint, all at once |
+| `npm run test:e2e` | Black-box suite against a running deployment. Needs `E2E_BASE_URL`; skips rather than fails without it |
+| `npm run docs:generate` | Regenerates all five handover/audit documents |
 | `npm run db:migrate` | Apply migrations |
 | `npm run seed` / `seed:admin` | Seed data / promote the admin account |
 
