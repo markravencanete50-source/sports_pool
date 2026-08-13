@@ -182,7 +182,7 @@ children.push(
 
 children.push(kvTable([
   ["Repository", "markravencanete50-source/sports_pool"],
-  ["Audited commit", "ab645a7 (main) — verification cycle of 13 August 2026; original audit at 49d074e"],
+  ["Audited commit", "12be24e (main) — verification cycle of 13 August 2026; original audit at 49d074e"],
   ["Supabase project", "veughegjwzsbjgcueyka"],
   ["Production", "sports-pool (Vercel) — deploy READY on 268b3d6, verified live"],
   ["Audit date", "12 August 2026 — findings and remediation; independently verified 13 August 2026 (Section 12)"],
@@ -593,7 +593,7 @@ children.push(checklist([
 children.push(H2("9.C  Reliability and testing"));
 children.push(checklist([
   { req: "Add an end-to-end harness — DONE at both layers", why: "HTTP: tests/e2e/smoke.test.ts asserts the CSP and nonce, clickjacking and sniffing headers, the health contract's two shapes, anonymous rejection on the money routes, CSRF refusal of a cross-origin state change, the 410 tombstones, and 404 on unknown API paths across every method. Browser: tests/browser/ drives Chromium at desktop and mobile viewports over accessible naming, keyboard operability, the age gate and every public page rendering without console errors. 13 and 38 respectively, all passing against production. Both skip rather than fail without E2E_BASE_URL, so neither can become a green test that checks nothing, and both now run automatically after every production deploy (9.E). Each found a real defect on its first run — a soft 404 on the API, and every auth input being unlabelled (Section 12). What remains is BE-10 in 9.A: purchase through settlement to payout against real processors, which needs Stripe test-mode credentials and is deliberately not faked here.", pri: "Done" },
-  { req: "Extend route-level test coverage beyond the guard layer", why: "The unit suite pins the shared guards every route passes through, which is the highest-leverage seam — but per-route tests of auth, ownership and error shapes would catch wiring mistakes the guard tests cannot.", pri: "Medium" },
+  { req: "Extend route-level test coverage beyond the guard layer — DONE", why: "Closed 13 August. tests/routes.test.ts walks all 53 route handlers and asserts the contract each must satisfy: every state-changing route refuses a cross-origin request, establishes who is calling and is throttled; everything under /api/admin requires an admin; everything under /api/cron fails closed on a shared secret; every money boundary re-checks compliance server-side. Static rather than executed, deliberately — it cannot prove a guard runs on every code path, but it needs no Supabase, no network and no fixtures, so it runs in milliseconds on every commit and can never be skipped because the environment is missing. The exemption lists are the design: seven routes legitimately skip CSRF and eight skip identity or throttling — the Stripe webhook, the auth routes that create identity, the 410 tombstones, the 404 catch-all — each with a stated reason, and three meta-tests fail the build if an exemption names a deleted route, names a route that now carries the guard anyway, or gives no real reason. A list of blanket permissions nobody revisits is how a control quietly stops applying. Verified by regression rather than assumed: removing assertSameOrigin from a payout route fails, removing requireAdmin fails, and adding a guard to an exempt route fails as a stale exemption. The survey found no genuine gaps — the two unthrottled state-changing routes are both requireAdmin plus CSRF. Unit suite 34 to 50 tests.", pri: "Done" },
 ]));
 
 children.push(H2("9.D  Frontend and user experience"));
@@ -910,7 +910,6 @@ children.push(Bullet("Enabling PITR and rehearsing one restore. A dashboard togg
 
 children.push(H2("13.3  Engineering work that remains"));
 children.push(P("Honestly stated rather than quietly dropped. None of it blocks launch; all of it would reduce risk:"));
-children.push(Bullet("Per-route test coverage beyond the shared guard layer. The guards are the highest-leverage seam and are pinned; per-route auth and ownership tests would catch wiring mistakes the guard tests structurally cannot. (9.C, Medium)"));
 children.push(Bullet("A manual screen-reader pass. The browser suite now pins accessible naming, keyboard operability and focus visibility, and closing it found that every auth field was unlabelled — but automation cannot judge whether the announced order makes sense to a person. (9.D, Medium)"));
 children.push(Bullet("One interactive sign-in after the @supabase/ssr 0.5 → 0.12 upgrade, which changed session cookie handling. Anonymous rejection is verified; a successful login is not. (9.D, Medium)"));
 children.push(Bullet("A staging environment mirroring production, so money-path changes are exercised somewhere real first. (9.E, Medium)"));
@@ -926,6 +925,7 @@ children.push(Bullet("Support/dispute procedure and admin bootstrap/offboarding 
 children.push(Bullet("Browser-level end-to-end tests at desktop and mobile viewports, which found that every auth input was unlabelled to a screen reader. (Section 12.6)"));
 children.push(Bullet("Post-deploy verification: both black-box suites now run automatically against the live site after every production deploy — the only kind of check that can catch a commit which merges green and never ships."));
 children.push(Bullet("The handover document itself, which Word had never been able to open, and a CI guard so no generator can emit an unopenable file again. (Section 12.8)"));
+children.push(Bullet("Per-route guard conformance across all 53 handlers, with exemption lists that fail the build when they go stale rather than quietly outliving their reasons."));
 
 children.push(spacer(200));
 children.push(P(
