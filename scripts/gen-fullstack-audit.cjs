@@ -182,12 +182,12 @@ children.push(
 
 children.push(kvTable([
   ["Repository", "markravencanete50-source/sports_pool"],
-  ["Audited commit", "e4d1344 (main) — verification cycle of 13 August 2026; original audit at 49d074e"],
+  ["Audited commit", "0b7a89a (main) — verification and provisioning cycle of 13–14 August 2026; original audit at 49d074e"],
   ["Supabase project", "veughegjwzsbjgcueyka"],
-  ["Production", "sports-pool (Vercel) — deploy READY on 268b3d6, verified live"],
+  ["Production", "Deployed and verified live; 14 HTTP and 44 browser assertions pass against it, re-run automatically after every production deploy"],
   ["Audit date", "12 August 2026 — findings and remediation; independently verified 13 August 2026 (Section 12)"],
   ["Data state at audit", "Pre-launch: 0 users, 0 pools, 0 cards, 0 transactions"],
-  ["Verdict", "Ready for handover. The 13 August verification found the audited remediation had NEVER REACHED PRODUCTION — a sub-daily Vercel cron on the Hobby plan made Vercel refuse to create deployments, so five commits including the whole compliance layer silently never shipped while CI stayed green. That is fixed, guarded against recurrence, and production is verified live. Every remaining Critical and High item is now either a production credential, a legal opinion, or a processor approval; nothing outstanding is application code. Section 13 states what the client must do — wire the real keys, redeploy, watch /api/health go green, and run the money path once in test mode."],
+  ["Verdict", "Ready for handover, and materially further along than at the start of this cycle. The 13 August verification found the audited remediation had NEVER REACHED PRODUCTION — a sub-daily Vercel cron made Vercel refuse to create deployments, so five commits including the whole compliance layer silently never shipped while CI stayed green. That is fixed and guarded. Since then the developer has provisioned and verified every money-path credential except PayPal: the service-role key that had left settlement and Stripe fulfilment dead for eight days, the Stripe webhook that was rejecting every delivery, distributed rate limiting, and the shared secret that had left settlement's fast cadence and the error pager silently skipping. Three items remain — PayPal credentials, the test-mode money-path run, and a legal opinion on jurisdictions. Nothing outstanding is application code. See Section 13."],
 ], 2600));
 
 children.push(pageBreak());
@@ -573,11 +573,11 @@ children.push(P(
 
 children.push(H2("9.A  Blocking — before real money moves"));
 children.push(checklist([
-  { req: "Provision Upstash Redis and set both env vars", why: "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are unset in production, so every throttle — including the sign-in limit protecting accounts with balances — degrades to a per-instance in-memory window that serverless scatters across processes. The limiter code path is ready and unit-tested; this is the last two-minute fix with a disproportionate payoff. (OPS-3)", pri: "Critical" },
+  { req: "Provision Upstash Redis and set both env vars — DONE", why: "Closed 13 August and verified from outside: 13 consecutive requests to a rate-limited route returned exactly 10 allowed then 429, matching the authSignin limit of 10 per 5 minutes. A per-instance in-memory store scatters across serverless processes and rarely lands on the boundary exactly, so hitting it precisely is the signature of a single shared counter. Every throttle — including the sign-in limit protecting accounts with balances — is now distributed. (OPS-3)", pri: "Done" },
   { req: "Execute the money path end to end in Stripe test mode", why: "Purchase → webhook → card issued → picks → settlement → balance credit → PayPal payout. This chain has never been run whole. Include a deliberately duplicated webhook delivery to prove idempotency under real conditions rather than by inspection. (BE-10)", pri: "Critical" },
-  { req: "Verify the Stripe webhook endpoint and secret in the live dashboard", why: "STRIPE_WEBHOOK_SECRET must match the live endpoint. If the webhook is misconfigured a user is charged and receives no card — the exact failure the fulfilment code is written to prevent, and the exact mismatch the new reconcile cron will flag the morning after.", pri: "Critical" },
+  { req: "Verify the Stripe webhook endpoint and secret in the live dashboard — DONE", why: "Closed 13 August. An endpoint was registered against /api/stripe/webhook subscribed to checkout.session.completed only, and STRIPE_WEBHOOK_SECRET set on Vercel. Verified from outside without credentials: an unsigned POST now answers 400 Missing stripe-signature where it previously answered 503 Webhook not configured. That 503 meant every real delivery was rejected — a player could be charged and receive nothing. This was the single most consequential gap in the product and it is closed.", pri: "Done" },
   { req: "Confirm PAYPAL_MODE is live and credentials are production", why: "The code refuses to fail open to sandbox, so a misconfiguration blocks payouts rather than faking them — but it must be set correctly before the first withdrawal request arrives.", pri: "Critical" },
-  { req: "Set SUPABASE_SERVICE_ROLE_KEY in the Vercel production environment — NEW, BLOCKING", why: "Unset in production. Vercel's own runtime errors carry '[cron/settle] fatal: Missing SUPABASE_SERVICE_ROLE_KEY' first seen 5 August and recurring to 12 August, and the health probe added on 13 August reported config and database down within a minute of going live. Every service-role path is therefore dead in production: pool settlement never completes, and the Stripe webhook cannot fulfil a purchase — a user can be charged and receive nothing. The site serves normally, which is exactly why this went unnoticed for eight days. Confirm with: curl -H \"Authorization: Bearer $CRON_SECRET\" https://sports-pool.vercel.app/api/health", pri: "Critical" },
+  { req: "Set SUPABASE_SERVICE_ROLE_KEY in the Vercel production environment — DONE", why: "Closed 13 August, having been unset since 5 August. While it was missing, every service-role path was dead in production: settlement could not complete and the Stripe webhook could not fulfil a purchase, yet the public site served normally — which is exactly why eight days passed unnoticed. The health probe added the same day reported it within a minute of going live.", pri: "Done" },
   { req: "Point an alert at app_errors and stand up an uptime probe — DONE", why: "Closed 13 August. /api/health is a two-shape probe: status code only when anonymous, full component breakdown under CRON_SECRET, 503 reserved for failures that mean the instance cannot serve. /api/cron/alert digests app_errors grouped by source and normalised message, and logs the digest whether or not a webhook is configured so alerting can never be the thing that hides an error. Scheduled every two hours from .github/workflows/alert.yml. It earned its keep immediately by catching the service-role gap above. (OPS-2)", pri: "Done" },
   { req: "Enable PITR and perform the first restore rehearsal", why: "The backup and restore procedure is documented in docs/RUNBOOK.md §2, including the post-restore reconciliation step. It has not yet been rehearsed, and a daily snapshot alone can lose up to 24 hours of money movements. (DB-5 residual)", pri: "Critical" },
   { req: "Decide and ship admin MFA — DONE", why: "Closed 13 August; both halves are now in main. require-admin.ts demands aal2 on payout completion, role changes and platform-fee edits, and /account/security is the TOTP enrolment screen driving /api/me/mfa. The rollout order is the safe one: an admin holding no factor is refused with mfa_enrollment_required while the enrolment routes stay ungated, so nobody can be locked out of enrolling. The enrolment screen was sitting unmerged in PR #2 while enforcement was already live — a state in which admins could not approve payouts and had no UI to fix it. Each admin must now enrol before approving a payout. (BE-4)", pri: "Done" },
@@ -869,7 +869,27 @@ children.push(P(
   "It survived because nothing in the toolchain could see it: the generators ran in an environment with no Word installed, the archive is structurally valid, and every guard in this repository inspects source rather than the artefact. Only opening the file revealed it. Fixed, and scripts/check-docs.ts now blocks XML-illegal characters in CI — verified to pass the corrected sources and fail the exact pre-fix file. All six documents now open and convert."
 ));
 
-children.push(H2("12.9  Verification performed"));
+children.push(H2("12.9  Signup rejected submissions silently"));
+children.push(P(
+  "Raised from a screenshot of the live form rather than found by a test. Two defects in one screen. The password field could not be revealed, so it was typed blind against rules the user could not check. And validation errors rendered only as small red text beneath each field — on a phone the failing field is usually scrolled out of view when the submit button is pressed, so the button appeared to do nothing."
+));
+children.push(P(
+  "\"Nothing happened\" is the worst available feedback: the user cannot distinguish a rejected form from a broken site, and the usual next move is to press again, or leave. The cause was precise — react-hook-form's handleSubmit takes a second callback that fires when the schema rejects, and none was passed."
+));
+children.push(Bullet("A reveal toggle on the shared FormInput, defaulting on for password fields so login gets it too. A real button rather than a div with an onClick: keyboard reachable, cannot submit the form, and carries aria-pressed so the state is announced rather than conveyed by an icon."));
+children.push(Bullet("A modal listing every problem in form order with human labels. Built on Radix Dialog for focus trapping, Escape and focus restoration. A dialog rather than a toast deliberately — a toast auto-dismisses, is announced politely and can be missed, none of which suits \"your account was not created\". Server rejections route through it too, so an email already taken surfaces where the user is looking."));
+children.push(Bullet("The inline messages stay. They are right for saying what is wrong with a field once you are looking at it; the dialog does the thing they cannot, which is get attention at the moment the button was pressed."));
+
+children.push(H2("12.10  Provisioning completed and verified"));
+children.push(P(
+  "The credentials the earlier sections describe as outstanding were set during this cycle and verified from OUTSIDE the system, without the developer ever handling a secret value. The method matters as much as the result: behaviour proves configuration, so nothing had to be pasted into a chat, a file or a log."
+));
+children.push(Bullet("Stripe webhook — an unsigned POST moved from 503 \"Webhook not configured\" to 400 \"Missing stripe-signature\". The 503 meant every real delivery was rejected: a player could be charged and receive nothing."));
+children.push(Bullet("Upstash — 13 consecutive requests to a rate-limited route returned exactly 10 allowed then three 429s, matching the configured limit of 10 per 5 minutes. A per-instance store scatters across serverless processes and rarely lands on the boundary exactly; hitting it precisely is the signature of a single shared counter."));
+children.push(Bullet("CRON_SECRET in GitHub Actions — verified by inspecting workflow STEPS rather than the green tick. Trigger settlement and Poll error digest both moved from skipped to success. Before this, both workflows reported success while doing nothing."));
+children.push(Bullet("Settlement was triggered manually only after confirming every relevant table held zero rows, so a money-path workflow was never run speculatively against live data."));
+
+children.push(H2("12.11  Verification performed"));
 children.push(P("Every claim in this section was checked against a live system rather than inferred from the repository:"));
 children.push(Bullet("Live Supabase, queried directly: object existence for the allegedly-skipped migrations, the migration ledger, and RPC grants."));
 children.push(Bullet("Live Vercel API: deployment records per commit, deployment states, and runtime error groups with first/last-seen timestamps."));
@@ -891,14 +911,18 @@ children.push(P(
 ));
 
 children.push(H2("13.1  What the client must do"));
-children.push(P("This is the whole technical handover. Nothing here needs an engineer."));
+children.push(Rich([
+  { t: "Most of this list is already closed. ", b: true },
+  { t: "Between 13 and 14 August the following were provisioned and independently verified from outside the system: the Supabase service-role key, the Stripe secret and publishable keys, the Stripe webhook endpoint and its signing secret, CRON_SECRET in both Vercel and GitHub Actions, and Upstash Redis. Settlement's 30-minute cadence and the error-digest pager were confirmed actually running rather than silently skipping. " },
+  { t: "Three items remain: PayPal credentials, the test-mode money-path run, and PITR.", b: true },
+]));
 children.push(kvTable([
-  ["1. Wire the real keys", "Set the production credentials on Vercel: SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, PAYPAL_MODE=live plus PayPal client id/secret, CRON_SECRET, and the two Upstash variables. docs/RUNBOOK.md §3 is the table, with where each value comes from and what breaks without it."],
-  ["2. Redeploy", "Vercel snapshots environment variables into a deployment. Adding a variable changes nothing until a new build exists. This step is missed constantly — it is the reason the service-role key appeared not to work on 13 August."],
-  ["3. Mirror CRON_SECRET into GitHub", "The same value must also exist as a GitHub Actions secret. Without it settle-pools.yml and alert.yml SKIP and still report success — a green workflow doing nothing."],
-  ["4. Check one URL", "curl -H \"Authorization: Bearer $CRON_SECRET\" https://<domain>/api/health — returns a component-by-component breakdown naming every unset variable and what it costs. Work the list until status reads \"ok\". This is the readiness test; it needs no engineer to interpret."],
-  ["5. Run the money path in test mode", "Purchase → webhook → card → picks → settlement → balance credit → payout, including a deliberately duplicated webhook delivery to prove idempotency under real conditions. This is BE-10 and it is the one item that genuinely cannot be closed without live processor credentials."],
-  ["6. Watch the deploy verify itself", "Nothing to do. Every production deployment now triggers .github/workflows/post-deploy.yml, which runs both black-box suites against the live site and fails loudly if the deployment does not behave. If it is red, open the run: the Playwright report is attached as an artefact."],
+  ["1. Wire the real keys — DONE except PayPal", "Set and verified on Vercel: SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, CRON_SECRET, and both Upstash variables. OUTSTANDING: PAYPAL_MODE=live plus the PayPal client id and secret. Withdrawals cannot send until those are set — the code refuses to fail open to sandbox, so the failure is a blocked payout rather than a fake one. docs/RUNBOOK.md §3 is the table."],
+  ["2. Redeploy — DONE", "Vercel snapshots environment variables into a deployment, so adding one changes nothing until a new build exists. This step is missed constantly; it is why the service-role key appeared not to work at first. Repeat it after setting the PayPal values."],
+  ["3. Mirror CRON_SECRET into GitHub — DONE", "Verified by running both workflows and inspecting the STEPS rather than the green tick: Trigger settlement and Poll error digest both report success where they previously reported skipped. Settlement's 30-minute cadence and the error pager are live."],
+  ["4. Check one URL", "curl -H \"Authorization: Bearer $CRON_SECRET\" https://<domain>/api/health returns a component-by-component breakdown naming every unset variable and what it costs. It currently reads \"degraded\" for exactly one reason: payouts are disabled pending PayPal. It will read \"ok\" once that is set."],
+  ["5. Run the money path in test mode — OUTSTANDING", "Purchase → webhook → card → picks → settlement → balance credit → payout, including a deliberately duplicated webhook delivery to prove idempotency under real conditions. This is BE-10. Stripe test-mode keys are free and self-serve, so it does NOT require the live account — but it must be run against a throwaway database, because it writes cards, transactions and payout rows that a live scheduler would now pick up. scripts/verify-money-path.ts asserts the resulting state."],
+  ["6. Watch the deploy verify itself — DONE", "Nothing to do. Every production deployment triggers .github/workflows/post-deploy.yml, which runs both black-box suites against the live site and fails loudly if the deployment misbehaves. If it is red, open the run — the Playwright report is attached as an artefact."],
 ], 2600));
 
 children.push(H2("13.2  Not code, and not the client's engineer either"));
@@ -926,6 +950,9 @@ children.push(Bullet("Browser-level end-to-end tests at desktop and mobile viewp
 children.push(Bullet("Post-deploy verification: both black-box suites now run automatically against the live site after every production deploy — the only kind of check that can catch a commit which merges green and never ships."));
 children.push(Bullet("The handover document itself, which Word had never been able to open, and a CI guard so no generator can emit an unopenable file again. (Section 12.8)"));
 children.push(Bullet("Per-route guard conformance across all 53 handlers, with exemption lists that fail the build when they go stale rather than quietly outliving their reasons."));
+children.push(Bullet("Every money-path credential except PayPal provisioned and verified from outside the system, including the two that were actively breaking production: the service-role key and the Stripe webhook secret."));
+children.push(Bullet("Settlement's 30-minute cadence and the error-digest pager confirmed running rather than silently skipping — both had been reporting success while doing nothing."));
+children.push(Bullet("Signup made honest about rejection: a password reveal toggle, and a modal that names every failing field instead of red text the user never sees. (Section 12.9)"));
 
 children.push(spacer(200));
 children.push(P(
