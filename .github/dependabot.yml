@@ -18,6 +18,23 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+
+    # Held back deliberately, not neglected. Both were proposed on 13 August,
+    # tested, and rejected because they DISABLE THE LINT GATE rather than merely
+    # failing it — which would leave CI green over an unlinted codebase.
+    #
+    #   typescript >= 7  "typescript-eslint does not support TS 7.0"
+    #   eslint     >= 10  breaks eslint-plugin-react inside eslint-config-next
+    #
+    # The repo runs TypeScript 6 and ESLint 9, which pass. Lift an entry here
+    # once eslint-config-next ships support, and verify with `npm run check`
+    # before merging — a passing typecheck alone does not prove lint still runs.
+    ignore:
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
+      - dependency-name: "eslint"
+        versions: [">=10.0.0"]
+
     groups:
       # Framework upgrades change build behaviour (this repo has already lost
       # two deploys to a Next minor), so they are reviewed on their own.
