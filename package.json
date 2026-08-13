@@ -26,7 +26,8 @@
     "docs:generate": "node scripts/gen-handover-doc.cjs && node scripts/gen-security-report.cjs && node scripts/gen-backend-explainer.cjs && node scripts/gen-backend-technical.cjs && node scripts/gen-fullstack-audit.cjs && node scripts/gen-combined-doc.cjs",
     "test:unit": "tsx --test tests/*.test.ts",
     "docs:combined": "node scripts/gen-combined-doc.cjs",
-    "check:docs": "tsx scripts/check-docs.ts"
+    "check:docs": "tsx scripts/check-docs.ts",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",
@@ -87,6 +88,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^26",
     "@types/react": "^19",

@@ -62,3 +62,7 @@ bun.lock
 
 # Generated from the .docx by Word; regenerate locally rather than version them.
 *.pdf
+
+# Playwright
+test-results/
+playwright-report/
