@@ -1,0 +1,52 @@
+version: 2
+
+# Keeps dependency advisories honest between audits.
+#
+# The first hardening cycle cleared every outstanding advisory by hand, but
+# nothing re-checked them afterwards — so the clean state had a shelf life of
+# exactly one audit. `npm audit --audit-level=high` in CI catches an advisory
+# that lands in an existing dependency; Dependabot is what proposes the upgrade.
+#
+# Grouped deliberately. On a small team, twenty single-package PRs a week get
+# ignored, which is the same as not having the tool. One grouped PR per
+# ecosystem per week is reviewed.
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      # Framework upgrades change build behaviour (this repo has already lost
+      # two deploys to a Next minor), so they are reviewed on their own.
+      next:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+          - "@next/*"
+      # Anything touching money or auth gets its own PR so the diff is read.
+      money-and-auth:
+        patterns:
+          - "stripe"
+          - "@supabase/*"
+      production:
+        dependency-type: "production"
+        exclude-patterns:
+          - "next"
+          - "eslint-config-next"
+          - "@next/*"
+          - "stripe"
+          - "@supabase/*"
+      development:
+        dependency-type: "development"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"

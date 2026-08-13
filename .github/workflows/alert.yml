@@ -1,0 +1,143 @@
+name: Error alert digest
+
+# Watches the app_errors sink and pages a webhook when it is not empty.
+#
+# The previous cycle built the detection layer — app_errors captures server
+# money-path failures, client crashes and reconciliation mismatches — but
+# nothing read it. An error sink nobody reads is a log file, not an alert.
+#
+# WHY THIS RUNS HERE AND NOT IN vercel.json.
+#
+# This project is on the Vercel Hobby plan, where cron schedules are
+# day-granularity. A sub-daily expression is not clamped or ignored: Vercel
+# REFUSES TO CREATE THE DEPLOYMENT. That already cost this repo five undeployed
+# commits — 7e0bf34 set settle to hourly and every commit after it silently
+# stopped building while CI stayed green.
+#
+# A once-a-day pager is not a pager. So the schedule lives here, exactly as
+# settle-pools.yml already does for settlement, and vercel.json keeps only
+# day-granularity entries. scripts/check-vercel-crons.ts enforces that in CI.
+#
+# SETUP — add this under Settings > Secrets and variables > Actions:
+#   CRON_SECRET  same value as the CRON_SECRET env var on Vercel
+#
+# And on the Vercel project, to get the digest delivered rather than only
+# logged:
+#   ALERT_WEBHOOK_URL  Slack/Discord/Mattermost-compatible incoming webhook
+#
+# UNCONFIGURED vs BROKEN. A missing Actions secret SKIPS with a warning rather
+# than failing, because a scheduled job that fails every run trains everyone to
+# ignore its email — the exact opposite of what an alarm is for. A genuine
+# failure to reach the endpoint still fails loudly.
+
+on:
+  schedule:
+    # Every 2 hours. Deliberately not hourly: this is a private repo, so every
+    # run bills a full Actions minute even though the job takes seconds.
+    # settle-pools.yml already spends ~1,460 min/month of the 2,000-minute free
+    # allowance at its 30-minute cadence; hourly here (~730) would exceed it,
+    # every-2-hours (~365) stays inside with room to spare.
+    #
+    # LOOKBACK_MINUTES in src/app/api/cron/alert/route.ts is 125 to match this
+    # 120-minute interval plus overlap. Change one and you must change the
+    # other, or errors fall between windows and are never reported.
+    - cron: "15 */2 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  # Two overlapping runs would double-page on the same window.
+  group: error-alert
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check configuration
+        id: cfg
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CRON_SECRET is not set as an Actions secret, so error alerting is INACTIVE. Errors are still recorded in app_errors and in the Vercel log stream, but nothing is watching them. Add CRON_SECRET under Settings > Secrets and variables > Actions, using the same value as CRON_SECRET on the Vercel project."
+            echo "### Error alerting skipped — CRON_SECRET not configured" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Errors are still captured in \`app_errors\`, but no digest is being sent." >> "$GITHUB_STEP_SUMMARY"
+            echo "Add \`CRON_SECRET\` under **Settings > Secrets and variables > Actions** to enable it." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Poll error digest
+        if: steps.cfg.outputs.configured == 'true'
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ secrets.APP_URL || 'https://sports-pool.vercel.app' }}
+        run: |
+          set -euo pipefail
+
+          body=$(mktemp)
+          code=$(curl -sS -o "$body" -w '%{http_code}' \
+                   --max-time 120 \
+                   -H "Authorization: Bearer ${CRON_SECRET}" \
+                   "${APP_URL}/api/cron/alert")
+
+          echo "HTTP $code"
+          cat "$body"
+          echo
+
+          if [ "$code" = "503" ]; then
+            echo "::error::503 — CRON_SECRET is not configured on Vercel, so the alert endpoint is disabled."
+            exit 1
+          fi
+          if [ "$code" = "401" ]; then
+            echo "::error::401 — the CRON_SECRET Actions secret does not match CRON_SECRET on Vercel."
+            exit 1
+          fi
+          if [ "$code" != "200" ]; then
+            echo "::error::Alert poll failed with HTTP $code"
+            exit 1
+          fi
+
+          if ! jq -e . >/dev/null 2>&1 < "$body"; then
+            echo "::error::Alert poll returned HTTP 200 with a non-JSON body."
+            exit 1
+          fi
+
+          errors=$(jq -r '.errors // 0' < "$body")
+          distinct=$(jq -r '.distinct // 0' < "$body")
+          alerted=$(jq -r '.alerted // false' < "$body")
+          reason=$(jq -r '.reason // ""' < "$body")
+
+          if [ "$errors" = "0" ]; then
+            echo "No errors in the window."
+            echo "### No errors in the last window ✅" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Errors exist. Surface them in the run itself, so the digest is
+          # visible here even when no webhook is configured.
+          echo "::warning::${errors} error(s) across ${distinct} distinct issue(s) — see the digest below."
+          {
+            echo "### ⚠️ ${errors} error(s), ${distinct} distinct issue(s)"
+            echo ""
+            jq -r '.issues // [] | .[] | "- **[\(.source)]** ×\(.count) — \(.sample)"' < "$body" 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # A configured webhook that did not deliver is its own failure: the
+          # operator believes they are covered when they are not.
+          if [ "$alerted" != "true" ] && [ -n "$reason" ]; then
+            case "$reason" in
+              *"ALERT_WEBHOOK_URL is not set"*)
+                echo "::warning::Digest was logged but not delivered — ALERT_WEBHOOK_URL is not set on the Vercel project."
+                ;;
+              *)
+                echo "::error::Digest was NOT delivered: ${reason}"
+                exit 1
+                ;;
+            esac
+          fi
