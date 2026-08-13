@@ -182,7 +182,7 @@ children.push(
 
 children.push(kvTable([
   ["Repository", "markravencanete50-source/sports_pool"],
-  ["Audited commit", "0b7a89a (main) — verification and provisioning cycle of 13–14 August 2026; original audit at 49d074e"],
+  ["Audited commit", "61207be (main) — verification, provisioning and final sweep, 13–14 August 2026; original audit at 49d074e"],
   ["Supabase project", "veughegjwzsbjgcueyka"],
   ["Production", "Deployed and verified live; 14 HTTP and 44 browser assertions pass against it, re-run automatically after every production deploy"],
   ["Audit date", "12 August 2026 — findings and remediation; independently verified 13 August 2026 (Section 12)"],
@@ -889,7 +889,18 @@ children.push(Bullet("Upstash — 13 consecutive requests to a rate-limited rout
 children.push(Bullet("CRON_SECRET in GitHub Actions — verified by inspecting workflow STEPS rather than the green tick. Trigger settlement and Poll error digest both moved from skipped to success. Before this, both workflows reported success while doing nothing."));
 children.push(Bullet("Settlement was triggered manually only after confirming every relevant table held zero rows, so a money-path workflow was never run speculatively against live data."));
 
-children.push(H2("12.11  Verification performed"));
+children.push(H2("12.11  Final sweep — 14 August"));
+children.push(P(
+  "A closing pass re-verified every layer against the live system rather than trusting the previous day's green: Supabase security advisors with the grants behind them queried directly, live response headers, the frontend swept for injection sinks and unsafe redirects, runtime error history, all seven CI gates, and both black-box suites."
+));
+children.push(P(
+  "It found exactly one gap, and it was documentation rather than a vulnerability: claim_pool_payout was the only client-executable SECURITY DEFINER function without the in-database justification comment this repository requires for advisor exceptions. The function itself is correct — identity from auth.uid(), FOR UPDATE serialisation, ledger-authoritative idempotency, and the unique-index backstop that makes a double credit impossible. The fix adds the comment and, more usefully, an in-migration invariant that fails if any future SECURITY DEFINER function is exposed to clients without a justification — so the convention is now enforced rather than remembered."
+));
+children.push(Bullet("Money-mover RPCs (credit_user_balance, debit_user_balance, the fee setters) confirmed service-role only by direct privilege query — not callable by anon or authenticated."));
+children.push(Bullet("app_errors held zero rows over 48 hours, and every Vercel runtime error group's last-seen timestamp predates the 13 August fixes. Production is quiet."));
+children.push(Bullet("14 HTTP and 44 browser assertions pass against production; post-deploy verification green on this commit."));
+
+children.push(H2("12.12  Verification performed"));
 children.push(P("Every claim in this section was checked against a live system rather than inferred from the repository:"));
 children.push(Bullet("Live Supabase, queried directly: object existence for the allegedly-skipped migrations, the migration ledger, and RPC grants."));
 children.push(Bullet("Live Vercel API: deployment records per commit, deployment states, and runtime error groups with first/last-seen timestamps."));
