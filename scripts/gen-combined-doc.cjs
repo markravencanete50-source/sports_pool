@@ -24,6 +24,7 @@ const {
   PageBreak, LevelFormat, Header, Footer, PageNumber,
 } = require("docx");
 const fs = require("fs");
+const { renderMarkdown } = require("./md-to-docx.cjs");
 
 const NAVY = "1F3864";
 const BLUE = "2E4A7A";
@@ -84,6 +85,16 @@ const PARTS = [
     title: "Full-Stack Audit",
     blurb: "The findings record across frontend, backend, database and operations. Section 9 is the gap checklist; Section 13 states what remains and whose job it is.",
     module: "./gen-fullstack-audit.cjs",
+  },
+  {
+    n: "VI",
+    title: "Operations Runbook",
+    blurb: "What to do when something goes wrong at 3am. Incident procedures for every money-affecting failure, backup and restore, the provisioning table, admin bootstrap and offboarding, and how to resolve a disputed settlement.",
+    // Rendered from docs/RUNBOOK.md rather than a generator: the runbook must
+    // stay Markdown in the repository, where an engineer on call will actually
+    // find it. Binding a rendered copy here means the client gets one document
+    // with nothing left outside it, and editing the Markdown updates both.
+    markdown: "../docs/RUNBOOK.md",
   },
 ];
 
@@ -190,9 +201,14 @@ children.push(P("Nothing here is a copy. Each part is imported from the generato
 
 // Parts
 for (const part of PARTS) {
-  const body = require(part.module);
+  const body = part.markdown
+    ? renderMarkdown(fs.readFileSync(require("path").join(__dirname, part.markdown), "utf8"))
+    : require(part.module);
+
   if (!Array.isArray(body) || body.length === 0) {
-    throw new Error(`${part.module} exported nothing — check its module.exports guard`);
+    throw new Error(
+      `${part.module ?? part.markdown} produced nothing — check its module.exports guard, or that the file exists`
+    );
   }
   children.push(...partDivider(part));
   children.push(...body);
