@@ -28,6 +28,20 @@ const SIGNUP_FIELDS = ["Name", "Email", "Password", "Date of birth"];
  * on /signup that was simply not painted yet. Waiting for the heading is the
  * cheap, honest fix.
  */
+/**
+ * The INPUT with a given accessible name.
+ *
+ * Scoped to <input> deliberately. The password reveal button is labelled
+ * "Show password" / "Hide password", so a bare getByLabel("Password") now
+ * resolves to two elements and fails strict mode — which is Playwright doing
+ * its job, but it is the control we mean, not an ambiguity in the page. Using
+ * .and() keeps the accessibility-tree lookup (so this still proves the label is
+ * genuinely associated) while narrowing to the field itself.
+ */
+function field(page: Page, label: string) {
+  return page.getByLabel(label, { exact: false }).and(page.locator("input"));
+}
+
 async function gotoPublic(page: Page, path: string) {
   const res = await page.goto(path, { waitUntil: "domcontentloaded" });
   expect(res?.status(), `${path} should serve`).toBeLessThan(400);
@@ -42,7 +56,7 @@ test.describe("accessible naming", () => {
     // the label is genuinely associated — htmlFor/id, wrapping, or aria-label.
     for (const label of SIGNUP_FIELDS) {
       await expect(
-        page.getByLabel(label, { exact: false }),
+        field(page, label),
         `signup field "${label}" has no accessible name`
       ).toBeVisible();
     }
@@ -193,7 +207,7 @@ test.describe("password reveal", () => {
   test("the password can be shown and hidden, by mouse and by keyboard", async ({ page }) => {
     await gotoPublic(page, "/signup");
 
-    const password = page.getByLabel("Password", { exact: false });
+    const password = field(page, "Password");
     const toggle = page.getByRole("button", { name: /show password/i });
 
     await expect(password).toHaveAttribute("type", "password");
@@ -223,10 +237,10 @@ test.describe("rejected submissions are visible", () => {
     const tooYoung = new Date();
     tooYoung.setFullYear(tooYoung.getFullYear() - 10);
 
-    await page.getByLabel("Name", { exact: false }).fill("Modal Tester");
-    await page.getByLabel("Email", { exact: false }).fill(`e2e-${Date.now()}@example.com`);
-    await page.getByLabel("Password", { exact: false }).fill("weak");
-    await page.getByLabel("Date of birth", { exact: false }).fill(tooYoung.toISOString().slice(0, 10));
+    await field(page, "Name").fill("Modal Tester");
+    await field(page, "Email").fill(`e2e-${Date.now()}@example.com`);
+    await field(page, "Password").fill("weak");
+    await field(page, "Date of birth").fill(tooYoung.toISOString().slice(0, 10));
 
     await page.getByRole("button", { name: /create account/i }).click();
 
@@ -258,19 +272,22 @@ test.describe("the age gate is real in the browser", () => {
     const tooYoung = new Date();
     tooYoung.setFullYear(tooYoung.getFullYear() - 12);
 
-    await page.getByLabel("Name", { exact: false }).fill("Keyboard Tester");
-    await page.getByLabel("Email", { exact: false }).fill(`e2e-${Date.now()}@example.com`);
-    await page.getByLabel("Password", { exact: false }).fill("Str0ngPassphrase!");
-    await page.getByLabel("Date of birth", { exact: false }).fill(tooYoung.toISOString().slice(0, 10));
+    await field(page, "Name").fill("Keyboard Tester");
+    await field(page, "Email").fill(`e2e-${Date.now()}@example.com`);
+    await field(page, "Password").fill("Str0ngPassphrase!");
+    await field(page, "Date of birth").fill(tooYoung.toISOString().slice(0, 10));
     await page.locator("#accept-terms").check();
 
     await page.getByRole("button", { name: /create account/i }).click();
 
-    // The message is the contract, not merely "it did not submit".
-    await expect(
-      page.getByText(/at least 18/i),
-      "an under-age date of birth must be refused with a stated reason"
-    ).toBeVisible();
+    // The message is the contract, not merely "it did not submit". It now
+    // appears twice by design — inline beneath the field, and in the dialog
+    // raised on submit — so assert the dialog specifically. That is the one a
+    // user is guaranteed to see; the inline copy can be scrolled off-screen,
+    // which is the whole reason the dialog exists.
+    const dialog = page.getByRole("dialog");
+    await expect(dialog, "an under-age date of birth must be refused visibly").toBeVisible();
+    await expect(dialog).toContainText(/at least 18/i);
 
     // And it must not have navigated away into a signed-in state.
     await expect(page).toHaveURL(/\/signup/);
@@ -282,10 +299,10 @@ test.describe("the age gate is real in the browser", () => {
     const adult = new Date();
     adult.setFullYear(adult.getFullYear() - 30);
 
-    await page.getByLabel("Name", { exact: false }).fill("Terms Refuser");
-    await page.getByLabel("Email", { exact: false }).fill(`e2e-${Date.now()}@example.com`);
-    await page.getByLabel("Password", { exact: false }).fill("Str0ngPassphrase!");
-    await page.getByLabel("Date of birth", { exact: false }).fill(adult.toISOString().slice(0, 10));
+    await field(page, "Name").fill("Terms Refuser");
+    await field(page, "Email").fill(`e2e-${Date.now()}@example.com`);
+    await field(page, "Password").fill("Str0ngPassphrase!");
+    await field(page, "Date of birth").fill(adult.toISOString().slice(0, 10));
     // deliberately leave the checkbox alone
 
     await page.getByRole("button", { name: /create account/i }).click();
