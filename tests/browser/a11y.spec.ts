@@ -19,9 +19,19 @@ import { test, expect, type Page } from "@playwright/test";
 /** Every control a user must operate to create an account. */
 const SIGNUP_FIELDS = ["Name", "Email", "Password", "Date of birth"];
 
+/**
+ * Navigate and wait until the page is actually interactive.
+ *
+ * These are client components, so `domcontentloaded` fires while the body is
+ * still an empty shell. Asserting at that moment measures the shell and reports
+ * defects that do not exist — an early draft of this file "found" a missing h1
+ * on /signup that was simply not painted yet. Waiting for the heading is the
+ * cheap, honest fix.
+ */
 async function gotoPublic(page: Page, path: string) {
   const res = await page.goto(path, { waitUntil: "domcontentloaded" });
   expect(res?.status(), `${path} should serve`).toBeLessThan(400);
+  await expect(page.locator("h1").first()).toBeVisible({ timeout: 15_000 });
 }
 
 test.describe("accessible naming", () => {
@@ -84,10 +94,17 @@ test.describe("keyboard operability", () => {
   test("signup is completable by keyboard alone, and focus is always visible", async ({ page }) => {
     await gotoPublic(page, "/signup");
 
-    // Walk forward with Tab and confirm we can reach the submit control without
-    // ever losing the focus ring. A keyboard user who cannot see where they are
-    // is as stuck as one who cannot move.
+    // Start the walk from a real element. Tabbing from <body> moves focus into
+    // the browser's own chrome first, which is not something the page controls
+    // and not what this test is about — an early draft did that and reported
+    // "no input reachable" on a form that is perfectly operable.
+    await page.locator("input").first().focus();
+
+    // Then walk forward and confirm we reach the checkbox and the submit
+    // control, and that focus stays visible throughout. A keyboard user who
+    // cannot see where they are is as stuck as one who cannot move.
     const reached = new Set<string>();
+    const unfocusable: string[] = [];
     for (let i = 0; i < 30; i++) {
       await page.keyboard.press("Tab");
       const info = await page.evaluate(() => {
@@ -111,7 +128,55 @@ test.describe("keyboard operability", () => {
     }
 
     expect([...reached].some((r) => r.startsWith("input:")), "no input was reachable by Tab").toBe(true);
-    expect([...reached].some((r) => r === "input:checkbox"), "the terms checkbox is not keyboard reachable").toBe(true);
+    expect(
+      [...reached].some((r) => r === "input:checkbox"),
+      "the terms checkbox is not keyboard reachable, so the form cannot be completed without a mouse"
+    ).toBe(true);
+    expect(
+      reached.has("button:submit") || reached.has("button:"),
+      "the submit button was never reached by Tab"
+    ).toBe(true);
+
+    // `unfocusable` is asserted in the dedicated focus-indicator test below,
+    // which compares styles before and after focus rather than guessing from a
+    // single snapshot.
+    expect(unfocusable).toEqual([]);
+  });
+
+  test("every input changes appearance when focused", async ({ page }) => {
+    await gotoPublic(page, "/signup");
+
+    // Measuring a single focused snapshot does not work: Tailwind's ring
+    // utilities compile to a box-shadow whose colour variables are present but
+    // TRANSPARENT when unfocused, so "has a box-shadow" is true either way. An
+    // earlier version of this test used that heuristic and reported a false
+    // positive on the date field. Comparing before with after is the honest
+    // measurement — something visible must change.
+    const count = await page.locator("input").count();
+    const noChange: string[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const input = page.locator("input").nth(i);
+      const read = () =>
+        input.evaluate((node) => {
+          const s = getComputedStyle(node as Element);
+          return [s.outlineStyle, s.outlineWidth, s.outlineColor, s.boxShadow, s.borderColor].join("|");
+        });
+
+      const before = await read();
+      await input.focus();
+      const after = await read();
+
+      if (before === after) {
+        noChange.push(await input.evaluate((n) => (n as HTMLInputElement).type));
+      }
+      await input.blur();
+    }
+
+    expect(
+      noChange,
+      `these inputs look identical focused and unfocused, so a keyboard user cannot tell where they are: ${noChange.join(", ")}`
+    ).toEqual([]);
   });
 
   test("the terms checkbox toggles with the keyboard", async ({ page }) => {
@@ -162,7 +227,14 @@ test.describe("the age gate is real in the browser", () => {
     // deliberately leave the checkbox alone
 
     await page.getByRole("button", { name: /create account/i }).click();
-    await expect(page.getByText(/accept the Terms/i)).toBeVisible();
+
+    // Match the validation message specifically. The consent label itself also
+    // contains "accept the Terms", so a bare text match resolves to two
+    // elements and fails strict mode — it would also pass while the form was
+    // silently broken, since the label is always present.
+    await expect(
+      page.locator("p.text-destructive").filter({ hasText: /accept the Terms/i })
+    ).toBeVisible();
     await expect(page).toHaveURL(/\/signup/);
   });
 });
