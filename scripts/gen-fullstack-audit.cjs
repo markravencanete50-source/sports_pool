@@ -182,7 +182,7 @@ children.push(
 
 children.push(kvTable([
   ["Repository", "markravencanete50-source/sports_pool"],
-  ["Audited commit", "12be24e (main) — verification cycle of 13 August 2026; original audit at 49d074e"],
+  ["Audited commit", "e4d1344 (main) — verification cycle of 13 August 2026; original audit at 49d074e"],
   ["Supabase project", "veughegjwzsbjgcueyka"],
   ["Production", "sports-pool (Vercel) — deploy READY on 268b3d6, verified live"],
   ["Audit date", "12 August 2026 — findings and remediation; independently verified 13 August 2026 (Section 12)"],
@@ -600,7 +600,7 @@ children.push(H2("9.D  Frontend and user experience"));
 children.push(checklist([
   { req: "Run a manual screen-reader pass — STILL RECOMMENDED, but the floor is much higher", why: "The 13 August browser suite added the assertions a linter structurally cannot make: that every input on signup and login exposes an accessible name in the rendered accessibility tree, that the form is completable by keyboard alone including the terms checkbox, and that focus is visibly indicated. Writing it immediately found that EVERY auth input was unlabelled — the label carried no htmlFor and sat as a sibling of its input, so it looked correct and announced as nothing, on the password and the date of birth that gates the product on age. jsx-a11y could not see it. That is now fixed and pinned. A human session with VoiceOver or NVDA is still worth doing before launch — automation cannot judge whether the announced order makes sense — but it is no longer the only thing standing between the product and an unusable form.", pri: "Medium" },
   { req: "Verify the httpOnly session change against live Supabase realtime", why: "Chat now authenticates through a separate short-lived token path. The mechanism is sound but has not been exercised against the live realtime service.", pri: "Medium" },
-  { req: "Recover static generation for public pages (optional)", why: "force-dynamic is global for the CSP nonce — an accepted trade this cycle. If marketing SEO becomes a priority, serve public pages a nonce-free CSP and scope force-dynamic to authenticated routes.", pri: "Low" },
+  { req: "Recover static generation for public pages — EVALUATED AND DECLINED", why: "Investigated on 13 August and deliberately not done; the reasoning is recorded at the force-dynamic line in src/app/layout.tsx so it is not silently reversed. Two things were measured rather than assumed. First, lifting force-dynamic does not affect only marketing: EVERY route becomes static, including /login, /signup, /account/security, /admin/*, /dashboard and /my-games/withdrawals. Second, and decisive: even scoped to the six marketing pages, a static page cannot carry a per-request nonce, so its CSP would need 'unsafe-inline' in script-src — and because CSRF here is ORIGIN-based, an injected script on a same-origin page runs WITH the app's origin. It could call /api/me/payout-request with a signed-in visitor's cookies and pass the Origin check. Weakening script-src on /terms would therefore weaken the money routes for any signed-in user who reads the terms, in exchange for faster TTFB on six content pages Vercel already serves from the edge. If marketing SEO becomes a real priority, the correct fix is a separate origin for those pages so an XSS there cannot inherit the app origin — not a weaker policy on this one. This entry is closed as a decision, not as work.", pri: "Done" },
 ]));
 
 children.push(H2("9.E  Operational readiness"));

@@ -9,6 +9,29 @@ import localFont from "next/font/local";
  * on every response, so the browser refuses every inline script and the page
  * never hydrates. Rendering per request is what lets Next.js stamp the current
  * nonce onto its bootstrap scripts.
+ *
+ * BEFORE YOU REMOVE THIS FOR SEO — the trade is worse than it looks, and was
+ * evaluated and declined on 13 August 2026 (audit 9.D).
+ *
+ * Two things measured rather than assumed:
+ *
+ *   1. Lifting this line does not just affect marketing pages. Every route
+ *      becomes static, INCLUDING /login, /signup, /account/security, /admin/*,
+ *      /dashboard and /my-games/withdrawals. Scoping it means pushing
+ *      force-dynamic down into each non-marketing group.
+ *
+ *   2. Even scoped, a static page needs 'unsafe-inline' in script-src, because
+ *      there is no nonce it can carry. And CSRF here is ORIGIN-based
+ *      (assertSameOrigin in src/lib/request-guards.ts), so an injected script
+ *      on a same-origin page executes WITH the app's origin: it can call
+ *      /api/me/payout-request with the visitor's cookies and pass the Origin
+ *      check. Weakening script-src on /terms therefore weakens the money
+ *      routes for any signed-in user who reads the terms.
+ *
+ * The gain is faster TTFB on six content pages that Vercel already serves
+ * from the edge. If marketing SEO genuinely becomes a priority, the correct
+ * fix is a separate origin (www.) for those pages, so an XSS there cannot
+ * inherit the app origin — not a weaker policy on this one.
  */
 export const dynamic = "force-dynamic";
 import { Suspense } from "react";
