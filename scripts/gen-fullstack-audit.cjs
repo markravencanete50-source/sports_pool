@@ -182,12 +182,12 @@ children.push(
 
 children.push(kvTable([
   ["Repository", "markravencanete50-source/sports_pool"],
-  ["Audited commit", "49d074e (main), remediated on branch claude/security-reliability-audit-umo1s5"],
+  ["Audited commit", "268b3d6 (main) — verification cycle of 13 August 2026; original audit at 49d074e"],
   ["Supabase project", "veughegjwzsbjgcueyka"],
-  ["Production", "sports-pool (Vercel) — deploy READY"],
-  ["Audit date", "12 August 2026 — findings and remediation, same cycle"],
+  ["Production", "sports-pool (Vercel) — deploy READY on 268b3d6, verified live"],
+  ["Audit date", "12 August 2026 — findings and remediation; independently verified 13 August 2026 (Section 12)"],
   ["Data state at audit", "Pre-launch: 0 users, 0 pools, 0 cards, 0 transactions"],
-  ["Verdict", "All Medium and Low findings closed. The regulatory controls of Section 9.F are built and enforced. Two items remain, both requiring an external account or a legal opinion that code cannot supply — see Section 9.A."],
+  ["Verdict", "The 13 August verification found the audited remediation had NEVER REACHED PRODUCTION: a sub-daily Vercel cron on the Hobby plan made Vercel refuse to create deployments, so five commits — the whole compliance layer — silently never shipped while CI stayed green. That is fixed and production is now live and verified. One blocking defect remains and it is not code: SUPABASE_SERVICE_ROLE_KEY is unset in production, which has left settlement and Stripe fulfilment dead since 5 August. See Section 12."],
 ], 2600));
 
 children.push(pageBreak());
@@ -206,6 +206,7 @@ children.push(H1("Contents"));
   "9.  Checklists — lacking requirements",
   "10. Appendix A — API route inventory",
   "11. Appendix B — what this audit cycle fixed",
+  "12. Verification cycle — 13 August 2026",
 ].forEach(t => children.push(P(t, { size: 22, after: 90 })));
 
 children.push(pageBreak());
@@ -575,7 +576,8 @@ children.push(checklist([
   { req: "Execute the money path end to end in Stripe test mode", why: "Purchase → webhook → card issued → picks → settlement → balance credit → PayPal payout. This chain has never been run whole. Include a deliberately duplicated webhook delivery to prove idempotency under real conditions rather than by inspection. (BE-10)", pri: "Critical" },
   { req: "Verify the Stripe webhook endpoint and secret in the live dashboard", why: "STRIPE_WEBHOOK_SECRET must match the live endpoint. If the webhook is misconfigured a user is charged and receives no card — the exact failure the fulfilment code is written to prevent, and the exact mismatch the new reconcile cron will flag the morning after.", pri: "Critical" },
   { req: "Confirm PAYPAL_MODE is live and credentials are production", why: "The code refuses to fail open to sandbox, so a misconfiguration blocks payouts rather than faking them — but it must be set correctly before the first withdrawal request arrives.", pri: "Critical" },
-  { req: "Point an alert at app_errors and stand up an uptime probe", why: "The error sink, structured logs and reconciliation detector were built this cycle; what remains is the pager. A scheduled query on app_errors, a Vercel log drain, or a Sentry-class service wired to the same seams — pick one and give it an owner. (OPS-2 residual)", pri: "Critical" },
+  { req: "Set SUPABASE_SERVICE_ROLE_KEY in the Vercel production environment — NEW, BLOCKING", why: "Unset in production. Vercel's own runtime errors carry '[cron/settle] fatal: Missing SUPABASE_SERVICE_ROLE_KEY' first seen 5 August and recurring to 12 August, and the health probe added on 13 August reported config and database down within a minute of going live. Every service-role path is therefore dead in production: pool settlement never completes, and the Stripe webhook cannot fulfil a purchase — a user can be charged and receive nothing. The site serves normally, which is exactly why this went unnoticed for eight days. Confirm with: curl -H \"Authorization: Bearer $CRON_SECRET\" https://sports-pool.vercel.app/api/health", pri: "Critical" },
+  { req: "Point an alert at app_errors and stand up an uptime probe — DONE", why: "Closed 13 August. /api/health is a two-shape probe: status code only when anonymous, full component breakdown under CRON_SECRET, 503 reserved for failures that mean the instance cannot serve. /api/cron/alert digests app_errors grouped by source and normalised message, and logs the digest whether or not a webhook is configured so alerting can never be the thing that hides an error. Scheduled every two hours from .github/workflows/alert.yml. It earned its keep immediately by catching the service-role gap above. (OPS-2)", pri: "Done" },
   { req: "Enable PITR and perform the first restore rehearsal", why: "The backup and restore procedure is documented in docs/RUNBOOK.md §2, including the post-restore reconciliation step. It has not yet been rehearsed, and a daily snapshot alone can lose up to 24 hours of money movements. (DB-5 residual)", pri: "Critical" },
   { req: "Decide and ship admin MFA", why: "Admins approve payouts and set the platform fee; one phished credential currently moves money. The enforcement seam and the enrollment prerequisite are documented in docs/RUNBOOK.md §4 — do not enforce before enrollment exists or every admin locks out. (BE-4)", pri: "Critical" },
   { req: "Unset SETUP_SECRET once the admin account exists", why: "It gates a service-role write endpoint. Leaving it set after bootstrap leaves an unnecessary privileged path enabled.", pri: "High" },
@@ -583,13 +585,13 @@ children.push(checklist([
 
 children.push(H2("9.B  Security hardening"));
 children.push(checklist([
-  { req: "Add an admin action audit log", why: "Role changes, payout approvals and platform-fee edits should be attributable after the fact. Financial disputes are resolved from an audit trail. app_errors is the error sink, not an audit trail — this is a separate table with a separate write path.", pri: "Medium" },
-  { req: "Schedule a dependency vulnerability scan", why: "Advisories were cleared during the first cycle, but nothing re-checks them. Dependabot or npm audit in CI keeps that honest.", pri: "Low" },
+  { req: "Add an admin action audit log — ALREADY DONE", why: "Correction: this item was stale in the 12 August edition. recordAdminAction() exists and is wired into all four privileged routes (role change, payout approval, payout completion, platform-fee edit), writing to a dedicated table separate from app_errors. Verified in the repository on 13 August. No work outstanding.", pri: "Done" },
+  { req: "Schedule a dependency vulnerability scan — DONE", why: "Closed 13 August. 'npm audit --audit-level=high' blocks CI, and .github/dependabot.yml proposes the upgrades weekly, grouped so the PR is small enough to actually be read — Next and the money/auth packages (Stripe, Supabase) isolated into their own PRs so those diffs are reviewed rather than skimmed.", pri: "Done" },
 ]));
 
 children.push(H2("9.C  Reliability and testing"));
 children.push(checklist([
-  { req: "Add an end-to-end harness", why: "Playwright is already available in this environment. Signup, purchase, picks, settlement and withdrawal are the journeys that must never silently break. Pairs with the 9.A test-mode money-path run.", pri: "High" },
+  { req: "Add an end-to-end harness — PARTLY DONE", why: "Closed at the HTTP layer on 13 August: tests/e2e/smoke.test.ts runs black-box against a live deployment, asserting the CSP and nonce, clickjacking and sniffing headers, the health contract's two shapes, anonymous rejection on the money routes, CSRF refusal of a cross-origin state change, the 410 tombstones, and 404 on unknown API paths across every method. 13 of 13 pass against production at 268b3d6; it skips rather than fails without E2E_BASE_URL, so it can never become a green test that checks nothing. It found a real production defect on first run (Section 12). Still outstanding: the browser-level journeys — signup, purchase, picks, withdrawal — which need a driver and a seeded session, and the test-mode money path in 9.A.", pri: "Partly done" },
   { req: "Extend route-level test coverage beyond the guard layer", why: "The unit suite pins the shared guards every route passes through, which is the highest-leverage seam — but per-route tests of auth, ownership and error shapes would catch wiring mistakes the guard tests cannot.", pri: "Medium" },
 ]));
 
@@ -602,7 +604,8 @@ children.push(checklist([
 
 children.push(H2("9.E  Operational readiness"));
 children.push(checklist([
-  { req: "Uptime and health-check monitoring", why: "Nothing currently detects that the site is down or a cron stopped firing. Vercel's cron dashboard shows history but does not page anyone.", pri: "High" },
+  { req: "Uptime and health-check monitoring — DONE", why: "Closed 13 August. /api/health answers with a status code any monitor can watch without credentials, and never reveals which component failed unless the caller holds CRON_SECRET — a public health endpoint is a reconnaissance surface during an outage. Degraded-but-serving conditions (notably the in-memory rate-limit fallback) report 200/degraded rather than 503, so the pager stays credible. Point an external monitor at it. (OPS-3, 9.E)", pri: "Done" },
+  { req: "Guard the deployment pipeline itself — DONE", why: "New this cycle, and the reason everything above sat undeployed for a day. scripts/check-vercel-crons.ts blocks any sub-daily cron schedule in vercel.json and any unknown top-level key, both of which make Vercel refuse a deployment outright on the Hobby plan. scripts/check-migrations.ts blocks duplicate migration version prefixes. Both run in CI. See Section 12.", pri: "Done" },
   { req: "Define support and dispute-resolution process", why: "A player will contest a settlement result. Decide now who investigates, against what evidence, and who can authorise a correction — RUNBOOK.md §1.3 covers the mechanics; this is the org question.", pri: "Medium" },
   { req: "Document the admin bootstrap and offboarding procedure", why: "How an admin is created, and how access is fully revoked when someone leaves.", pri: "Medium" },
   { req: "Set a staging environment mirroring production", why: "Money-path changes should be exercised somewhere real before they reach users.", pri: "Medium" },
@@ -756,7 +759,87 @@ children.push(P("One coordinated change set closing every remaining Medium and L
 
 children.push(spacer(240));
 children.push(P(
-  "Read together, the two cycles describe a system whose security model is sound, whose failure modes are instrumented and documented, and whose remaining work — Upstash provisioning, the live test-mode money-path run, and the admin MFA decision — requires accounts and decisions rather than code. Section 9.A is the launch gate, and it is now three items deep.",
+  "Read together, the cycles describe a system whose security model is sound and whose failure modes are instrumented and documented. What the 13 August verification added is the discovery that none of that had reached users, and that the most consequential remaining defects are configuration rather than code. Section 9.A is the launch gate; Section 12 records what verification found.",
+  { italics: true }
+));
+
+children.push(pageBreak());
+
+// ── Section 10: independent verification ────────────────────────────────────
+children.push(H1("12.  Verification cycle — 13 August 2026"));
+children.push(P(
+  "This section records an independent re-check of the 12 August audit against the repository, the live Supabase project, the live Vercel project and the running production deployment. It was not a re-audit of the code, which the previous cycle covered. It asked a narrower and more uncomfortable question: is what the audit claims to have delivered actually true, and actually running?",
+  { italics: true }
+));
+children.push(P("Three of the audit's conclusions did not survive contact with production. Two were wrong; one was catastrophic and had nothing to do with application code."));
+
+children.push(H2("12.1  The remediation was never deployed"));
+children.push(P(
+  "The audit describes a compliance layer — age verification, jurisdiction restriction, self-exclusion, deposit limits, KYC thresholds, contest rules published as binding terms. All of it was written, reviewed, merged and green in CI. None of it was serving a single user."
+));
+children.push(P(
+  "Vercel's deployment list ends at 5e9c344 on 12 August. The five commits after it produced no deployment record at all — not failed builds, no builds. Vercel had refused to create the deployment, which leaves no artefact to inspect in the dashboard and no failure for CI to report."
+));
+children.push(Rich([
+  { t: "Cause. ", b: true },
+  { t: "This project is on the Vercel Hobby plan, where cron schedules are day-granularity. A sub-daily expression is not clamped, warned about or ignored — the deployment is refused. Commit 662c420 had known this and said so explicitly in its message, choosing " },
+  { t: "0 8 * * *", mono: true },
+  { t: " deliberately and putting the frequent cadence in GitHub Actions. Commit 7e0bf34 then changed settlement to " },
+  { t: "0 * * * *", mono: true },
+  { t: ", and deployments stopped from that commit onward." },
+]));
+children.push(P(
+  "The failure mode is the dangerous part, not the mistake. Every signal a team normally trusts stayed green: CI passed, the branch merged, the dashboard showed a healthy production deployment — of eight-day-old code. Nothing anywhere reported that the last five merges had not shipped."
+));
+children.push(Bullet("Fixed: vercel.json restored to day-granularity, the shape that deployed successfully for months. The 30-minute settlement cadence continues to come from .github/workflows/settle-pools.yml, as originally designed."));
+children.push(Bullet("Guarded: scripts/check-vercel-crons.ts fails CI on any sub-daily schedule, and on any unknown top-level key — a \"//\" comment key in vercel.json is itself a deployment-refusing mistake, so the explanation lives in the script rather than the config. Verified in both directions against the exact configuration from 7e0bf34."));
+children.push(Bullet("Result: production deployed and verified live at 268b3d6. /contest-rules, /responsible-gaming and /unavailable returned 200 for the first time."));
+
+children.push(H2("12.2  SUPABASE_SERVICE_ROLE_KEY is unset in production"));
+children.push(P(
+  "The health probe built during this cycle reported config and database down within a minute of going live, while the site itself served normally. Vercel's runtime error history corroborates it independently and dates it: \"[cron/settle] fatal: Missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL\", first seen 5 August, recurring through 12 August."
+));
+children.push(P(
+  "Every service-role path in production is therefore dead. Pool settlement cannot complete, and the Stripe webhook cannot fulfil a purchase — a user can be charged and receive nothing, which is precisely the failure the fulfilment code was written to prevent. The public site is unaffected, because it reads through the anon client. That asymmetry is why this survived eight days unnoticed and why it was invisible to every check that existed before this cycle."
+));
+children.push(P("This is the single blocking item. It is a credential and must be set by an operator; it cannot be fixed in code."));
+
+children.push(H2("12.3  Two audit claims corrected"));
+children.push(P(
+  "The audit reported that the duplicate migration-version collisions had caused migrations to be skipped in production. Direct inspection of the live database contradicts this: get_public_winners, claim_pool_payout and set_pool_transaction_fee all exist, and the legacy picks table is gone. Those changes had been applied by hand under different names, which is also why the remote ledger's version numbers do not correspond to the repository's filename prefixes at all."
+));
+children.push(P(
+  "The collision is still a real defect — but its cost is a fresh provision, not the running system. A new environment built with supabase db push would silently skip three migrations and report success, then fail on the first grant it was missing. handover_hardening makes that concrete: it revokes on set_pool_transaction_fee(), created by the skipped final_audit_fixes, so a clean provision would error outright. Renumbered, and guarded in CI by scripts/check-migrations.ts."
+));
+children.push(P(
+  "Separately, Section 9.B listed \"add an admin action audit log\" as outstanding. It was already implemented and wired into all four privileged routes. That entry was stale and is now corrected."
+));
+
+children.push(H2("12.4  Defect found by the new smoke suite"));
+children.push(Rich([
+  { t: "On its first run against production the suite found that Next's App Router answered an unmatched route with the not-found page carrying " },
+  { t: "HTTP 200", b: true },
+  { t: " for every method except GET. A client POSTing to a mistyped or renamed endpoint received res.ok === true and an HTML body where it expected JSON. Nothing was exposed and no action ran, but on an API that moves money \"that endpoint does not exist\" must not look like success — the same reasoning that made the retired card endpoints explicit 410s rather than deletions. Closed by an API catch-all returning 404 on every method; the 410 tombstones were re-verified as still winning." },
+]));
+
+children.push(H2("12.5  Dependency upgrades"));
+children.push(P(
+  "The Dependabot configuration added this cycle immediately proposed five grouped upgrades, which were reviewed and merged with their breaking changes resolved rather than accepted blind. Merging them unmodified would have broken the build: Vercel's build of Dependabot's production-group branch failed outright."
+));
+children.push(Bullet("zod 3 → 4: ZodError.errors renamed to .issues, and the errorMap option replaced by message, across the validation layer and seven money-path routes. The existing schema unit tests were the safety net and still pass."));
+children.push(Bullet("stripe 20 → 22: the SDK types the pinned API version as a literal, so the stale pin failed typecheck rather than drifting silently. Moved to 2026-07-29.dahlia."));
+children.push(Bullet("TypeScript 7 and ESLint 10 were REJECTED and held back: typescript-eslint does not support TS 7.0, and ESLint 10 breaks eslint-plugin-react inside eslint-config-next. Both would have disabled the lint gate entirely. Merged at TypeScript 6 and ESLint 9 instead, which pass."));
+children.push(Bullet("react-hooks/set-state-in-effect became an error in the upgraded plugin, correctly flagging a cascading render in useIsMobile; rewritten on useSyncExternalStore, which is what matchMedia calls for."));
+
+children.push(H2("12.6  Verification performed"));
+children.push(P("Every claim in this section was checked against a live system rather than inferred from the repository:"));
+children.push(Bullet("Live Supabase, queried directly: object existence for the allegedly-skipped migrations, the migration ledger, and RPC grants."));
+children.push(Bullet("Live Vercel API: deployment records per commit, deployment states, and runtime error groups with first/last-seen timestamps."));
+children.push(Bullet("Running production over HTTP: 13 of 13 smoke assertions pass at 268b3d6 — CSP with nonce and no unsafe-inline, frame-ancestors none, nosniff, the health contract's two shapes, anonymous rejection on four money routes, cross-origin CSRF refusal, both 410 tombstones, and 404 on unknown API paths across five methods."));
+children.push(Bullet("Local gate on every commit: typecheck, migration guard, cron guard, 34 unit tests, the 243-combination settlement sweep, lint, and next build."));
+children.push(spacer(200));
+children.push(P(
+  "What is NOT verified, and should not be read as covered: the money path has still never been run end to end against Stripe test-mode infrastructure (9.A), no browser-level journey test exists, and a successful interactive login was not exercised after the @supabase/ssr 0.5 → 0.12 upgrade — that upgrade changes session cookie handling and deserves one manual sign-in before launch.",
   { italics: true }
 ));
 
