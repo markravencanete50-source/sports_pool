@@ -42,9 +42,11 @@ on:
         type: string
 
 concurrency:
-  # Rapid successive deploys should not stack up runs; only the newest
-  # deployment is worth verifying.
-  group: post-deploy-${{ github.event.deployment_status.environment_url || inputs.url }}
+  # Keyed on the ENVIRONMENT, not the per-deployment URL. Every production
+  # deploy verifies the same alias, so grouping by deployment id would give each
+  # run its own group and cancel-in-progress would never fire — three deploys in
+  # five minutes would pay for three full runs of an already-superseded check.
+  group: post-deploy-${{ github.event.deployment_status.environment || inputs.url || 'manual' }}
   cancel-in-progress: true
 
 jobs:
@@ -60,7 +62,16 @@ jobs:
     timeout-minutes: 12
 
     env:
-      E2E_BASE_URL: ${{ github.event.deployment_status.environment_url || inputs.url }}
+      # NOT deployment_status.environment_url. That is the deployment-SPECIFIC
+      # hostname (sports-pool-<hash>-<team>.vercel.app), which sits behind
+      # Vercel Deployment Protection — it answered 302 to an auth redirect for
+      # every request on the first run here, failing every assertion for a
+      # reason that had nothing to do with the code.
+      #
+      # The production alias is what users actually resolve and is public, so
+      # it is what deserves verifying. Same convention as settle-pools.yml: a
+      # public URL with an optional secret override, not a credential.
+      E2E_BASE_URL: ${{ inputs.url || secrets.APP_URL || 'https://sports-pool.vercel.app' }}
 
     steps:
       - uses: actions/checkout@v7
@@ -84,23 +95,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The browser binaries are ~120MB and unchanged between runs; downloading
-      # them every time would roughly double the cost of this workflow.
-      - name: Cache Playwright browsers
-        id: pw-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
+      # Deliberately NOT cached. actions/cache cannot SAVE on a
+      # deployment_status event — "not supported because it's not tied to a
+      # branch or tag ref" — so a cache step here warns on every run and never
+      # populates anything. A warning in every log is noise that teaches people
+      # to stop reading logs, which costs more than the download.
+      #
+      # Chromium is roughly a minute. At production-only cadence that is well
+      # inside the remaining Actions allowance.
       - name: Install Chromium
-        if: steps.pw-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium --with-deps
-
-      # Even with a cache hit the OS-level libraries are not persisted.
-      - name: Install browser system dependencies
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
 
       - name: HTTP smoke suite
         run: npm run test:e2e
