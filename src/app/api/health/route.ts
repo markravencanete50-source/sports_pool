@@ -65,6 +65,18 @@ function secretMatches(request: Request): boolean {
  * intact enough to read. A HEAD count on a tiny table touches no user data.
  */
 async function checkDatabase(): Promise<Component> {
+  // Unprovisioned is not unreachable. Without the service-role key this probe
+  // cannot run at all, and reporting that as a database outage would blame the
+  // wrong component — the operator would go looking at Supabase when the fix is
+  // an environment variable. checkCapabilities() already names it.
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+    return {
+      status: "degraded",
+      hard: false,
+      detail: "not probed — SUPABASE_SERVICE_ROLE_KEY unset",
+    };
+  }
+
   const started = Date.now();
   try {
     const { error } = await createAdminClient()
@@ -93,22 +105,61 @@ async function checkDatabase(): Promise<Component> {
  * Config presence only — never the values, and never a network call to the
  * processor. A probe that hits Stripe on every poll would burn quota and make
  * our uptime a function of theirs.
+ *
+ * UNPROVISIONED IS NOT DOWN. This distinction is the whole point of splitting
+ * the list. This project is handed to a client who holds the real Stripe and
+ * PayPal accounts, so there is a legitimate window — possibly a long one — where
+ * the app is deployed and serving correctly with those credentials absent.
+ *
+ * Treating that as 503 would mean an uptime monitor screaming continuously
+ * through the entire handover, and a pager that cries wolf for weeks is one
+ * nobody reads on the day it matters. So:
+ *
+ *   CORE      — without these the app cannot render or authenticate at all.
+ *               Their absence really is "this instance cannot serve": 503.
+ *   CAPABILITY— the site serves fine, but a specific capability is switched
+ *               off. Reported as degraded with the consequence spelled out, at
+ *               HTTP 200. Severe, visible, and named — but not an outage.
+ *
+ * Nothing is hidden by this: a degraded status is never "ok", the component
+ * breakdown names each missing variable and what it costs, and /api/cron/alert
+ * is what escalates a money-path failure. The uptime probe answers a narrower
+ * question — is this thing serving?
  */
+const CORE_ENV = [
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "NEXT_PUBLIC_APP_URL",
+] as const;
+
+/** Variable → what is actually broken while it is missing. */
+const CAPABILITY_ENV: Record<string, string> = {
+  SUPABASE_SERVICE_ROLE_KEY:
+    "settlement cannot run and Stripe purchases cannot be fulfilled — a user can be charged and receive nothing",
+  STRIPE_SECRET_KEY: "no checkout session can be created, so nothing can be bought",
+  STRIPE_WEBHOOK_SECRET:
+    "the Stripe webhook rejects every delivery with 503, so paid purchases are never fulfilled",
+  CRON_SECRET: "settlement, reconciliation and the error digest all refuse to run",
+};
+
 function checkConfig(): Component {
-  const required = [
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY",
-    "NEXT_PUBLIC_APP_URL",
-    "STRIPE_SECRET_KEY",
-    "STRIPE_WEBHOOK_SECRET",
-    "CRON_SECRET",
-  ];
-  const missing = required.filter((k) => !process.env[k]?.trim());
-  if (missing.length > 0) {
-    return { status: "down", hard: true, detail: `missing env: ${missing.join(", ")}` };
+  const missingCore = CORE_ENV.filter((k) => !process.env[k]?.trim());
+  if (missingCore.length > 0) {
+    return { status: "down", hard: true, detail: `missing core env: ${missingCore.join(", ")}` };
   }
   return { status: "ok", hard: true };
+}
+
+/** Money-path provisioning, reported loudly but never as an outage. */
+function checkCapabilities(): Component {
+  const missing = Object.keys(CAPABILITY_ENV).filter((k) => !process.env[k]?.trim());
+  if (missing.length === 0) return { status: "ok", hard: false, detail: "fully provisioned" };
+
+  return {
+    status: "degraded",
+    hard: false,
+    detail: missing.map((k) => `${k} unset — ${CAPABILITY_ENV[k]}`).join("; "),
+  };
 }
 
 /**
@@ -155,6 +206,7 @@ function checkPayouts(): Component {
 export async function GET(request: Request) {
   const components: Record<string, Component> = {
     config: checkConfig(),
+    moneyPathConfig: checkCapabilities(),
     database: await checkDatabase(),
     rateLimiting: checkRateLimitBackend(),
     payouts: checkPayouts(),

@@ -110,27 +110,109 @@ policy as non-optional.
 
 ## 3. Provisioning that must happen before launch
 
+> **Check your work with one command.** `/api/health` reports every item below.
+> Anonymous callers get a status code only; with the secret you get the
+> breakdown naming each unset variable and what it costs:
+>
+> ```
+> curl -s -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/health
+> ```
+>
+> Missing money-path credentials report **degraded at HTTP 200**, not 503 — the
+> site genuinely serves without them, and a probe that screams for the whole
+> handover period is one nobody reads later. `status: "ok"` means fully
+> provisioned. Work the list until it says that.
+
 | Item | Where | Why |
 |---|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → `service_role` (secret) → Vercel env, **Production** | **This was unset in production for eight days and nobody noticed.** Every service-role path dies without it: settlement never completes and the Stripe webhook cannot fulfil a purchase, so a user can be charged and receive nothing. The public site keeps serving normally, which is exactly why it went unnoticed. Never expose it to the browser or prefix it `NEXT_PUBLIC_` — it bypasses every RLS policy |
 | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | console.upstash.com → create Redis DB → Vercel env vars (all environments) | Without them every rate limit is per-instance in-memory — the sign-in throttle multiplies by the number of warm instances |
-| `STRIPE_WEBHOOK_SECRET` | Stripe dashboard → Webhooks → the production endpoint | Wrong secret = users charged with no card issued |
+| `STRIPE_WEBHOOK_SECRET` | Stripe dashboard → Webhooks → the production endpoint (`/api/stripe/webhook`, event `checkout.session.completed`) | Wrong or unset secret = users charged with no card issued. Unset is verifiable from outside: the webhook answers `503 {"error":"Webhook not configured"}` instead of `400 Missing stripe-signature` |
 | `PAYPAL_MODE=live` + production client id/secret | Vercel env | The code fails closed to "not configured", so payouts simply won't send until this is right |
-| `CRON_SECRET` | Vercel env | Settlement and reconciliation answer 503 until set |
-| Unset `SETUP_SECRET` | Vercel env | Bootstrap endpoint should die after the first admin exists |
-| MFA for admin accounts | Supabase Auth (TOTP) + enforcement in `requireAdmin` | An admin credential alone can currently move money — see §4 |
+| `CRON_SECRET` | **Two places.** Vercel env, **and** GitHub → Settings → Secrets and variables → Actions | Vercel: settlement, reconciliation and the alert digest answer 503 until set. GitHub: without the Actions secret `settle-pools.yml` and `alert.yml` **skip and still report success** — a green workflow doing nothing. Both values must match. Verify by running either workflow manually and confirming its trigger step says success, not skipped |
+
+| Unset `SETUP_SECRET` | Vercel env | Hygiene only, no longer a hole. `/api/seed-admin` now refuses with 410 once any admin exists, so a forgotten secret cannot reopen the bootstrap path |
+| MFA for admin accounts | Enrol at `/account/security` (TOTP) | **Built and enforced** — see §4. Every admin must enrol; payout approval, role changes and platform-fee edits refuse a session without a verified factor |
 | PITR backups | Supabase dashboard | See §2 |
+
+**Environment variables only apply to new deployments.** Vercel snapshots them at
+deploy time, so adding one changes nothing until you redeploy. After setting any
+row above: Deployments → latest → ⋯ → Redeploy.
 
 ## 4. Known-open items (by design or pending external action)
 
-- **Admin MFA (audit BE-4)** is not implemented in-app. Do not half-ship it:
-  enforcement without an enrollment flow locks every admin out. The
-  implementation seam is `src/lib/require-admin.ts` (require `aal2` once a
-  verified TOTP factor exists) plus an enrollment page using
-  `supabase.auth.mfa` server-side. Until then, admin accounts must use
-  20+ character generated passwords stored in a password manager.
+- **Admin MFA (audit BE-4) — BUILT AND ENFORCED.** Both halves shipped:
+  `src/lib/require-admin.ts` requires `aal2` on payout completion, role changes
+  and platform-fee edits, and `/account/security` is the TOTP enrolment screen
+  (QR + verify) driving `/api/me/mfa`. The rollout order is deliberate and safe:
+  the check refuses an admin who holds *no* factor with `mfa_enrollment_required`
+  while leaving the enrolment routes ungated, so nobody can be locked out of
+  enrolling. **Each admin must enrol at `/account/security` before they can
+  approve a payout.**
 - **E2E money-path test (BE-10)**: requires real Stripe test-mode keys;
   procedure sketch lives in the audit document §9.A. Run it before the first
   real deposit.
-- **External uptime monitoring / alerting (OPS-2 residual)**: `app_errors`
-  and structured logs exist; pointing an alert at them (Vercel log drains,
-  or a scheduled Supabase query) still needs an external destination chosen.
+
+## 5. Admin bootstrap and offboarding
+
+**Creating the first admin** (once per environment):
+
+1. The person signs up normally through `/signup`.
+2. Set `ADMIN_USER_EMAIL` to their address and `SETUP_SECRET` to a generated
+   value on Vercel, then redeploy.
+3. `POST /api/seed-admin` with `Authorization: Bearer $SETUP_SECRET`.
+4. They enrol TOTP at `/account/security`. Until they do, they can sign in but
+   cannot approve payouts or change roles.
+5. Unset `SETUP_SECRET` and redeploy. Optional now — the endpoint answers 410
+   once an admin exists — but it keeps the surface minimal.
+
+**Creating further admins:** an existing enrolled admin promotes them through
+the admin UI. Do not reuse the bootstrap endpoint; it is closed after step 3.
+
+**Offboarding — do all four, in order:**
+
+1. Demote to `user` via the admin UI. This is what removes authority; the rest
+   is cleanup.
+2. Revoke their sessions in Supabase Auth (Dashboard → Authentication → Users →
+   the account → sign out / revoke). A demoted admin holding a live JWT keeps an
+   `app_metadata.role` claim until it expires — the API re-checks the database,
+   so they cannot act, but revoking closes the window properly.
+3. Remove their TOTP factor in Supabase Auth so a retained authenticator is not
+   a live second factor.
+4. Confirm in `admin_audit_log` that nothing unexpected happened in their final
+   session, and rotate any shared secret they held (`CRON_SECRET`,
+   `SETUP_SECRET`, processor keys).
+
+## 6. Disputes and support
+
+A player *will* contest a settlement. Decide the owner before it happens, not
+during.
+
+**The evidence, in order of authority:**
+
+1. `pool_winners` — who was credited, how much, against which card.
+2. `user_transactions` — the immutable ledger. Every credit and debit, with the
+   unique index that makes a double payout impossible. This is the record of
+   truth in a dispute.
+3. `pool_games` final scores plus `parlay_cards` / `card_picks` — reconstructs
+   the scoring decision. Settlement is deterministic: the same inputs always
+   produce the same winner, and `scripts/verify-settlement.ts` pins that
+   behaviour over 243 payout combinations.
+4. `admin_audit_log` — whether a human changed anything.
+5. `compliance_events` — whether a compliance control (age, jurisdiction,
+   self-exclusion, limits, KYC) refused the action.
+
+**Rules of engagement:**
+
+- Never adjust a balance with a raw SQL `UPDATE`. It bypasses the ledger and
+  destroys the audit trail that resolves the *next* dispute. Corrections go
+  through a transaction row so the history stays additive.
+- A settlement result is only wrong if an input was wrong (a bad final score, a
+  missing pick). Fix the input and re-run settlement; do not hand-edit an
+  outcome.
+- Anything touching money needs a second person's sign-off, recorded in
+  `admin_audit_log`.
+- Name the owner: **decide who investigates, who may authorise a correction, and
+  the response-time commitment you publish.** That is an organisational choice
+  this document cannot make for you — but the mechanics above are ready for
+  whoever it is.

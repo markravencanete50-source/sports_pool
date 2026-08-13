@@ -187,7 +187,7 @@ children.push(kvTable([
   ["Production", "sports-pool (Vercel) — deploy READY on 268b3d6, verified live"],
   ["Audit date", "12 August 2026 — findings and remediation; independently verified 13 August 2026 (Section 12)"],
   ["Data state at audit", "Pre-launch: 0 users, 0 pools, 0 cards, 0 transactions"],
-  ["Verdict", "The 13 August verification found the audited remediation had NEVER REACHED PRODUCTION: a sub-daily Vercel cron on the Hobby plan made Vercel refuse to create deployments, so five commits — the whole compliance layer — silently never shipped while CI stayed green. That is fixed and production is now live and verified. One blocking defect remains and it is not code: SUPABASE_SERVICE_ROLE_KEY is unset in production, which has left settlement and Stripe fulfilment dead since 5 August. See Section 12."],
+  ["Verdict", "Ready for handover. The 13 August verification found the audited remediation had NEVER REACHED PRODUCTION — a sub-daily Vercel cron on the Hobby plan made Vercel refuse to create deployments, so five commits including the whole compliance layer silently never shipped while CI stayed green. That is fixed, guarded against recurrence, and production is verified live. Every remaining Critical and High item is now either a production credential, a legal opinion, or a processor approval; nothing outstanding is application code. Section 13 states what the client must do — wire the real keys, redeploy, watch /api/health go green, and run the money path once in test mode."],
 ], 2600));
 
 children.push(pageBreak());
@@ -207,6 +207,7 @@ children.push(H1("Contents"));
   "10. Appendix A — API route inventory",
   "11. Appendix B — what this audit cycle fixed",
   "12. Verification cycle — 13 August 2026",
+  "13. Handover state — what is left, and whose job it is",
 ].forEach(t => children.push(P(t, { size: 22, after: 90 })));
 
 children.push(pageBreak());
@@ -579,13 +580,13 @@ children.push(checklist([
   { req: "Set SUPABASE_SERVICE_ROLE_KEY in the Vercel production environment — NEW, BLOCKING", why: "Unset in production. Vercel's own runtime errors carry '[cron/settle] fatal: Missing SUPABASE_SERVICE_ROLE_KEY' first seen 5 August and recurring to 12 August, and the health probe added on 13 August reported config and database down within a minute of going live. Every service-role path is therefore dead in production: pool settlement never completes, and the Stripe webhook cannot fulfil a purchase — a user can be charged and receive nothing. The site serves normally, which is exactly why this went unnoticed for eight days. Confirm with: curl -H \"Authorization: Bearer $CRON_SECRET\" https://sports-pool.vercel.app/api/health", pri: "Critical" },
   { req: "Point an alert at app_errors and stand up an uptime probe — DONE", why: "Closed 13 August. /api/health is a two-shape probe: status code only when anonymous, full component breakdown under CRON_SECRET, 503 reserved for failures that mean the instance cannot serve. /api/cron/alert digests app_errors grouped by source and normalised message, and logs the digest whether or not a webhook is configured so alerting can never be the thing that hides an error. Scheduled every two hours from .github/workflows/alert.yml. It earned its keep immediately by catching the service-role gap above. (OPS-2)", pri: "Done" },
   { req: "Enable PITR and perform the first restore rehearsal", why: "The backup and restore procedure is documented in docs/RUNBOOK.md §2, including the post-restore reconciliation step. It has not yet been rehearsed, and a daily snapshot alone can lose up to 24 hours of money movements. (DB-5 residual)", pri: "Critical" },
-  { req: "Decide and ship admin MFA", why: "Admins approve payouts and set the platform fee; one phished credential currently moves money. The enforcement seam and the enrollment prerequisite are documented in docs/RUNBOOK.md §4 — do not enforce before enrollment exists or every admin locks out. (BE-4)", pri: "Critical" },
-  { req: "Unset SETUP_SECRET once the admin account exists", why: "It gates a service-role write endpoint. Leaving it set after bootstrap leaves an unnecessary privileged path enabled.", pri: "High" },
+  { req: "Decide and ship admin MFA — DONE", why: "Closed 13 August; both halves are now in main. require-admin.ts demands aal2 on payout completion, role changes and platform-fee edits, and /account/security is the TOTP enrolment screen driving /api/me/mfa. The rollout order is the safe one: an admin holding no factor is refused with mfa_enrollment_required while the enrolment routes stay ungated, so nobody can be locked out of enrolling. The enrolment screen was sitting unmerged in PR #2 while enforcement was already live — a state in which admins could not approve payouts and had no UI to fix it. Each admin must now enrol before approving a payout. (BE-4)", pri: "Done" },
+  { req: "Unset SETUP_SECRET once the admin account exists — DONE IN CODE", why: "Closed 13 August by removing the need for the manual step. /api/seed-admin now checks for an existing admin and answers 410 once one exists, failing closed if that check itself errors. Bootstrap is a once-ever operation, so after it the only correct answer is no. Unsetting the variable is still good hygiene and remains in the runbook, but forgetting it is no longer a hole — which matters across a handover, where whoever set the variable is not whoever operates the system.", pri: "Done" },
 ]));
 
 children.push(H2("9.B  Security hardening"));
 children.push(checklist([
-  { req: "Add an admin action audit log — ALREADY DONE", why: "Correction: this item was stale in the 12 August edition. recordAdminAction() exists and is wired into all four privileged routes (role change, payout approval, payout completion, platform-fee edit), writing to a dedicated table separate from app_errors. Verified in the repository on 13 August. No work outstanding.", pri: "Done" },
+  { req: "Add an admin action audit log — ALREADY DONE", why: "Correction: this item was stale in the 12 August edition. recordAdminAction() exists and is wired into all four privileged write paths — payout completion, platform-fee settings, user role change and MFA enrolment — writing actor, action, target and before/after state to admin_audit_log, a dedicated table separate from app_errors. Both verified live on 13 August. (An earlier draft of this row said \"payout approval\"; there is no such route — completion is the money action.) No work outstanding.", pri: "Done" },
   { req: "Schedule a dependency vulnerability scan — DONE", why: "Closed 13 August. 'npm audit --audit-level=high' blocks CI, and .github/dependabot.yml proposes the upgrades weekly, grouped so the PR is small enough to actually be read — Next and the money/auth packages (Stripe, Supabase) isolated into their own PRs so those diffs are reviewed rather than skimmed.", pri: "Done" },
 ]));
 
@@ -606,8 +607,8 @@ children.push(H2("9.E  Operational readiness"));
 children.push(checklist([
   { req: "Uptime and health-check monitoring — DONE", why: "Closed 13 August. /api/health answers with a status code any monitor can watch without credentials, and never reveals which component failed unless the caller holds CRON_SECRET — a public health endpoint is a reconnaissance surface during an outage. Degraded-but-serving conditions (notably the in-memory rate-limit fallback) report 200/degraded rather than 503, so the pager stays credible. Point an external monitor at it. (OPS-3, 9.E)", pri: "Done" },
   { req: "Guard the deployment pipeline itself — DONE", why: "New this cycle, and the reason everything above sat undeployed for a day. scripts/check-vercel-crons.ts blocks any sub-daily cron schedule in vercel.json and any unknown top-level key, both of which make Vercel refuse a deployment outright on the Hobby plan. scripts/check-migrations.ts blocks duplicate migration version prefixes. Both run in CI. See Section 12.", pri: "Done" },
-  { req: "Define support and dispute-resolution process", why: "A player will contest a settlement result. Decide now who investigates, against what evidence, and who can authorise a correction — RUNBOOK.md §1.3 covers the mechanics; this is the org question.", pri: "Medium" },
-  { req: "Document the admin bootstrap and offboarding procedure", why: "How an admin is created, and how access is fully revoked when someone leaves.", pri: "Medium" },
+  { req: "Define support and dispute-resolution process — DOCUMENTED", why: "Closed 13 August as docs/RUNBOOK.md §6. Names the evidence in order of authority (pool_winners, then the user_transactions ledger, then pool_games/parlay_cards/card_picks to reconstruct scoring, then admin_audit_log and compliance_events) and the rules of engagement: never adjust a balance with raw SQL because it bypasses the ledger that resolves the next dispute; a settlement is only wrong if an input was wrong, so fix the input and re-run rather than hand-editing an outcome. Table names verified against the live database. What remains is purely organisational — WHO investigates and who may authorise a correction.", pri: "Done" },
+  { req: "Document the admin bootstrap and offboarding procedure — DOCUMENTED", why: "Closed 13 August as docs/RUNBOOK.md §5. Bootstrap is five steps ending in TOTP enrolment; offboarding is four, ordered so that demotion (which removes authority) comes first, then session revocation to close the window where a demoted admin still holds a role claim in an unexpired JWT, then TOTP factor removal, then an admin_audit_log review and secret rotation.", pri: "Done" },
   { req: "Set a staging environment mirroring production", why: "Money-path changes should be exercised somewhere real before they reach users.", pri: "Medium" },
 ]));
 
@@ -840,6 +841,55 @@ children.push(Bullet("Local gate on every commit: typecheck, migration guard, cr
 children.push(spacer(200));
 children.push(P(
   "What is NOT verified, and should not be read as covered: the money path has still never been run end to end against Stripe test-mode infrastructure (9.A), no browser-level journey test exists, and a successful interactive login was not exercised after the @supabase/ssr 0.5 → 0.12 upgrade — that upgrade changes session cookie handling and deserves one manual sign-in before launch.",
+  { italics: true }
+));
+
+children.push(pageBreak());
+
+// ── Section 13: handover state ──────────────────────────────────────────────
+children.push(H1("13.  Handover state"));
+children.push(P(
+  "This section exists to answer one question without the reader having to reconstruct it from the checklists: what is left, and whose job is it? Everything that could be closed in code or configuration has been. What remains is credentials, an accounting of real processors, and legal advice — none of which can be written into a repository.",
+  { italics: true }
+));
+
+children.push(H2("13.1  What the client must do"));
+children.push(P("This is the whole technical handover. Nothing here needs an engineer."));
+children.push(kvTable([
+  ["1. Wire the real keys", "Set the production credentials on Vercel: SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, PAYPAL_MODE=live plus PayPal client id/secret, CRON_SECRET, and the two Upstash variables. docs/RUNBOOK.md §3 is the table, with where each value comes from and what breaks without it."],
+  ["2. Redeploy", "Vercel snapshots environment variables into a deployment. Adding a variable changes nothing until a new build exists. This step is missed constantly — it is the reason the service-role key appeared not to work on 13 August."],
+  ["3. Mirror CRON_SECRET into GitHub", "The same value must also exist as a GitHub Actions secret. Without it settle-pools.yml and alert.yml SKIP and still report success — a green workflow doing nothing."],
+  ["4. Check one URL", "curl -H \"Authorization: Bearer $CRON_SECRET\" https://<domain>/api/health — returns a component-by-component breakdown naming every unset variable and what it costs. Work the list until status reads \"ok\". This is the readiness test; it needs no engineer to interpret."],
+  ["5. Run the money path in test mode", "Purchase → webhook → card → picks → settlement → balance credit → payout, including a deliberately duplicated webhook delivery to prove idempotency under real conditions. This is BE-10 and it is the one item that genuinely cannot be closed without live processor credentials."],
+], 2600));
+
+children.push(H2("13.2  Not code, and not the client's engineer either"));
+children.push(P("These are decisions and approvals. They gate launch but no amount of engineering closes them:"));
+children.push(Bullet("A legal opinion on which jurisdictions the product may operate in, then setting jurisdiction_rules accordingly. The enforcement is built and tested; the rows are a deliberate placeholder. Applying counsel's answer is a data update, not a deploy. (LEG-1, Critical)"));
+children.push(Bullet("Written confirmation from Stripe and PayPal that they permit this use case. Both restrict contest and gambling-adjacent businesses; operating outside the agreed category risks account termination while holding player funds. (LEG-2)"));
+children.push(Bullet("Counsel review of the Terms, Privacy Policy and Contest Rules. The Contest Rules now describe the implementation accurately, which makes that review cheap — but accurate is not the same as compliant. (LEG-3, High)"));
+children.push(Bullet("Enabling PITR and rehearsing one restore. A dashboard toggle plus an hour; a daily snapshot alone can lose up to 24 hours of money movements. (DB-5)"));
+
+children.push(H2("13.3  Engineering work that remains"));
+children.push(P("Honestly stated rather than quietly dropped. None of it blocks launch; all of it would reduce risk:"));
+children.push(Bullet("Browser-level journey tests. The HTTP smoke suite covers the anonymous attack surface and runs against any deployment, but signup, purchase, picks and withdrawal are not driven through a real browser. (9.C, High)"));
+children.push(Bullet("Per-route test coverage beyond the shared guard layer. The guards are the highest-leverage seam and are pinned; per-route auth and ownership tests would catch wiring mistakes the guard tests structurally cannot. (9.C, Medium)"));
+children.push(Bullet("A manual screen-reader pass. 21 jsx-a11y rules block CI at error severity and 23 defects were fixed, but an automated floor is not a usability verdict. (9.D, Medium)"));
+children.push(Bullet("One interactive sign-in after the @supabase/ssr 0.5 → 0.12 upgrade, which changed session cookie handling. Anonymous rejection is verified; a successful login is not. (9.D, Medium)"));
+children.push(Bullet("A staging environment mirroring production, so money-path changes are exercised somewhere real first. (9.E, Medium)"));
+
+children.push(H2("13.4  What was closed for handover on 13 August"));
+children.push(P("Recorded so the client's engineer can see these are deliberate, not accidental:"));
+children.push(Bullet("Deployment pipeline unblocked and guarded — the reason none of the compliance layer had reached users. (Section 12.1)"));
+children.push(Bullet("Health and readiness probe, plus the error-digest pager. Severity is split deliberately: missing money-path credentials report degraded at HTTP 200, not 503, because a probe that screams through the whole provisioning period is one nobody reads on the day it matters. Core config failure and a genuinely unreachable database still return 503."));
+children.push(Bullet("Admin MFA completed end to end — enforcement plus the enrolment screen that was stranded in an unmerged PR."));
+children.push(Bullet("The bootstrap endpoint made self-disabling, removing a manual cleanup step that a handover would very likely have lost."));
+children.push(Bullet("Dependency upgrades merged with their breaking changes resolved, and two that would have silently disabled the lint gate held back with the reason recorded in .github/dependabot.yml."));
+children.push(Bullet("Support/dispute procedure and admin bootstrap/offboarding written into docs/RUNBOOK.md §§5–6, with every table name verified against the live database."));
+
+children.push(spacer(200));
+children.push(P(
+  "Summary for the handover meeting: the code is done. Wire the keys, redeploy, watch /api/health go green, run the money path once in test mode, and get counsel's answer on jurisdictions before taking a real deposit.",
   { italics: true }
 ));
 
