@@ -304,6 +304,11 @@ children.push(runs([T("Bottom line: ", { bold: true }), T("the platform's backen
 children.push(new Paragraph({ spacing: { before: 300 }, border: { top: { style: BorderStyle.SINGLE, size: 6, color: "CCCCCC", space: 8 } },
   children: [new TextRun({ text: "Prepared by an automated authorized security assessment. Confidential — internal use only.", italics: true, size: 17, color: GREY })] }));
 
+// Exported so scripts/gen-combined-doc.cjs can assemble every document into one
+// deliverable without duplicating a single line of this content. Running this file
+// directly still writes its own .docx exactly as before.
+if (require.main !== module) { module.exports = children; return; }
+
 const doc = new Document({
   creator: "Security Audit",
   title: "Backend Security Audit Report — Gridiron",

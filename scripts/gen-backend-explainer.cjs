@@ -224,6 +224,11 @@ children.push(runs([T("And it follows one golden rule throughout: ", ), T("never
 children.push(new Paragraph({ spacing: { before: 320 }, border: { top: { style: BorderStyle.SINGLE, size: 6, color: "CCCCCC", space: 8 } },
   children: [new TextRun({ text: "Plain-language overview prepared for a non-technical audience. Internal use.", italics: true, size: 17, color: GREY })] }));
 
+// Exported so scripts/gen-combined-doc.cjs can assemble every document into one
+// deliverable without duplicating a single line of this content. Running this file
+// directly still writes its own .docx exactly as before.
+if (require.main !== module) { module.exports = children; return; }
+
 const doc = new Document({
   creator: "Gridiron",
   title: "How the App Works — Backend & Security, Explained Simply",

@@ -894,6 +894,11 @@ children.push(P(
 ));
 
 // ── Assemble ────────────────────────────────────────────────────────────────
+// Exported so scripts/gen-combined-doc.cjs can assemble every document into one
+// deliverable without duplicating a single line of this content. Running this file
+// directly still writes its own .docx exactly as before.
+if (require.main !== module) { module.exports = children; return; }
+
 const doc = new Document({
   creator: "Security & Reliability Audit",
   title: "Sports Pool — Full-Stack Audit",

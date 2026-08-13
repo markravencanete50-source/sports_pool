@@ -588,6 +588,11 @@ c.push(new Paragraph({ spacing: { before: 320 },
   children: [new TextRun({ text: "Prepared as part of the final pre-handover audit. Companion documents: the backend security audit report, the technical architecture reference, and the plain-English overview.", italics: true, size: 17, color: GREY })] }));
 
 /* ─────────────── Document ─────────────── */
+// Exported so scripts/gen-combined-doc.cjs can assemble every document into one
+// deliverable without duplicating a single line of this content. Running this file
+// directly still writes its own .docx exactly as before.
+if (require.main !== module) { module.exports = c; return; }
+
 const doc = new Document({
   creator: "Gridiron Engineering",
   title: "Gridiron — Project Handover Document",

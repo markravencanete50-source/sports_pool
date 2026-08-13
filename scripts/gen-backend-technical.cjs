@@ -310,6 +310,11 @@ c.push(bullet([T("materialize-winners.ts credits the winner balance via read-the
 c.push(new Paragraph({ spacing: { before: 300 }, border: { top: { style: BorderStyle.SINGLE, size: 6, color: "CCCCCC", space: 8 } },
   children: [new TextRun({ text: "Technical reference — internal use. Pairs with the security audit and the plain-English overview.", italics: true, size: 17, color: GREY })] }));
 
+// Exported so scripts/gen-combined-doc.cjs can assemble every document into one
+// deliverable without duplicating a single line of this content. Running this file
+// directly still writes its own .docx exactly as before.
+if (require.main !== module) { module.exports = c; return; }
+
 const doc = new Document({
   creator: "Gridiron Engineering",
   title: "Backend Architecture & Security — Technical Reference",
