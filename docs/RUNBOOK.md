@@ -216,3 +216,98 @@ during.
   the response-time commitment you publish.** That is an organisational choice
   this document cannot make for you — but the mechanics above are ready for
   whoever it is.
+
+## 7. Moving the project to the client's accounts
+
+Three accounts hold this project: Supabase (database), Vercel (hosting) and
+GitHub (source). They move independently, and the database is the only one with
+a real decision in it.
+
+### 7.1 The database: provision fresh, do not transfer
+
+**Recommendation: create a new Supabase project in the client's organisation and
+provision it from the migrations.** Supabase can transfer a project between
+organisations, and that is the right tool when a database holds data you cannot
+afford to lose. This one does not:
+
+| Table | Rows | Comes back from |
+|---|---|---|
+| `users`, `pools`, `parlay_cards`, `pool_transactions`, `user_transactions`, `pool_winners`, `payout_requests` | **0** | nothing to migrate |
+| `compliance_settings`, `jurisdiction_rules` | seeded | the migrations |
+| `platform_settings` | 1 | `npm run seed` |
+| `teams` | 32 | `npm run seed`, or automatically on the first NFL sync |
+| `games` | 49 | the ESPN sync; reference data, refetched |
+
+With no user data, a fresh provision is cleaner than a transfer: the client owns
+the project from the first row, there is no shared billing history, and none of
+the development-era configuration follows it across.
+
+**Provisioning a new project, in order:**
+
+1. Create the project in the **client's** Supabase organisation. Choose a region
+   near the Vercel functions — currently `iad1` (US East), so `us-east-1`.
+2. Apply the schema:
+   ```
+   supabase link --project-ref <new-ref>
+   npm run db:migrate
+   ```
+   All 35 migrations apply cleanly to an empty database. This is verified by
+   `npm run check:migrations` on every commit, and it is not a given: three
+   migrations shared duplicate version prefixes at one point, which would have
+   silently skipped them on exactly this operation.
+3. Seed the configuration the migrations do not carry:
+   ```
+   npm run seed
+   ```
+   This inserts `platform_settings` (the platform fee and minimum entry fee) and
+   the NFL teams. **Do not skip it.** Settlement falls back to a 10% fee when the
+   row is absent, so a missed seed does not crash — it quietly charges a default
+   the client never chose.
+4. Copy the new project's URL, anon key and service-role key into Vercel, then
+   redeploy.
+5. Create the first admin — §5.
+6. Confirm with `/api/health` (§3) that every component reports `ok`.
+
+**When a transfer would be right instead:** once the platform holds real player
+balances. At that point the ledger cannot be recreated and the project should be
+transferred through Supabase's own organisation-transfer flow, not rebuilt.
+
+### 7.2 Hosting
+
+Either transfer the Vercel project to the client's team, or have them create a
+new project from the same repository. Creating fresh is usually simpler — the
+only state a Vercel project holds is environment variables and domains, and the
+variables have to be re-entered by whoever owns the credentials anyway.
+
+Whichever route, after the move:
+
+- Re-enter every variable in §3 in the new project.
+- **Redeploy.** Environment variables are snapshotted into a deployment.
+- Update `APP_URL` in the GitHub Actions secrets if the domain changes;
+  `settle-pools.yml` and `alert.yml` default to the old production URL.
+- Re-point the Stripe webhook endpoint at the new domain and put the **new**
+  signing secret into `STRIPE_WEBHOOK_SECRET`. The secret is per endpoint; the
+  old one will not verify.
+
+### 7.3 Source
+
+Transfer the GitHub repository to the client's account, or have them fork it.
+Transferring keeps the history, which is worth having: the commit messages
+record why each security control exists, and several of them are the only
+explanation of a decision that looks arbitrary otherwise.
+
+After a transfer, re-add the Actions secrets (`CRON_SECRET`, optionally
+`APP_URL`) — repository secrets do not follow a transfer.
+
+### 7.4 Checklist
+
+- [ ] New Supabase project created in the client's organisation, `us-east-1`
+- [ ] `npm run db:migrate` — 35 migrations applied
+- [ ] `npm run seed` — `platform_settings` and teams present
+- [ ] Vercel project owned by the client, all §3 variables set, redeployed
+- [ ] Stripe webhook re-pointed at the new domain, new signing secret set
+- [ ] GitHub repository transferred, Actions secrets re-added
+- [ ] First admin created and enrolled in two-factor (§5)
+- [ ] `/api/health` reports `ok`
+- [ ] Both workflows run manually and their trigger steps report **success**, not
+      *skipped*
