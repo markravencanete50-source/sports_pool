@@ -226,9 +226,20 @@ a real decision in it.
 ### 7.1 The database: provision fresh, do not transfer
 
 **Recommendation: create a new Supabase project in the client's organisation and
-provision it from the migrations.** Supabase can transfer a project between
-organisations, and that is the right tool when a database holds data you cannot
-afford to lose. This one does not:
+provision it from the migrations.** Two reasons, and the first is close to
+decisive.
+
+**This project is Vercel-managed, not a standalone Supabase project.** Its
+organisation id is `vercel_icfg_…`, which means it was provisioned through
+Vercel's marketplace integration and is billed and administered through the
+Vercel account rather than through Supabase directly. Those projects do not move
+between Supabase organisations the way a normally-created project does — the
+ownership question is really "who owns the Vercel account", and untangling that
+is more work than provisioning a clean database.
+
+**Second, there is nothing to preserve.** Supabase can transfer a project
+between organisations, and that is the right tool when a database holds data you
+cannot afford to lose. This one does not:
 
 | Table | Rows | Comes back from |
 |---|---|---|
@@ -268,9 +279,21 @@ the development-era configuration follows it across.
 5. Create the first admin — §5.
 6. Confirm with `/api/health` (§3) that every component reports `ok`.
 
+**Which Supabase account the client should use.** Either a standalone account at
+supabase.com, or their own Vercel integration. Standalone is preferable: it
+keeps database ownership independent of the hosting account, so changing hosting
+provider later does not also mean moving the database. The current arrangement —
+database owned by the Vercel account — is exactly the coupling that makes this
+handover more awkward than it needs to be.
+
+**Note on backups.** Point-in-time recovery requires a paid Supabase plan. The
+current organisation is on the free plan, so this is a decision the client makes
+when they create their project, not something that carries across.
+
 **When a transfer would be right instead:** once the platform holds real player
 balances. At that point the ledger cannot be recreated and the project should be
-transferred through Supabase's own organisation-transfer flow, not rebuilt.
+transferred through Supabase's own flow rather than rebuilt — but that also
+means resolving the Vercel-managed ownership question first.
 
 ### 7.2 Hosting
 
