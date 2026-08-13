@@ -306,6 +306,12 @@ export default function ResponsibleGamingPage() {
                   Download my data
                 </a>
                 <a
+                  href="/account/security"
+                  className="rounded-lg border border-white/15 px-5 py-3 text-sm font-semibold hover:bg-white/5"
+                >
+                  Two-factor authentication
+                </a>
+                <a
                   href="/account/close"
                   className="rounded-lg border border-white/15 px-5 py-3 text-sm font-semibold hover:bg-white/5"
                 >
