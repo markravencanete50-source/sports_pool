@@ -42,7 +42,7 @@ export const signupSchema = z.object({
     .refine((d) => isPlausibleDateOfBirth(d), "Enter a valid date of birth")
     .refine((d) => meetsMinimumAge(d, 18), "You must be at least 18 to create an account"),
   acceptTerms: z.literal(true, {
-    errorMap: () => ({ message: "You must accept the Terms and Contest Rules" }),
+    message: "You must accept the Terms and Contest Rules",
   }),
 });
 
@@ -150,7 +150,7 @@ export const payoutAccountSchema = z.object({
   // Only PayPal today. z.literal keeps the 400 message honest if a client
   // sends another method, rather than silently coercing.
   method: z.literal("paypal", {
-    errorMap: () => ({ message: "Only PayPal is supported for now" }),
+    message: "Only PayPal is supported for now",
   }),
   identifier: z
     .string()
@@ -173,7 +173,7 @@ export const claimPayoutSchema = z.object({
 
 export const updateUserRoleSchema = z.object({
   role: z.enum(["user", "admin"], {
-    errorMap: () => ({ message: "Invalid role. Use 'admin' or 'user'." }),
+    message: "Invalid role. Use 'admin' or 'user'.",
   }),
 });
 

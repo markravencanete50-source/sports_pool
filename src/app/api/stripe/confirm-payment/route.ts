@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const parsed = confirmPaymentSchema.safeParse(body);
     if (!parsed.success) {
-      const message = parsed.error.errors[0]?.message ?? "Validation error";
+      const message = parsed.error.issues[0]?.message ?? "Validation error";
       return NextResponse.json({ error: message }, { status: 400 });
     }
     const { sessionId } = parsed.data;
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: "Validation error", details: error.errors },
+        { error: "Validation error", details: error.issues },
         { status: 400 }
       );
     }

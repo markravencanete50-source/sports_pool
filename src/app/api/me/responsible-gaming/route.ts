@@ -37,7 +37,7 @@ const limitsSchema = z
 const exclusionSchema = z.object({
   days: z.coerce.number().int().min(1).max(3650),
   confirm: z.literal(true, {
-    errorMap: () => ({ message: "Self-exclusion must be explicitly confirmed" }),
+    message: "Self-exclusion must be explicitly confirmed",
   }),
 });
 
