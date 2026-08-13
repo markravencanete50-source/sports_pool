@@ -13,7 +13,10 @@ function getSecretKey(): string {
 export function getStripe(): Stripe {
   if (!stripeInstance) {
     stripeInstance = new Stripe(getSecretKey(), {
-      apiVersion: "2026-01-28.clover",
+      // Must match the version the installed SDK major is built against —
+      // stripe v22 types this as a literal, so a stale pin fails typecheck
+      // rather than drifting silently. Moving the SDK major moves this line.
+      apiVersion: "2026-07-29.dahlia",
       typescript: true,
     });
   }
