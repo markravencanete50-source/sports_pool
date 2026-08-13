@@ -332,6 +332,6 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then((buf) => {
-  fs.writeFileSync("/home/user/sports_pool/Backend_Architecture_Technical.docx", buf);
+  fs.writeFileSync(process.argv[2] || "Backend_Architecture_Technical.docx", buf);
   console.log("WROTE", buf.length, "bytes");
 });

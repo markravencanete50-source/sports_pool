@@ -135,12 +135,13 @@ c.push(
 );
 c.push(table([2500, 6300], ["Field", "Detail"], [
   ["Document", "Project handover — explanation, architecture, and readiness checklist"],
-  ["Date", "8 August 2026"],
-  ["Repository", "markravencanete50-source/sports_pool"],
+  ["Date", "13 August 2026 (supersedes the 8 August edition)"],
+  ["Repository", "markravencanete50-source/sports_pool — main @ b279d97"],
   ["Product", "Real-money NFL prediction pools (parlay cards, prize pots, payouts)"],
-  ["Stack", "Next.js 16 · TypeScript · Supabase (Postgres + RLS) · Stripe · PayPal · Vercel"],
-  ["Scale", "43 API routes · 22 migrations · 62 components · ~18,700 lines TS/TSX"],
-  ["Status", { text: "Handover-ready — all quality gates green", bold: true }],
+  ["Stack", "Next.js 16.3 · TypeScript 6 · Supabase (Postgres + RLS) · Stripe · PayPal · Vercel"],
+  ["Scale", "53 API routes · 34 migrations · 26 tables · 63 components · 25 pages · ~25,700 lines TS/TSX"],
+  ["Production", "Deployed and verified live; 13 of 13 end-to-end assertions pass against it"],
+  ["Status", { text: "Handover-ready. Every remaining item is a production credential, a legal opinion, or a processor approval — none is application code. See §10.", bold: true }],
 ]));
 c.push(new Paragraph({ children: [new PageBreak()] }));
 
@@ -155,14 +156,26 @@ c.push(P("Gridiron is a real-money sports-pool platform. Players buy parlay card
 c.push(P("Because real money moves through the system — card payments in via Stripe, winnings credited to an in-app balance, withdrawals out via PayPal — the engineering standard applied throughout is that the database, not the application, is the authorization boundary. An application bug alone must not be sufficient to leak data or move money."));
 c.push(H3("Readiness at handover"));
 c.push(table([3200, 1500, 4100], ["Gate", "Status", "Detail"], [
-  ["TypeScript (tsc --noEmit)", { text: "PASS", color: GREEN, bold: true }, "0 errors"],
-  ["Settlement regression tests", { text: "PASS", color: GREEN, bold: true }, "Scoring, tie-breaks, 243 rounding combinations"],
-  ["Production build (next build)", { text: "PASS", color: GREEN, bold: true }, "47 routes compile"],
-  ["ESLint", { text: "PASS", color: GREEN, bold: true }, "0 errors (inherited style debt tracked as warnings)"],
-  ["Continuous integration", { text: "ADDED", color: GREEN, bold: true }, "All four gates now block every push and PR"],
+  ["TypeScript (tsc --noEmit)", { text: "PASS", color: GREEN, bold: true }, "0 errors, TypeScript 6"],
+  ["Migration pipeline guard", { text: "PASS", color: GREEN, bold: true }, "34 migrations, all versions unique and well-formed"],
+  ["Vercel cron config guard", { text: "PASS", color: GREEN, bold: true }, "Blocks the schedule class that silently stops deployments"],
+  ["Unit tests", { text: "PASS", color: GREEN, bold: true }, "34 tests: guard layer, schemas, age gate, HIBP"],
+  ["Settlement regression sweep", { text: "PASS", color: GREEN, bold: true }, "Scoring, tie-breaks, 243 rounding combinations"],
+  ["Production build (next build)", { text: "PASS", color: GREEN, bold: true }, "All routes compile"],
+  ["ESLint", { text: "PASS", color: GREEN, bold: true }, "0 errors, incl. 21 jsx-a11y rules at error severity"],
+  ["Dependency vulnerability scan", { text: "PASS", color: GREEN, bold: true }, "npm audit --audit-level=high, blocking in CI"],
+  ["End-to-end smoke (live)", { text: "PASS", color: GREEN, bold: true }, "13 of 13 against production"],
 ]));
 c.push(new Paragraph({ spacing: { after: 80 } }));
-c.push(note("The two most important findings",
+c.push(note("The most important finding of the whole project",
+  [T("Nothing the compliance cycle built had ever reached users. ", { bold: true }),
+   T("Five merged commits produced no Vercel deployment at all. Not failed builds: no builds. This project runs on the Vercel Hobby plan, where a cron schedule finer than daily does not degrade gracefully - it makes Vercel REFUSE to create the deployment. One commit changed settlement from daily to hourly, and every commit after it silently stopped shipping while CI stayed green and the dashboard showed a healthy production deployment of eight-day-old code. "),
+   T("The lesson is the failure mode, not the mistake: every signal a team normally trusts was green. That class of bug is now blocked by scripts/check-vercel-crons.ts in CI, and production is verified live. See section 9."),
+   T("Second: a required environment variable was unset in production for eight days. ", { bold: true }),
+   T("Settlement could not complete and the Stripe webhook could not fulfil a purchase - a player could be charged and receive nothing - while the public site served normally. That asymmetry is why nobody noticed. A health probe now answers this in one request, and an error digest escalates it.")],
+  "FBECEC", RED));
+
+c.push(note("Earlier cycles, for completeness",
   [T("1. Card purchases were broken end-to-end on any database provisioned from the committed migrations. ", { bold: true }),
    T("Two columns on "), M("pool_transactions"), T(" are "), M("NOT NULL"), T(" with no default, the trigger meant to populate them existed in no migration, and the purchase code supplied neither — so the insert failed, the card was rolled back, and the player was charged by Stripe and received nothing."),
    T("2. A crafted pool could mint prize money. ", { bold: true }),
@@ -249,9 +262,9 @@ c.push(...code([
   "│   └── validations.ts         Zod schemas",
   "└── proxy.ts                route protection (Next 16 renamed middleware.ts)",
   "",
-  "supabase/migrations/        22 files — the source of truth for the database",
+  "supabase/migrations/        34 files — the source of truth for the database",
   "scripts/                    seeds + the settlement regression suite",
-  ".github/workflows/          ci.yml (quality gates) + settle-pools.yml (cron)",
+  ".github/workflows/          ci.yml (7 gates) + settle-pools.yml + alert.yml",
 ]));
 c.push(note("Files that are deliberately not authoritative",
   [M("schema.sql"), T(" is a stale early snapshot missing the entire money subsystem — never provision from it. "),
@@ -271,7 +284,18 @@ c.push(table([2400, 6400], ["Table", "Role and sensitivity"], [
   ["comments", "Pool chat, restricted to card holders and participants."],
   ["games / teams", "Reference data and live scores. Admin-only writes, because scores decide the money."],
   ["platform_settings", "Platform fee percentage and minimum entry fee."],
+  ["user_compliance", "Per-player regulatory state: date of birth, KYC status, deposit and pending limits, self-exclusion and cooling-off expiry. Written only through SECURITY DEFINER RPCs that derive identity from the session, never by a client UPDATE."],
+  ["compliance_settings", "Operator-set thresholds — minimum age, KYC trigger amount, limit cooling-off period. Deliberately data, not code: changing a threshold is a row update, not a redeploy."],
+  ["jurisdiction_rules", "Which territories may play, keyed by country and region. Ships as a conservative placeholder explicitly marked as such. Applying counsel's answer is an UPDATE here."],
+  ["compliance_events", "Append-only record of every compliance decision: what was attempted, the verdict, the reason, and the resolved jurisdiction. This is the evidence in a regulatory question."],
+  ["admin_audit_log", "Actor, action, target and before/after state for every privileged write — payout completion, platform-fee change, role change, MFA enrolment. Financial disputes are resolved from an audit trail."],
+  ["app_errors", "Server money-path failures, client crashes and reconciliation mismatches. Service-role only: RLS enabled with zero policies and zero client grants. Watched by the alert digest."],
 ]));
+c.push(note("The compliance layer is enforced in the database, not the UI",
+  [T("Age, jurisdiction, self-exclusion, deposit limits and KYC thresholds are re-checked server-side at every money boundary, and the state that drives them is only writable through SECURITY DEFINER functions. A self-exclusion can be extended but never shortened - "),
+   T("greatest()", { font: MONO }),
+   T(" makes that a property of the function rather than a rule someone must remember. This was tested adversarially against the live database: an explicit attempt to cut a 365-day exclusion left it unchanged.")],
+  "EAF2EA", GREEN));
 
 c.push(H2("5.1 Database functions"));
 c.push(P("Money never moves through a read-then-write in application code. It moves through these, so concurrent callers serialise on a row lock:"));
@@ -369,14 +393,26 @@ c.push(P("Free or unpaid cards · entry-fee tampering · double fulfilment races
 
 /* ─────────────── 8. Quality gates ─────────────── */
 c.push(H1("8. Quality gates and CI"));
-c.push(P("Continuous integration runs on every push and pull request and blocks the merge on all four gates:"));
+c.push(P("Continuous integration runs on every push to main and every pull request, and blocks the merge on all seven gates:"));
 c.push(table([2400, 6400], ["Gate", "Why it blocks"], [
   ["npm run typecheck", "Catches real breakage — wrong shapes, dead symbols, bad refactors."],
-  ["npm test", "The money path: scoring, tie-breaks and the cent-exact split. A failure here is a release blocker."],
+  ["npm run check:migrations", "Supabase keys applied migrations by the numeric filename prefix, so two files sharing a prefix are ONE migration to the ledger and the second is silently skipped. Three prefixes were duplicated here. Production survived it (those changes had been applied by hand under other names), but a fresh provision would have come up missing three migrations' worth of RPCs and grants while reporting success."],
+  ["npm run check:crons", "The gate that would have prevented the project's worst incident. Blocks any sub-daily cron schedule in vercel.json, and any unknown top-level key — both make Vercel refuse a deployment outright on the Hobby plan, producing no build and no error to read."],
+  ["npm test", "The money path: scoring, tie-breaks and the cent-exact split, plus 34 unit tests over the shared guard layer. A failure here is a release blocker."],
   ["npm run build", "Last defence against a failure that would only appear at deploy time."],
-  ["npm run lint", "Pre-existing style debt is configured as warnings, so this blocks only on genuinely new errors."],
+  ["npm run lint", "Blocking, including 21 jsx-a11y rules at error severity."],
+  ["npm audit --audit-level=high", "Advisories were cleared by hand once and nothing re-checked them. Dependabot proposes the upgrades weekly, grouped so the PR is small enough to be read, with Next and the money/auth packages isolated."],
 ]));
-c.push(runs([T("Run all four locally with "), M("npm run check"), T(" before pushing.")]));
+c.push(runs([T("Run everything locally with "), M("npm run check"), T(" before pushing.")]));
+
+c.push(H2("8.1 The end-to-end smoke suite"));
+c.push(runs([T("Separately from CI, "), M("tests/e2e/smoke.test.ts"), T(" runs black-box against a RUNNING deployment — preview, staging or production:")]));
+c.push(runs([M("E2E_BASE_URL=https://sports-pool.vercel.app npm run test:e2e")]));
+c.push(P("It asserts the CSP carries a nonce and no unsafe-inline, that framing is denied and sniffing disabled, the health endpoint's two response shapes, anonymous rejection on four money routes, that a cross-origin state change is refused, that the retired card endpoints still answer 410 rather than 404, and that an unknown API path 404s across every HTTP method."));
+c.push(P("Without E2E_BASE_URL every test SKIPS rather than fails, so it can never become a green test that checks nothing. It found a real production defect on its first run: unmatched API paths were answering HTTP 200 with HTML to any non-GET method, so a client posting to a renamed money endpoint saw a success."));
+c.push(note("What this suite is NOT",
+  [T("It is not the money-path run. Purchase, webhook, card issue, picks, settlement and payout against real Stripe and PayPal test infrastructure has never been executed end to end, and needs live test-mode credentials. Nor is it a browser test — there is no DOM, so keyboard and screen-reader behaviour remain a manual pass. Stating both boundaries matters: a smoke suite mistaken for full coverage is worse than none, because it retires a risk that is still live.")],
+  "FFF4E5", "8A5A00"));
 
 /* ─────────────── 9. What the audit changed ─────────────── */
 c.push(new Paragraph({ children: [new PageBreak()] }));
@@ -442,105 +478,51 @@ c.push(new Paragraph({ children: [new PageBreak()] }));
 c.push(H1("10. Handover checklist"));
 c.push(P("Work top to bottom. Everything in §10.1 must be true before the platform takes real money."));
 
-c.push(H2("10.1 Before going live — blocking"));
-c.push(H3("Database"));
+c.push(H2("10.1 What the client must do — the entire technical handover"));
+c.push(P("Nothing in this subsection needs an engineer. It is credentials and one verification URL."));
 c.push(checklist([
-  ["Apply every migration to the production database (npm run db:migrate) and confirm 22 migrations report as applied", "Never use schema.sql"],
-  ["Verify the reconstructed RPCs match production: claim_pool_payout and get_public_winners", "See §10.4"],
-  ["Confirm a test card purchase writes a pool_transactions row with a non-zero platform_fee", "Proves the trigger is live"],
-  ["Confirm pools.platform_fee_percentage is populated for every existing pool, and is between 0 and 100", "Backfilled and constrained"],
-  ["Attempt to create a pool with a negative fee via the REST API and confirm it is stamped, not accepted", "Payout-inflation guard"],
-  ["Confirm supabase db push applies cleanly on a scratch database", "Verified during the audit: all 23 migrations apply to an empty database"],
-  ["Run the one-off migration history repair against the EXISTING production database", "Two commands, in README > Database setup. A fresh database needs none of it"],
-  ["Take a verified backup and confirm the restore procedure works", ""],
-]));
-c.push(H3("Regression checks — these were broken and are now fixed"));
-c.push(checklist([
-  ["Create a pool as an ordinary (non-admin) account and confirm it succeeds", "Was failing for every non-admin"],
-  ["Open a pool chat with two accounts and confirm both names render, not 'Unknown'", "Display-name projection"],
-  ["Sign up with email confirmation enabled and confirm the response is a success, not a 500", ""],
-  ["Confirm a player cannot invite themselves into someone else's private pool", "Invite bypass"],
-  ["Buy a card and confirm exactly one pool_transactions row appears with a correct platform_fee", ""],
-  ["Confirm an unlocked card cannot be activated after its pool has settled, and that a settled pool cannot be re-scored", "Double-payout guard"],
-  ["Send an invitation by email address and confirm the invitee receives it", "Was silently failing"],
-  ["Confirm the advertised net prize on a pool matches what settlement actually pays", ""],
-]));
-c.push(H3("Secrets and configuration"));
-c.push(checklist([
-  ["Set every variable in .env.example on the production environment", ""],
-  ["Confirm SUPABASE_SERVICE_ROLE_KEY is server-side only and never prefixed NEXT_PUBLIC_", "Bypasses all RLS"],
-  ["Set STRIPE_WEBHOOK_SECRET and register the webhook for checkout.session.completed", "Without it players are charged and get nothing"],
-  ["Set CRON_SECRET on both Vercel and GitHub Actions, with identical values", "Unset means settlement never runs"],
-  ["Run the one-time admin bootstrap, then unset SETUP_SECRET", ""],
-  ["Set PAYPAL_MODE to live and confirm the sandbox guard passes", ""],
-  ["Set UPSTASH_REDIS_REST_URL and _TOKEN so rate limits apply across instances", "Otherwise per-instance only"],
-  ["Rotate any credential that was ever shared during development", ""],
-]));
-c.push(H3("Payments"));
-c.push(checklist([
-  ["End-to-end test: buy a card with a real card and confirm exactly one card is issued", ""],
-  ["Test the closed-tab case: complete payment, close the tab, confirm the webhook still issues the card", ""],
-  ["Confirm a duplicate webhook delivery does not create a second card", ""],
-  ["End-to-end test: request and approve a withdrawal, and confirm the PayPal payout arrives", ""],
-  ["Confirm a failed PayPal payout returns the reserved funds to the balance", ""],
-]));
-c.push(H3("Settlement"));
-c.push(checklist([
-  ["Run a full pool through settlement on staging and reconcile every payout to the cent", ""],
-  ["Confirm the scheduled job runs and authenticates (check the Actions run and Vercel logs)", ""],
-  ["Confirm a pool with a game finishing after the ESPN week rolls over still settles", "The fix in §9.3"],
-  ["Agree who monitors settlement warnings, and where they are surfaced", "Held funds are logged as warnings"],
-]));
-c.push(H3("Security"));
-c.push(checklist([
-  ["Confirm RLS is enabled on every table and the hardening migration applied without raising", ""],
-  ["Verify with a second account that you cannot read another player's cards or picks", ""],
-  ["Confirm the anonymous key cannot read the users table", ""],
-  ["Confirm admin routes reject a non-admin session", ""],
-  ["Review who holds admin, and remove anyone who should not", ""],
+  ["Set the production credentials on Vercel", "SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, PAYPAL_MODE=live plus PayPal client id/secret, CRON_SECRET, and the two Upstash variables. docs/RUNBOOK.md section 3 is the table: where each value comes from and what breaks without it"],
+  ["REDEPLOY after setting them", "Vercel snapshots environment variables into a deployment. Adding one changes nothing until a new build exists. This step is missed constantly and it is the single most likely reason a correctly-set key appears not to work"],
+  ["Mirror CRON_SECRET into GitHub Actions secrets", "Same value, second place. Without it settle-pools.yml and alert.yml SKIP and still report success - a green workflow doing nothing. Verify by running either workflow manually and confirming its trigger step says success, not skipped"],
+  ["Register the Stripe webhook", "Endpoint /api/stripe/webhook subscribed to checkout.session.completed, then put its signing secret in STRIPE_WEBHOOK_SECRET. Unset is verifiable from outside: the endpoint answers 503 Webhook not configured instead of 400 Missing stripe-signature"],
+  ["Check one URL until it says ok", "curl -H \"Authorization: Bearer $CRON_SECRET\" https://<domain>/api/health returns a component-by-component breakdown naming every unset variable and what it costs. This is the readiness test and it needs no engineer to interpret"],
+  ["Run the money path once in Stripe test mode", "Purchase, webhook, card issued, picks, settlement, balance credit, PayPal payout - including a deliberately duplicated webhook delivery to prove idempotency under real conditions rather than by inspection. This is the one item that genuinely cannot be closed without live processor credentials"],
 ]));
 
-c.push(H2("10.2 Operational readiness"));
+c.push(note("How to read the health endpoint",
+  [T("Anonymous callers get a status word and nothing else - a public health endpoint is a reconnaissance surface during an outage. With CRON_SECRET you get the full breakdown."),
+   T("Severity is deliberately split. Missing money-path credentials report DEGRADED at HTTP 200, not 503, because the site genuinely serves without them and a probe that screams through the entire provisioning period is one nobody reads on the day it matters. 503 is reserved for core configuration failure or a genuinely unreachable database. status ok means fully provisioned.")],
+  "EAF2EA", GREEN));
+
+c.push(H2("10.2 Not code, and not the client's engineer either"));
+c.push(P("These gate launch, but no amount of engineering closes them:"));
 c.push(checklist([
-  ["Transfer ownership of the Vercel project, Supabase project, Stripe and PayPal accounts", ""],
-  ["Transfer the GitHub repository and configure branch protection on main to require CI", ""],
-  ["Confirm CI passes on main after transfer", ""],
-  ["Set up error monitoring and alerting on the money paths", "Grep the logs for CRITICAL"],
-  ["Document who is on call for a failed settlement or payout", ""],
-  ["Confirm the daily Vercel cron and the 30-minute Actions cadence are both active", ""],
+  ["Obtain a legal opinion on operating jurisdictions, then set jurisdiction_rules", "Paid-entry contests with cash prizes on sporting outcomes are regulated differently in every US state and most other countries. The enforcement is built and tested; the rows ship as a conservative placeholder explicitly marked as such in the database. Applying counsel's answer is a data UPDATE, not a deploy"],
+  ["Get written confirmation from Stripe and PayPal that they permit this use case", "Both restrict gambling and contest-adjacent businesses and require prior approval. Operating outside the agreed category risks abrupt account termination while holding player funds"],
+  ["Have counsel review the Terms, Privacy Policy and Contest Rules", "The Contest Rules now describe the implementation accurately, which makes the review far cheaper than it would have been. Accurate is not the same as compliant, and only counsel can say which"],
+  ["Enable PITR and rehearse one restore", "A dashboard toggle plus an hour. A daily snapshot alone can lose up to 24 hours of money movements. Procedure including the post-restore reconciliation step is in docs/RUNBOOK.md section 2"],
 ]));
 
-c.push(H2("10.3 Legal and compliance"));
-c.push(note("Outside the scope of this engineering handover",
-  [T("This platform takes entry fees and pays cash prizes. Real-money contest regulation varies by jurisdiction and can require licensing, age and location verification, KYC/AML checks, tax reporting and specific terms. "),
-   T("None of that was assessed here and none of it is implemented.", { bold: true }), T(" Obtain qualified legal advice for every market you intend to operate in before accepting real money.")],
-  "FBECEC", RED));
-c.push(checklist([
-  ["Obtain legal advice on real-money contest regulation in each target market", "Not assessed"],
-  ["Decide on age and location verification requirements", "Not implemented"],
-  ["Decide on KYC/AML obligations for payouts", "Not implemented"],
-  ["Have the terms, privacy policy and responsible-play content reviewed", "Placeholder pages exist"],
-  ["Confirm tax reporting obligations for winnings", ""],
+c.push(H2("10.3 Engineering work that remains"));
+c.push(P("Stated honestly rather than quietly dropped. None of it blocks launch; all of it would reduce risk."));
+c.push(table([2700, 6100], ["Item", "Assessment"], [
+  ["Browser-level journey tests", "HIGH. The HTTP smoke suite covers the anonymous attack surface, but signup, purchase, picks and withdrawal are not driven through a real browser."],
+  ["Per-route test coverage", "MEDIUM. The shared guard layer is pinned by 34 unit tests, which is the highest-leverage seam. Per-route auth and ownership tests would catch wiring mistakes the guard tests structurally cannot."],
+  ["Manual screen-reader pass", "MEDIUM. 21 jsx-a11y rules block CI at error severity and 23 defects were fixed, but an automated floor is not a usability verdict. One session with VoiceOver or NVDA across signup, purchase and picks closes it."],
+  ["One interactive sign-in", "MEDIUM. The @supabase/ssr 0.5 to 0.12 upgrade changed session cookie handling. Anonymous rejection is verified against production; a successful login is not."],
+  ["Staging environment", "MEDIUM. Money-path changes should be exercised somewhere real before they reach users."],
+  ["Recover static generation", "LOW. force-dynamic is global for the CSP nonce, an accepted trade. If marketing SEO becomes a priority, serve public pages a nonce-free CSP and scope force-dynamic to authenticated routes."],
 ]));
 
-c.push(H2("10.4 Recommended follow-up work"));
-c.push(P("None of these block handover, but each is worth scheduling."));
-c.push(checklist([
-  ["Dump the live claim_pool_payout and get_public_winners and replace the reconstructed definitions", "Makes the committed version authoritative"],
-  ["Regenerate src/lib/supabase/types.ts and wire the Database generic into the clients", "Currently stale and unused"],
-  ["Add a unique constraint on user_transactions(reference_type, reference_id)", "Enforces payout single-processing in the database"],
-  ["Fix the seven set-state-in-effect findings and re-enable the rule as an error", "Needs browser verification"],
-  ["Type the ESPN payload and shared models, then restore no-explicit-any to error", "~150 instances"],
-  ["Add a settlement scheduler to the Docker compose stack", "Self-host has none"],
-  ["Drop the legacy picks table once nothing reads it", "Its write route is already 410"],
-  ["Add end-to-end tests for purchase and withdrawal", "Only settlement is covered today"],
-  ["Replace the CSP's 'unsafe-inline' script policy with a per-request nonce", "Until then script-src gives little XSS protection; needs browser verification"],
-  ["Review the dependency advisories reported by npm audit", "Several high-severity advisories in production dependencies; the fix needs a framework bump and a regression pass"],
-  ["Make the Docker compose stack self-contained", "It mounts gateway config from a directory outside the repo, needs a pre-existing external network, and publishes no ports"],
-  ["Point the seed scripts at the same env file the README tells you to create", "They read .env; the README says .env.local"],
-  ["Prune the unused UI dependencies and delete the dead component files", "Roughly 30 unused packages and a complete unused toast stack, left from scaffolding"],
-  ["Gate or document the mock scoreboard endpoint", "It serves fabricated fixtures and is live in production builds"],
-]));
+c.push(H2("10.4 Verified on 13 August, so you need not re-check"));
+c.push(P("Each of these was confirmed against the live system rather than inferred from the repository:"));
+c.push(bullet([T("Production deploys again, and the config class that silently stopped deployments is blocked in CI.")]));
+c.push(bullet([T("13 of 13 end-to-end assertions pass against production: CSP and nonce, clickjacking and sniffing headers, the health contract, anonymous rejection on four money routes, CSRF refusal, both 410 tombstones, and 404 on unknown API paths across five methods.")]));
+c.push(bullet([T("Self-exclusion cannot be shortened - an explicit attempt to cut a 365-day exclusion left it unchanged in the live database.")]));
+c.push(bullet([T("No client write path exists to the money tables; the migration ledger, RLS policies and RPC grants were queried directly.")]));
+c.push(bullet([T("Admin MFA is enforced on payout completion, role changes and platform-fee edits, and the TOTP enrolment screen exists so no admin can be locked out of enrolling.")]));
+c.push(bullet([T("The bootstrap endpoint self-disables: it answers 410 once any admin exists, so a forgotten SETUP_SECRET is no longer a hole.")]));
+
 
 /* ─────────────── 11. Debt ─────────────── */
 c.push(new Paragraph({ children: [new PageBreak()] }));
@@ -642,6 +624,6 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then((buf) => {
-  fs.writeFileSync("/home/user/sports_pool/Gridiron_Project_Handover.docx", buf);
+  fs.writeFileSync(process.argv[2] || "Gridiron_Project_Handover.docx", buf);
   console.log("WROTE", buf.length, "bytes");
 });

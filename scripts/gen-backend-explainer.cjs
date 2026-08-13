@@ -254,6 +254,6 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then((buf) => {
-  fs.writeFileSync("/home/user/sports_pool/Backend_Explained_Simply.docx", buf);
+  fs.writeFileSync(process.argv[2] || "Backend_Explained_Simply.docx", buf);
   console.log("WROTE", buf.length, "bytes");
 });

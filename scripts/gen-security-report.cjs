@@ -339,6 +339,6 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then((buf) => {
-  fs.writeFileSync("/home/user/sports_pool/Backend_Security_Audit_Report.docx", buf);
+  fs.writeFileSync(process.argv[2] || "Backend_Security_Audit_Report.docx", buf);
   console.log("WROTE", buf.length, "bytes");
 });
