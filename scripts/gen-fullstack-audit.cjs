@@ -182,7 +182,7 @@ children.push(
 
 children.push(kvTable([
   ["Repository", "markravencanete50-source/sports_pool"],
-  ["Audited commit", "268b3d6 (main) — verification cycle of 13 August 2026; original audit at 49d074e"],
+  ["Audited commit", "ab645a7 (main) — verification cycle of 13 August 2026; original audit at 49d074e"],
   ["Supabase project", "veughegjwzsbjgcueyka"],
   ["Production", "sports-pool (Vercel) — deploy READY on 268b3d6, verified live"],
   ["Audit date", "12 August 2026 — findings and remediation; independently verified 13 August 2026 (Section 12)"],
@@ -592,13 +592,13 @@ children.push(checklist([
 
 children.push(H2("9.C  Reliability and testing"));
 children.push(checklist([
-  { req: "Add an end-to-end harness — PARTLY DONE", why: "Closed at the HTTP layer on 13 August: tests/e2e/smoke.test.ts runs black-box against a live deployment, asserting the CSP and nonce, clickjacking and sniffing headers, the health contract's two shapes, anonymous rejection on the money routes, CSRF refusal of a cross-origin state change, the 410 tombstones, and 404 on unknown API paths across every method. 13 of 13 pass against production at 268b3d6; it skips rather than fails without E2E_BASE_URL, so it can never become a green test that checks nothing. It found a real production defect on first run (Section 12). Still outstanding: the browser-level journeys — signup, purchase, picks, withdrawal — which need a driver and a seeded session, and the test-mode money path in 9.A.", pri: "Partly done" },
+  { req: "Add an end-to-end harness — DONE at both layers", why: "HTTP: tests/e2e/smoke.test.ts asserts the CSP and nonce, clickjacking and sniffing headers, the health contract's two shapes, anonymous rejection on the money routes, CSRF refusal of a cross-origin state change, the 410 tombstones, and 404 on unknown API paths across every method. Browser: tests/browser/ drives Chromium at desktop and mobile viewports over accessible naming, keyboard operability, the age gate and every public page rendering without console errors. 13 and 38 respectively, all passing against production. Both skip rather than fail without E2E_BASE_URL, so neither can become a green test that checks nothing, and both now run automatically after every production deploy (9.E). Each found a real defect on its first run — a soft 404 on the API, and every auth input being unlabelled (Section 12). What remains is BE-10 in 9.A: purchase through settlement to payout against real processors, which needs Stripe test-mode credentials and is deliberately not faked here.", pri: "Done" },
   { req: "Extend route-level test coverage beyond the guard layer", why: "The unit suite pins the shared guards every route passes through, which is the highest-leverage seam — but per-route tests of auth, ownership and error shapes would catch wiring mistakes the guard tests cannot.", pri: "Medium" },
 ]));
 
 children.push(H2("9.D  Frontend and user experience"));
 children.push(checklist([
-  { req: "Run a manual screen-reader pass", why: "The automated jsx-a11y gate now blocks keyboard and semantic regressions in CI, and 23 defects were fixed this cycle — but an automated floor is not a usability verdict. One session with VoiceOver or NVDA across signup, purchase and picks closes the gap.", pri: "Medium" },
+  { req: "Run a manual screen-reader pass — STILL RECOMMENDED, but the floor is much higher", why: "The 13 August browser suite added the assertions a linter structurally cannot make: that every input on signup and login exposes an accessible name in the rendered accessibility tree, that the form is completable by keyboard alone including the terms checkbox, and that focus is visibly indicated. Writing it immediately found that EVERY auth input was unlabelled — the label carried no htmlFor and sat as a sibling of its input, so it looked correct and announced as nothing, on the password and the date of birth that gates the product on age. jsx-a11y could not see it. That is now fixed and pinned. A human session with VoiceOver or NVDA is still worth doing before launch — automation cannot judge whether the announced order makes sense — but it is no longer the only thing standing between the product and an unusable form.", pri: "Medium" },
   { req: "Verify the httpOnly session change against live Supabase realtime", why: "Chat now authenticates through a separate short-lived token path. The mechanism is sound but has not been exercised against the live realtime service.", pri: "Medium" },
   { req: "Recover static generation for public pages (optional)", why: "force-dynamic is global for the CSP nonce — an accepted trade this cycle. If marketing SEO becomes a priority, serve public pages a nonce-free CSP and scope force-dynamic to authenticated routes.", pri: "Low" },
 ]));
@@ -606,7 +606,8 @@ children.push(checklist([
 children.push(H2("9.E  Operational readiness"));
 children.push(checklist([
   { req: "Uptime and health-check monitoring — DONE", why: "Closed 13 August. /api/health answers with a status code any monitor can watch without credentials, and never reveals which component failed unless the caller holds CRON_SECRET — a public health endpoint is a reconnaissance surface during an outage. Degraded-but-serving conditions (notably the in-memory rate-limit fallback) report 200/degraded rather than 503, so the pager stays credible. Point an external monitor at it. (OPS-3, 9.E)", pri: "Done" },
-  { req: "Guard the deployment pipeline itself — DONE", why: "New this cycle, and the reason everything above sat undeployed for a day. scripts/check-vercel-crons.ts blocks any sub-daily cron schedule in vercel.json and any unknown top-level key, both of which make Vercel refuse a deployment outright on the Hobby plan. scripts/check-migrations.ts blocks duplicate migration version prefixes. Both run in CI. See Section 12.", pri: "Done" },
+  { req: "Guard the deployment pipeline itself — DONE", why: "New this cycle, and the reason everything above sat undeployed for a day. scripts/check-vercel-crons.ts blocks any sub-daily cron schedule in vercel.json and any unknown top-level key, both of which make Vercel refuse a deployment outright on the Hobby plan. scripts/check-migrations.ts blocks duplicate migration version prefixes. scripts/check-docs.ts blocks XML-illegal characters in the document generators. All three run in CI. See Section 12.", pri: "Done" },
+  { req: "Verify every production deploy against the running site — DONE", why: "New this cycle. .github/workflows/post-deploy.yml fires on a successful production deployment_status and runs both black-box suites against the live alias. This is the gate that would have caught the project's worst failure: five commits merged green and never deployed, which no pre-merge check can see because at merge time there is nothing deployed to look at. Scoped to production rather than every preview because the Actions budget is finite — settle-pools and alert already spend roughly 1,805 of the 2,000 free minutes, and exhausting the remainder would silently stop settlement, which is far worse than an unverified preview. Previews can be checked on demand via the manual trigger. Runs in 2.0 minutes.", pri: "Done" },
   { req: "Define support and dispute-resolution process — DOCUMENTED", why: "Closed 13 August as docs/RUNBOOK.md §6. Names the evidence in order of authority (pool_winners, then the user_transactions ledger, then pool_games/parlay_cards/card_picks to reconstruct scoring, then admin_audit_log and compliance_events) and the rules of engagement: never adjust a balance with raw SQL because it bypasses the ledger that resolves the next dispute; a settlement is only wrong if an input was wrong, so fix the input and re-run rather than hand-editing an outcome. Table names verified against the live database. What remains is purely organisational — WHO investigates and who may authorise a correction.", pri: "Done" },
   { req: "Document the admin bootstrap and offboarding procedure — DOCUMENTED", why: "Closed 13 August as docs/RUNBOOK.md §5. Bootstrap is five steps ending in TOTP enrolment; offboarding is four, ordered so that demotion (which removes authority) comes first, then session revocation to close the window where a demoted admin still holds a role claim in an unexpired JWT, then TOTP factor removal, then an admin_audit_log review and secret rotation.", pri: "Done" },
   { req: "Set a staging environment mirroring production", why: "Money-path changes should be exercised somewhere real before they reach users.", pri: "Medium" },
@@ -832,7 +833,43 @@ children.push(Bullet("stripe 20 → 22: the SDK types the pinned API version as 
 children.push(Bullet("TypeScript 7 and ESLint 10 were REJECTED and held back: typescript-eslint does not support TS 7.0, and ESLint 10 breaks eslint-plugin-react inside eslint-config-next. Both would have disabled the lint gate entirely. Merged at TypeScript 6 and ESLint 9 instead, which pass."));
 children.push(Bullet("react-hooks/set-state-in-effect became an error in the upgraded plugin, correctly flagging a cascading render in useIsMobile; rewritten on useSyncExternalStore, which is what matchMedia calls for."));
 
-children.push(H2("12.6  Verification performed"));
+children.push(H2("12.6  Every auth input was unlabelled"));
+children.push(P(
+  "Found while writing the browser suite, before a single test had run. src/components/auth/form-input.tsx rendered a bare <label> with no htmlFor, sitting as a SIBLING of its <input> rather than wrapping it. Visually correct; programmatically unrelated. To a screen reader every field on signup and login was an unlabelled edit box — name, email, password, and the date of birth that gates the entire product on age."
+));
+children.push(P(
+  "The jsx-a11y gate could not catch it, and that is not a configuration mistake. The rule sees a <label> containing text in the same component and cannot prove the adjacent <input> is unrelated to it. This is what \"an automated floor is not a usability verdict\" means in practice, and it is precisely the class of defect the manual screen-reader pass in 9.D was meant to find."
+));
+children.push(P(
+  "Fixed with useId() wiring htmlFor to id, plus aria-invalid and aria-describedby so a rejected field announces WHY alongside the field rather than only in colour. tests/browser/a11y.spec.ts now asserts every input on both forms exposes an accessible name in the rendered accessibility tree, so it cannot silently return."
+));
+
+children.push(H2("12.7  Three findings that were not findings"));
+children.push(P(
+  "Recorded because a report that only lists confirmed hits is not showing its working, and because each was a defect in the test rather than the product:",
+  { italics: true }
+));
+children.push(Bullet("\"No h1 on /signup.\" There is one. These are client components, so domcontentloaded fires while the body is still an empty shell and the assertion was counting headings in it. All eight public pages have exactly one h1, verified."));
+children.push(Bullet("\"No input reachable by Tab.\" The form is fully operable — 19 focusable elements walking email, password, date, checkbox, link. Tabbing from <body> moves focus into the browser's own chrome first, which the page does not control."));
+children.push(Bullet("\"The date field has no focus indicator.\" It has one. Tailwind's ring utilities compile to a box-shadow whose colour variables are present but TRANSPARENT when unfocused, so \"has a box-shadow\" is true either way and a single snapshot measures nothing. Replaced with a before/after comparison across outline, box-shadow and border — something visible must change on focus."));
+children.push(P(
+  "A suite that cries wolf gets deleted by the next person who sees it red, so a false positive is worth more effort to remove than a true one is to add."
+));
+
+children.push(H2("12.8  The handover document could not be opened"));
+children.push(P(
+  "Surfaced only when the documents were converted to PDF. Gridiron_Project_Handover.docx failed with \"Word experienced an error trying to open the file\" — and the version from before this cycle's edits failed identically, so it had been broken since it was first generated and was handed over in that state. The combined document inherited the fault the moment it imported that part."
+));
+children.push(Rich([
+  { t: "Cause: two vertical tabs (0x0B) in a note, used as an ad-hoc line break. XML 1.0 forbids every C0 control character except tab, newline and carriage return, and the docx writer does not sanitise — it emits the string straight into " },
+  { t: "word/document.xml", mono: true },
+  { t: ". The result unzips cleanly, reads correctly as text, and is rejected by Word." },
+]));
+children.push(P(
+  "It survived because nothing in the toolchain could see it: the generators ran in an environment with no Word installed, the archive is structurally valid, and every guard in this repository inspects source rather than the artefact. Only opening the file revealed it. Fixed, and scripts/check-docs.ts now blocks XML-illegal characters in CI — verified to pass the corrected sources and fail the exact pre-fix file. All six documents now open and convert."
+));
+
+children.push(H2("12.9  Verification performed"));
 children.push(P("Every claim in this section was checked against a live system rather than inferred from the repository:"));
 children.push(Bullet("Live Supabase, queried directly: object existence for the allegedly-skipped migrations, the migration ledger, and RPC grants."));
 children.push(Bullet("Live Vercel API: deployment records per commit, deployment states, and runtime error groups with first/last-seen timestamps."));
@@ -861,6 +898,7 @@ children.push(kvTable([
   ["3. Mirror CRON_SECRET into GitHub", "The same value must also exist as a GitHub Actions secret. Without it settle-pools.yml and alert.yml SKIP and still report success — a green workflow doing nothing."],
   ["4. Check one URL", "curl -H \"Authorization: Bearer $CRON_SECRET\" https://<domain>/api/health — returns a component-by-component breakdown naming every unset variable and what it costs. Work the list until status reads \"ok\". This is the readiness test; it needs no engineer to interpret."],
   ["5. Run the money path in test mode", "Purchase → webhook → card → picks → settlement → balance credit → payout, including a deliberately duplicated webhook delivery to prove idempotency under real conditions. This is BE-10 and it is the one item that genuinely cannot be closed without live processor credentials."],
+  ["6. Watch the deploy verify itself", "Nothing to do. Every production deployment now triggers .github/workflows/post-deploy.yml, which runs both black-box suites against the live site and fails loudly if the deployment does not behave. If it is red, open the run: the Playwright report is attached as an artefact."],
 ], 2600));
 
 children.push(H2("13.2  Not code, and not the client's engineer either"));
@@ -872,9 +910,8 @@ children.push(Bullet("Enabling PITR and rehearsing one restore. A dashboard togg
 
 children.push(H2("13.3  Engineering work that remains"));
 children.push(P("Honestly stated rather than quietly dropped. None of it blocks launch; all of it would reduce risk:"));
-children.push(Bullet("Browser-level journey tests. The HTTP smoke suite covers the anonymous attack surface and runs against any deployment, but signup, purchase, picks and withdrawal are not driven through a real browser. (9.C, High)"));
 children.push(Bullet("Per-route test coverage beyond the shared guard layer. The guards are the highest-leverage seam and are pinned; per-route auth and ownership tests would catch wiring mistakes the guard tests structurally cannot. (9.C, Medium)"));
-children.push(Bullet("A manual screen-reader pass. 21 jsx-a11y rules block CI at error severity and 23 defects were fixed, but an automated floor is not a usability verdict. (9.D, Medium)"));
+children.push(Bullet("A manual screen-reader pass. The browser suite now pins accessible naming, keyboard operability and focus visibility, and closing it found that every auth field was unlabelled — but automation cannot judge whether the announced order makes sense to a person. (9.D, Medium)"));
 children.push(Bullet("One interactive sign-in after the @supabase/ssr 0.5 → 0.12 upgrade, which changed session cookie handling. Anonymous rejection is verified; a successful login is not. (9.D, Medium)"));
 children.push(Bullet("A staging environment mirroring production, so money-path changes are exercised somewhere real first. (9.E, Medium)"));
 
@@ -886,6 +923,9 @@ children.push(Bullet("Admin MFA completed end to end — enforcement plus the en
 children.push(Bullet("The bootstrap endpoint made self-disabling, removing a manual cleanup step that a handover would very likely have lost."));
 children.push(Bullet("Dependency upgrades merged with their breaking changes resolved, and two that would have silently disabled the lint gate held back with the reason recorded in .github/dependabot.yml."));
 children.push(Bullet("Support/dispute procedure and admin bootstrap/offboarding written into docs/RUNBOOK.md §§5–6, with every table name verified against the live database."));
+children.push(Bullet("Browser-level end-to-end tests at desktop and mobile viewports, which found that every auth input was unlabelled to a screen reader. (Section 12.6)"));
+children.push(Bullet("Post-deploy verification: both black-box suites now run automatically against the live site after every production deploy — the only kind of check that can catch a commit which merges green and never ships."));
+children.push(Bullet("The handover document itself, which Word had never been able to open, and a CI guard so no generator can emit an unopenable file again. (Section 12.8)"));
 
 children.push(spacer(200));
 children.push(P(
