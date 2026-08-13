@@ -35,7 +35,7 @@ import { logEvent, recordAppError } from "@/lib/log";
 
 const bodySchema = z.object({
   confirm: z.literal(true, {
-    errorMap: () => ({ message: "Deletion must be explicitly confirmed" }),
+    message: "Deletion must be explicitly confirmed",
   }),
 });
 

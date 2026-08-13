@@ -61,7 +61,7 @@ export async function PUT(
     const parsed = outcomeSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.errors[0]?.message ?? "Validation error" },
+        { error: parsed.error.issues[0]?.message ?? "Validation error" },
         { status: 400 }
       );
     }
