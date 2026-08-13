@@ -291,6 +291,14 @@ export default function ResponsibleGamingPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
+                {/*
+                  A file download from a route handler, not a page navigation:
+                  <Link> would try to client-side route to it and break the
+                  download. The rule only fires here because the API catch-all
+                  (src/app/api/[...unmatched]/route.ts) makes every /api/* path
+                  look like a matched page to its resolver.
+                */}
+                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
                 <a
                   href="/api/me/data-export"
                   className="rounded-lg border border-white/15 px-5 py-3 text-sm font-semibold hover:bg-white/5"
