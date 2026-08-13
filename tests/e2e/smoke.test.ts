@@ -199,15 +199,42 @@ describe("e2e smoke", () => {
     test("the retired endpoints still answer 410 rather than 404", { skip }, async () => {
       // These issued free paid cards / wrote picks the scoring engine ignored.
       // A 404 would let a straggler client fail quietly; 410 is deliberate.
-      const res = await get("/api/cards/00000000-0000-4000-8000-000000000000/submit", {
-        method: "POST",
-        headers: { "content-type": "application/json", origin: BASE! },
-        body: JSON.stringify({}),
-      });
-      assert.ok(
-        [410, 401, 403].includes(res.status),
-        `retired endpoint should be gone/guarded, got ${res.status}`
-      );
+      const pool = "00000000-0000-4000-8000-000000000000";
+      const card = "00000000-0000-4000-8000-000000000001";
+
+      for (const path of [
+        `/api/pools/${pool}/cards/purchase`,
+        `/api/pools/${pool}/cards/${card}/submit`,
+      ]) {
+        const res = await get(path, {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: BASE! },
+          body: JSON.stringify({}),
+        });
+        assert.ok(
+          [410, 401, 403].includes(res.status),
+          `${path} should be gone/guarded, got ${res.status}`
+        );
+      }
+    });
+
+    test("an unknown API path 404s on every method, not just GET", { skip }, async () => {
+      // Next's App Router renders the not-found page for an unmatched route.
+      // On GET that carries a 404; on every other method it returned the same
+      // HTML with HTTP 200, so a client POSTing to a renamed money endpoint saw
+      // res.ok === true. src/app/api/[...unmatched]/route.ts closes that.
+      for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
+        const res = await get("/api/definitely-does-not-exist-xyz", {
+          method,
+          headers: { "content-type": "application/json", origin: BASE! },
+          ...(method === "GET" ? {} : { body: JSON.stringify({}) }),
+        });
+        assert.equal(
+          res.status,
+          404,
+          `${method} on an unknown API path must be 404, got ${res.status}`
+        );
+      }
     });
   });
 });
