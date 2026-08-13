@@ -177,7 +177,7 @@ c.push(note("The most important finding of the whole project",
 
 c.push(note("Earlier cycles, for completeness",
   [T("1. Card purchases were broken end-to-end on any database provisioned from the committed migrations. ", { bold: true }),
-   T("Two columns on "), M("pool_transactions"), T(" are "), M("NOT NULL"), T(" with no default, the trigger meant to populate them existed in no migration, and the purchase code supplied neither — so the insert failed, the card was rolled back, and the player was charged by Stripe and received nothing."),
+   T("Two columns on "), M("pool_transactions"), T(" are "), M("NOT NULL"), T(" with no default, the trigger meant to populate them existed in no migration, and the purchase code supplied neither — so the insert failed, the card was rolled back, and the player was charged by Stripe and received nothing."), new TextRun({ break: 1 }), new TextRun({ break: 1 }),
    T("2. A crafted pool could mint prize money. ", { bold: true }),
    T("The platform fee is multiplied into the payout, and the column that holds it was writable on insert and unclamped — a pool created with a fee of −100 would have paid out twice its pot. Both are fixed; see §9.")],
   "FBECEC", RED));

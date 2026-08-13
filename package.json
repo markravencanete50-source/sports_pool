@@ -22,10 +22,11 @@
     "check:migrations": "tsx scripts/check-migrations.ts",
     "check:crons": "tsx scripts/check-vercel-crons.ts",
     "test:e2e": "tsx --test tests/e2e/*.test.ts",
-    "check": "npm run typecheck && npm run check:migrations && npm run check:crons && npm run test && npm run lint",
+    "check": "npm run typecheck && npm run check:migrations && npm run check:crons && npm run check:docs && npm run test && npm run lint",
     "docs:generate": "node scripts/gen-handover-doc.cjs && node scripts/gen-security-report.cjs && node scripts/gen-backend-explainer.cjs && node scripts/gen-backend-technical.cjs && node scripts/gen-fullstack-audit.cjs && node scripts/gen-combined-doc.cjs",
     "test:unit": "tsx --test tests/*.test.ts",
-    "docs:combined": "node scripts/gen-combined-doc.cjs"
+    "docs:combined": "node scripts/gen-combined-doc.cjs",
+    "check:docs": "tsx scripts/check-docs.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",

@@ -59,3 +59,6 @@ supabase/.temp/
 # CI runs `npm ci`. Do not commit a second lockfile — two lockfiles resolve to
 # two different dependency trees depending on who installed last.
 bun.lock
+
+# Generated from the .docx by Word; regenerate locally rather than version them.
+*.pdf
