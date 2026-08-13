@@ -45,14 +45,25 @@ for (const { path, mustContain } of PUBLIC_PAGES) {
     });
 
     // The browser logs EVERY non-2xx response as a console error, including
-    // ones that are the correct answer. /api/auth/me returns 401 to an
-    // anonymous visitor by design — that is the session check working, not
-    // failing. Filtering it by exact route keeps the assertion meaningful:
-    // any other 4xx/5xx still fails the test.
+    // ones that are the correct answer.
+    //
+    // 401 and 403 to an anonymous visitor are the auth guards WORKING. Several
+    // public pages fetch user state on load — /responsible-gaming asks for the
+    // caller's compliance settings — and are designed to render fine without
+    // it. An earlier version of this filter named /api/auth/me explicitly,
+    // which was the right instinct applied too narrowly: it left the assertion
+    // racing whichever other 401 happened to land before the test finished,
+    // and that raced differently in CI than locally.
+    //
+    // Everything else still fails: a 400 means we sent something malformed, a
+    // 404 means we asked for something that does not exist, a 5xx is a bug. And
+    // a page that genuinely NEEDS the data it was refused is caught by the
+    // "renders real content" assertion below, not by this one.
     page.on("response", (r) => {
-      if (r.status() < 400) return;
-      if (r.status() === 401 && /\/api\/auth\/me$/.test(new URL(r.url()).pathname)) return;
-      consoleErrors.push(`${r.status()} ${r.url()}`);
+      const status = r.status();
+      if (status < 400) return;
+      if (status === 401 || status === 403) return;
+      consoleErrors.push(`${status} ${r.url()}`);
     });
     page.on("pageerror", (err) => pageErrors.push(err.message));
 
