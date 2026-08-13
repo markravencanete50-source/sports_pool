@@ -169,7 +169,8 @@ default:
 | `npm run check:migrations` | Blocks duplicate migration version prefixes — **blocking in CI**. Supabase keys the ledger by that prefix, so two files sharing one are *one* migration and the second is silently skipped |
 | `npm run check:crons` | Blocks a sub-daily schedule in `vercel.json` — **blocking in CI**. On the Hobby plan Vercel *refuses to create the deployment*, producing no build and no error to read |
 | `npm run check` | typecheck + migrations + crons + test + lint, all at once |
-| `npm run test:e2e` | Black-box suite against a running deployment. Needs `E2E_BASE_URL`; skips rather than fails without it |
+| `npm run test:e2e` | HTTP black-box suite against a running deployment. Needs `E2E_BASE_URL`; skips rather than fails without it |
+| `npm run test:browser` | Playwright suite (desktop + mobile): accessible naming, keyboard operability, the age gate, public pages rendering without console errors. Uses `E2E_BASE_URL`, or boots `next dev` if unset |
 | `npm run docs:generate` | Regenerates all five handover/audit documents |
 | `npm run db:migrate` | Apply migrations |
 | `npm run seed` / `seed:admin` | Seed data / promote the admin account |

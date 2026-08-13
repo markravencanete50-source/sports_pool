@@ -29,6 +29,13 @@ name: CI
 #   audit      — npm audit at high severity. Advisories were cleared by hand once
 #                and nothing re-checked them; this keeps that honest.
 #
+# WHAT DELIBERATELY DOES NOT RUN HERE. The two black-box suites — tests/e2e
+# (HTTP) and tests/browser (Playwright) — need a URL serving real code, which
+# does not exist at merge time. They run in post-deploy.yml against the
+# deployment that just went live. That split matters: the worst failure this
+# project has had was five commits that merged green and never deployed at all,
+# and only a post-deploy check can catch that.
+#
 # The build needs the NEXT_PUBLIC_* vars to exist, but never contacts Supabase or
 # Stripe during a build, so deliberately fake placeholders are used here. No real
 # secret is required to run CI, which keeps forks and PRs working.
