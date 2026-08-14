@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logEvent } from "@/lib/log";
+import { resolveRedisCreds } from "@/lib/rate-limit";
 
 /**
  * Health and readiness probe.
@@ -168,18 +169,20 @@ function checkCapabilities(): Component {
  * that from the health endpoint instead of from a credential-stuffing incident.
  */
 function checkRateLimitBackend(): Component {
-  const configured =
-    Boolean(process.env.UPSTASH_REDIS_REST_URL?.trim()) &&
-    Boolean(process.env.UPSTASH_REDIS_REST_TOKEN?.trim());
-
-  if (configured) return { status: "ok", hard: false, detail: "upstash (distributed)" };
+  // Same resolver the limiter itself uses, so health can never report "ok" while
+  // the limiter is actually falling back (or vice versa). Accepts both the
+  // UPSTASH_ names and the KV_ names Vercel's Upstash integration injects.
+  if (resolveRedisCreds()) {
+    return { status: "ok", hard: false, detail: "upstash (distributed)" };
+  }
 
   return {
     status: "degraded",
     hard: false,
     detail:
-      "in-memory fallback — limits are PER INSTANCE, not global. " +
-      "Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.",
+      "in-memory fallback — limits are PER INSTANCE, not global. Set " +
+      "UPSTASH_REDIS_REST_URL/_TOKEN, or connect Vercel's Upstash integration " +
+      "(KV_REST_API_URL/_TOKEN).",
   };
 }
 

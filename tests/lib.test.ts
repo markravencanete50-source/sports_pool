@@ -17,7 +17,7 @@ import { createHash } from "node:crypto";
 
 import { safeInternalPath, DASHBOARD_PATH } from "../src/lib/routes";
 import { assertSameOrigin } from "../src/lib/request-guards";
-import { enforceRateLimit } from "../src/lib/rate-limit";
+import { enforceRateLimit, resolveRedisCreds } from "../src/lib/rate-limit";
 import { buildCsp, generateNonce } from "../src/lib/csp";
 import {
   signupSchema,
@@ -119,6 +119,64 @@ test("enforceRateLimit buckets are isolated per key", async () => {
   assert.ok(await enforceRateLimit(mk("198.51.100.1"), "test:iso", opts));
   // different IP -> fresh bucket
   assert.equal(await enforceRateLimit(mk("198.51.100.2"), "test:iso", opts), null);
+});
+
+// ─── resolveRedisCreds: both naming conventions ──────────────────────────────
+//
+// A real handover bug: Vercel's Upstash integration injects KV_REST_API_URL /
+// KV_REST_API_TOKEN, not the UPSTASH_ names the code originally read, so a
+// correctly-provisioned database silently fell through to the in-memory limiter.
+// These pin that both name sets resolve, that the read-only token is never used,
+// and that a missing half yields null rather than a half-configured client.
+test("resolveRedisCreds reads the UPSTASH_ names", () => {
+  const save = { ...process.env };
+  try {
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = "https://u.example.upstash.io";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "utoken";
+    assert.deepEqual(resolveRedisCreds(), {
+      url: "https://u.example.upstash.io",
+      token: "utoken",
+    });
+  } finally {
+    process.env = save;
+  }
+});
+
+test("resolveRedisCreds reads Vercel's KV_ integration names", () => {
+  const save = { ...process.env };
+  try {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.KV_REST_API_URL = "https://kv.example.upstash.io";
+    process.env.KV_REST_API_TOKEN = "kvtoken";
+    // The read-only token must NOT be what gets used — the limiter needs INCR.
+    process.env.KV_REST_API_READ_ONLY_TOKEN = "readonly-should-be-ignored";
+    assert.deepEqual(resolveRedisCreds(), {
+      url: "https://kv.example.upstash.io",
+      token: "kvtoken",
+    });
+  } finally {
+    process.env = save;
+  }
+});
+
+test("resolveRedisCreds returns null when only half is present", () => {
+  const save = { ...process.env };
+  try {
+    for (const k of [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "KV_REST_API_URL",
+      "KV_REST_API_TOKEN",
+    ]) delete process.env[k];
+    process.env.KV_REST_API_URL = "https://kv.example.upstash.io";
+    // token absent
+    assert.equal(resolveRedisCreds(), null);
+  } finally {
+    process.env = save;
+  }
 });
 
 // ─── CSP ─────────────────────────────────────────────────────────────────────

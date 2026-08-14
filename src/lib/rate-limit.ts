@@ -10,11 +10,10 @@ import { NextResponse } from "next/server";
  * Two backends, chosen automatically:
  *
  *   1. Upstash Redis (preferred, and the right choice on serverless). When
- *      UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set, limits are
- *      enforced GLOBALLY across every serverless instance via a shared store,
- *      over Upstash's HTTP REST API (no persistent TCP connection, which is
- *      exactly what Vercel functions need). Uses @upstash/ratelimit's sliding
- *      window.
+ *      Redis REST credentials are set, limits are enforced GLOBALLY across every
+ *      serverless instance via a shared store, over Upstash's HTTP REST API (no
+ *      persistent TCP connection, which is exactly what Vercel functions need).
+ *      Uses @upstash/ratelimit's sliding window.
  *
  *   2. In-memory fallback. When Redis is not configured — local dev, or before
  *      the env vars are provisioned — it degrades to a per-instance in-memory
@@ -131,12 +130,41 @@ function hitMemory(key: string, opts: RateLimitOptions): RateLimitResult {
 const limiterCache = new Map<string, unknown>();
 let upstashUnavailable = false;
 
+/**
+ * Resolve the Redis REST credentials, accepting BOTH naming conventions.
+ *
+ * Two ways this project can get an Upstash database, and they name the variables
+ * differently:
+ *
+ *   - Setting UPSTASH_REDIS_REST_URL / _TOKEN by hand (the documented names).
+ *   - Vercel's Upstash marketplace integration, which auto-injects KV_REST_API_URL
+ *     and KV_REST_API_TOKEN (plus KV_URL, REDIS_URL, and a READ_ONLY token). This
+ *     is the path a client following the runbook will actually take, and it does
+ *     NOT create the UPSTASH_-prefixed names.
+ *
+ * Reading only the UPSTASH_ names meant a correctly-provisioned integration
+ * silently fell through to the in-memory limiter — configured, connected, and
+ * doing nothing. Accepting the KV_ names makes the integration work out of the
+ * box. NOTE: the full-access KV_REST_API_TOKEN, never KV_REST_API_READ_ONLY_TOKEN
+ * — the sliding-window limiter must INCR, which a read-only token cannot.
+ */
+export function resolveRedisCreds(): { url: string; token: string } | null {
+  const url =
+    process.env.UPSTASH_REDIS_REST_URL?.trim() ||
+    process.env.KV_REST_API_URL?.trim();
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ||
+    process.env.KV_REST_API_TOKEN?.trim();
+  if (!url || !token) return null;
+  return { url, token };
+}
+
 async function getUpstashLimiter(
   opts: RateLimitOptions
 ): Promise<{ limit: (id: string) => Promise<{ success: boolean; remaining: number; reset: number }> } | null> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
+  const creds = resolveRedisCreds();
+  if (!creds) return null;
+  const { url, token } = creds;
   if (upstashUnavailable) return null;
 
   const cacheKey = `${opts.limit}:${opts.windowMs}`;
