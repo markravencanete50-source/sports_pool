@@ -182,7 +182,7 @@ children.push(
 
 children.push(kvTable([
   ["Repository", "markravencanete50-source/sports_pool"],
-  ["Audited commit", "61207be (main) — verification, provisioning and final sweep, 13–14 August 2026; original audit at 49d074e"],
+  ["Audited commit", "04ac7e7 (main) — verification, provisioning, final sweep and a clean client provision, 13–14 August 2026; original audit at 49d074e"],
   ["Supabase project", "veughegjwzsbjgcueyka"],
   ["Production", "Deployed and verified live; 14 HTTP and 44 browser assertions pass against it, re-run automatically after every production deploy"],
   ["Audit date", "12 August 2026 — findings and remediation; independently verified 13 August 2026 (Section 12)"],
@@ -900,7 +900,37 @@ children.push(Bullet("Money-mover RPCs (credit_user_balance, debit_user_balance,
 children.push(Bullet("app_errors held zero rows over 48 hours, and every Vercel runtime error group's last-seen timestamp predates the 13 August fixes. Production is quiet."));
 children.push(Bullet("14 HTTP and 44 browser assertions pass against production; post-deploy verification green on this commit."));
 
-children.push(H2("12.12  Verification performed"));
+children.push(H2("12.12  The clean provision — client handover, 14 August"));
+children.push(P(
+  "The strongest evidence in this document, because it is the thing no earlier cycle could do: the database was rebuilt from nothing on the client's own Supabase project, applying all 35 migrations in order to an empty database for the first time. Every prior verification ran against the original database, which grew incrementally over months and carried repair migrations along the way. A genuinely clean provision exercises paths that database never took — and it surfaced three latent defects, all fixed and all invisible from an incrementally-built instance."
+));
+children.push(Rich([
+  { t: "1. The renumbered migrations proved correct. ", b: true },
+  { t: "The duplicate-version collision (12.3) had silently skipped three migrations in the original database. Here, renumbered, all three applied in sequence — including handover_hardening revoking on a function that final_audit_fixes creates, the exact create-before-revoke ordering that would fail if it were wrong. This run is the proof the fix works, not the assertion." },
+]));
+children.push(Rich([
+  { t: "2. A migration self-test aborted the provision. ", b: true },
+  { t: "20260812020000 carried a DO block that assumed the authenticated role, tested a profile edit, then reset and deleted its fixture. It passed on the original database, applied over a privileged connection. Under the CLI's dedicated login role it failed with 42501 — the cleanup after RESET ROLE no longer had rights the block assumed, because 20260811000000 grants authenticated no DELETE. The DDL was correct; the self-test had coupled the schema to one connection role. Rewritten to assert from the catalogue (role-independent, no fixtures); the behavioural test moved to " },
+  { t: "scripts/verify-provision.sql", mono: true },
+  { t: ", which runs post-provision where impersonation is safe and a failure blocks nothing." },
+]));
+children.push(Rich([
+  { t: "3. A documentation invariant fired on functions the audited database lacked. ", b: true },
+  { t: "20260814000000 requires every client-executable SECURITY DEFINER function to carry a justification comment. It fired here on accept_terms, which the compliance layer creates — present on a complete build, absent from the database the original sweep checked. The first fix was itself wrong: it commented public.is_admin(), but a later migration moves is_admin to the private schema, so it failed with 42883. Corrected against the live catalogue rather than a mental model, and the invariant now NAMES the offending functions instead of raising a bare string that cost a full round trip to diagnose." },
+]));
+children.push(P(
+  "A fourth, separate, was found wiring the client's rate limiter: Vercel's Upstash marketplace integration — the path the runbook recommends — injects KV_REST_API_URL and KV_REST_API_TOKEN, not the UPSTASH_ names the code read. A correctly-connected database fell through to the in-memory limiter while the health probe reported it distributed. Now both name sets resolve through one helper the limiter and health share, pinned by three tests, and the read-only token is explicitly never used."
+));
+children.push(Rich([
+  { t: "The common root cause, stated plainly: ", b: true },
+  { t: "every one was a claim about the schema that held only for the specific database it was checked against. Each was latent in the original production database too — dormant because it was never rebuilt. That is the argument for rebuilding over transferring, playing out in evidence rather than principle: these are precisely the failures a disaster-recovery restore would hit, found now on an empty database instead of during an incident with real balances at stake." },
+]));
+children.push(P("Verified on the client's live system:"));
+children.push(Bullet("35 of 35 migrations applied and recorded; the 7-check invariant script (scripts/verify-provision.sql) returns PASS on all — RLS coverage, migration count, the double-credit index, one-way self-exclusion, no policy recursion, the helper grants, and role/balance not client-writable."));
+children.push(Bullet("Site live on the client's own Vercel; 14 of 14 HTTP smoke assertions pass against their production — CSP with nonce, framing denied, the health contract, anonymous rejection on every money and admin route, cross-origin CSRF refusal, the 410 tombstones, 404 on unknown paths."));
+children.push(Bullet("Rate limiting confirmed distributed (upstash) via the health component breakdown; database, core config and rate limiting all report ok. The remaining degraded components are exactly Stripe and PayPal — external credentials, covered in §13."));
+
+children.push(H2("12.13  Verification performed"));
 children.push(P("Every claim in this section was checked against a live system rather than inferred from the repository:"));
 children.push(Bullet("Live Supabase, queried directly: object existence for the allegedly-skipped migrations, the migration ledger, and RPC grants."));
 children.push(Bullet("Live Vercel API: deployment records per commit, deployment states, and runtime error groups with first/last-seen timestamps."));

@@ -126,12 +126,13 @@ policy as non-optional.
 | Item | Where | Why |
 |---|---|---|
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → `service_role` (secret) → Vercel env, **Production** | **This was unset in production for eight days and nobody noticed.** Every service-role path dies without it: settlement never completes and the Stripe webhook cannot fulfil a purchase, so a user can be charged and receive nothing. The public site keeps serving normally, which is exactly why it went unnoticed. Never expose it to the browser or prefix it `NEXT_PUBLIC_` — it bypasses every RLS policy |
-| `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | console.upstash.com → create Redis DB → Vercel env vars (all environments) | Without them every rate limit is per-instance in-memory — the sign-in throttle multiplies by the number of warm instances |
+| Upstash Redis credentials | **Easiest:** Vercel → Storage → Create Database → Upstash → Redis → connect to the project. It auto-injects `KV_REST_API_URL` and `KV_REST_API_TOKEN`, which the limiter reads directly — no manual variables. **Or by hand:** console.upstash.com → create a DB → set `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`. Either naming works; do not mix them. Pick a region matching the database's (e.g. `pdx1` for a `us-west-2` database) | Without them every rate limit is per-instance in-memory — the sign-in throttle multiplies by the number of warm instances. The integration path injects `KV_`-prefixed names, **not** `UPSTASH_`; the code accepts both, but a database connected with the read-only token will fail under load — use the full-access `KV_REST_API_TOKEN` |
 | `STRIPE_WEBHOOK_SECRET` | Stripe dashboard → Webhooks → the production endpoint (`/api/stripe/webhook`, event `checkout.session.completed`) | Wrong or unset secret = users charged with no card issued. Unset is verifiable from outside: the webhook answers `503 {"error":"Webhook not configured"}` instead of `400 Missing stripe-signature` |
 | `PAYPAL_MODE=live` + production client id/secret | Vercel env | The code fails closed to "not configured", so payouts simply won't send until this is right |
 | `CRON_SECRET` | **Two places.** Vercel env, **and** GitHub → Settings → Secrets and variables → Actions | Vercel: settlement, reconciliation and the alert digest answer 503 until set. GitHub: without the Actions secret `settle-pools.yml` and `alert.yml` **skip and still report success** — a green workflow doing nothing. Both values must match. Verify by running either workflow manually and confirming its trigger step says success, not skipped |
 
 | Unset `SETUP_SECRET` | Vercel env | Hygiene only, no longer a hole. `/api/seed-admin` now refuses with 410 once any admin exists, so a forgotten secret cannot reopen the bootstrap path |
+| Function region | Vercel → Settings → Functions → Region → the region nearest the database (`pdx1` for `us-west-2`) | Functions default to `iad1` (Washington). A database on the opposite coast adds a cross-country round trip to every query, and purchase and settlement make several each. Match the region; a healthy database check should read tens of ms, not 200+ |
 | MFA for admin accounts | Enrol at `/account/security` (TOTP) | **Built and enforced** — see §4. Every admin must enrol; payout approval, role changes and platform-fee edits refuse a session without a verified factor |
 | PITR backups | Supabase dashboard | See §2 |
 
@@ -255,8 +256,17 @@ the development-era configuration follows it across.
 
 **Provisioning a new project, in order:**
 
+> **This procedure has now been run end to end.** A clean provision onto a
+> client's own Supabase project applied all 35 migrations, passed the invariant
+> script, and brought the site up with 14 of 14 external assertions green. It
+> also surfaced three latent defects that only a from-scratch build could expose
+> (a role-coupled migration self-test, a documentation invariant firing on
+> functions the source database lacked, and the `KV_` vs `UPSTASH_` naming) — all
+> fixed. Expect the steps below to work; run the verification anyway.
+
 1. Create the project in the **client's** Supabase organisation. Choose a region
-   near the Vercel functions — currently `iad1` (US East), so `us-east-1`.
+   near where the Vercel functions will run, and pin the function region to match
+   (§3). For a `us-west-2` database, use `pdx1` functions; for `us-east-1`, `iad1`.
 2. Apply the schema:
    ```
    supabase link --project-ref <new-ref>
@@ -265,7 +275,9 @@ the development-era configuration follows it across.
    All 35 migrations apply cleanly to an empty database. This is verified by
    `npm run check:migrations` on every commit, and it is not a given: three
    migrations shared duplicate version prefixes at one point, which would have
-   silently skipped them on exactly this operation.
+   silently skipped them on exactly this operation. Run `db:migrate` **from the
+   repo directory** — linking from elsewhere writes the link into that other
+   folder and `db:migrate` then silently applies nothing.
 3. Seed the configuration the migrations do not carry:
    ```
    npm run seed
@@ -273,11 +285,22 @@ the development-era configuration follows it across.
    This inserts `platform_settings` (the platform fee and minimum entry fee) and
    the NFL teams. **Do not skip it.** Settlement falls back to a 10% fee when the
    row is absent, so a missed seed does not crash — it quietly charges a default
-   the client never chose.
-4. Copy the new project's URL, anon key and service-role key into Vercel, then
-   redeploy.
-5. Create the first admin — §5.
-6. Confirm with `/api/health` (§3) that every component reports `ok`.
+   the client never chose. `ADMIN_USER_EMAIL` is optional here — the seed skips
+   the admin cleanly if it is unset, leaving account creation to the client (§5).
+4. **Prove the money guards survived the rebuild.** Applying without error is not
+   the same as the controls being live. Paste `scripts/verify-provision.sql` into
+   the SQL Editor: seven structural checks (RLS coverage, migration count, the
+   double-credit index, one-way self-exclusion, no policy recursion, helper
+   grants, money columns not client-writable) plus a behavioural check that a real
+   session can rename itself but not escalate. All must read PASS.
+5. Copy the new project's URL, anon key and service-role key into Vercel, wire the
+   remaining provisioning (§3), then redeploy.
+6. Create the first admin — §5.
+7. Confirm with `/api/health` (§3) that every component reports `ok`, and run the
+   black-box suite against the live URL:
+   ```
+   E2E_BASE_URL=https://<domain> npm run test:e2e
+   ```
 
 **Which Supabase account the client should use.** Either a standalone account at
 supabase.com, or their own Vercel integration. Standalone is preferable: it

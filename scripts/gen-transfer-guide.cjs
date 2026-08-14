@@ -150,7 +150,36 @@ c.push(
     border: { top: { style: BorderStyle.SINGLE, size: 12, color: NAVY, space: 10 } },
     spacing: { before: 160, after: 340 }, children: [new TextRun({ text: "", size: 2 })] }),
 );
-c.push(P("Please read section 2 and reply with those details. Everything else is for information.", { align: AlignmentType.CENTER, italics: true, color: GREY }));
+c.push(P("The technical transfer is largely complete. This document records what is done, what remains, and what only you can provide. The one thing needed from you is in the box below.", { align: AlignmentType.CENTER, italics: true, color: GREY }));
+c.push(pageBreak());
+
+// ══ 0. STATUS ═══════════════════════════════════════════════════════════════
+c.push(H1("Where this stands right now"));
+c.push(P("The heavy lifting is done. Your project now runs on your own GitHub, Supabase and Vercel accounts, and the parts that are hardest to get right — the database and its security controls — have been rebuilt from scratch on your infrastructure and independently verified."));
+c.push(spacer(60));
+c.push(H2("Done and verified"));
+c.push(table([4400, 4600], ["What", "Evidence"], [
+  ["Source code on your GitHub", "Full history, every commit intact"],
+  ["Database rebuilt on your Supabase", "All 35 build steps applied; 7 of 7 money-guard checks pass"],
+  ["Reference data loaded", "All 32 NFL teams and your platform settings"],
+  ["Website live on your Vercel", "Serving from your account, security verified by 14 automated checks"],
+  ["Abuse protection active", "Distributed rate limiting on your own Upstash database"],
+]));
+c.push(spacer(140));
+c.push(H2("Waiting only on you"));
+c.push(P("None of these is development work. Each is an account or an approval that only you can provide, because they are your business's financial and legal relationships — not something a developer can or should hold on your behalf."));
+c.push(table([3400, 5600], ["Item", "Why it is yours, and why it matters"], [
+  ["Stripe — keys and account approval", "Your Stripe account takes card payments. Two parts: the live keys (a copy-paste we will walk you through), and — more important — confirmation that Stripe has approved your account for contest-style businesses. Stripe can suspend an unapproved account with funds held, so start this conversation now; it takes days, not minutes."],
+  ["PayPal — payout credentials", "Your PayPal Business account sends winnings out. Until its credentials are set, withdrawals are safely blocked rather than sent wrongly."],
+  ["Point-in-time backups", "One switch in Supabase, on your paid plan. It lets the database be rewound to any moment — the difference between a bad day and a lost ledger once real money is in play. We need administrator access on your Supabase organisation to enable it, or you can flip it yourself."],
+  ["Your administrator account", "You create it, not us — it approves payouts, so it should be yours from the first day. We will show you the one-step process; it takes a minute."],
+]));
+c.push(spacer(120));
+c.push(callout(
+  "The plain-English bottom line",
+  "Everything mechanical is finished and checked. What is left is you connecting your own money accounts and making one backup decision. Once Stripe and PayPal are wired, the platform can take real entries and pay real winnings — subject to the legal sign-off in section 4.",
+  "EAF2EA", GREEN
+));
 c.push(pageBreak());
 
 // ══ 1. WHAT IS HAPPENING ════════════════════════════════════════════════════
