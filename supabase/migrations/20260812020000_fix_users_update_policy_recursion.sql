@@ -93,44 +93,73 @@ create policy "Users can update own profile" on public.users
 
 -- ---------------------------------------------------------------------------
 -- Invariants — prove the fix, rather than assume it
+--
+-- WHY THIS IS A CATALOGUE CHECK AND NOT A BEHAVIOURAL ONE.
+--
+-- The first version of this block did the honest thing: insert a fixture row,
+-- SET LOCAL ROLE authenticated, attempt a legitimate rename and an illegitimate
+-- role escalation, then RESET ROLE and delete the fixture. It passed against the
+-- live database, where it was applied over an existing connection as an
+-- already-privileged role.
+--
+-- It then FAILED the first time the migrations were applied to an empty database
+-- through `supabase db push`, with 42501 permission denied for table users. The
+-- CLI provisions its own dedicated login role ("Initialising login role..."), and
+-- under that role the fixture cleanup after RESET ROLE no longer had the rights
+-- the block assumed. 20260811000000 revokes table-wide UPDATE and grants only
+-- (name, avatar) to authenticated, and grants no DELETE at all — so the block
+-- was one role-restoration assumption away from aborting the whole provision.
+--
+-- The lesson generalises: a migration must apply under ANY role the deployment
+-- tooling chooses. A self-test that assumes a role, sheds it, and then needs
+-- elevated rights back has coupled the schema to one particular connection. That
+-- is a bad trade — it converts a correct schema change into a provisioning
+-- failure, which is exactly what happened here, on a client's database, during
+-- handover.
+--
+-- So the structural guarantees are asserted from the catalogue, which is
+-- role-independent and needs no fixture rows. The BEHAVIOURAL assertion — that a
+-- real authenticated session can rename itself but cannot escalate — has not been
+-- dropped; it moved to scripts/verify-provision.sql, which runs against a
+-- provisioned database where impersonation is safe and a failure blocks nothing.
 -- ---------------------------------------------------------------------------
 do $$
 declare
-  u uuid := '00000000-0000-4000-8000-0000000f1c00';
-  ok_name boolean := false;
-  blocked_role boolean := false;
+  v_recursive boolean;
+  v_helpers   integer;
 begin
-  insert into public.users (id, email, name, balance)
-  values (u, 'policy-invariant@example.invalid', 'Before', 0)
-  on conflict (id) do update set name = 'Before', balance = 0, role = 'user';
+  -- 1. The recursion itself. An UPDATE policy whose WITH CHECK reads from
+  --    public.users re-enters that table's SELECT policy, which Postgres refuses
+  --    with 42P17 — breaking every profile edit, not just the malicious ones.
+  select exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename  = 'users'
+      and cmd        = 'UPDATE'
+      and coalesce(with_check, '') ~* '(from|join)[[:space:]]+(public\.)?users'
+  ) into v_recursive;
 
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', u, 'role', 'authenticated')::text, true);
-  set local role authenticated;
-
-  -- The legitimate path must now work.
-  begin
-    update public.users set name = 'After' where id = u;
-    ok_name := true;
-  exception when others then
-    ok_name := false;
-  end;
-
-  -- Privilege escalation must still be refused.
-  begin
-    update public.users set role = 'admin' where id = u;
-    blocked_role := false;
-  exception when others then
-    blocked_role := true;
-  end;
-
-  reset role;
-  delete from public.users where id = u;
-
-  if not ok_name then
-    raise exception 'FAIL: a user still cannot update their own name';
+  if v_recursive then
+    raise exception
+      'FAIL: the users UPDATE policy still reads from public.users — that is the 42P17 recursion this migration exists to remove';
   end if;
-  if not blocked_role then
-    raise exception 'FAIL: role escalation is no longer blocked';
+
+  -- 2. The grant this fix depends on. Policy expressions are evaluated as the
+  --    CALLING role, so if authenticated loses EXECUTE on these helpers the
+  --    policy fails closed and every legitimate profile edit is refused. This
+  --    repository has made that exact mistake twice (20260805000001, and the
+  --    first draft of this file), which is why it is asserted rather than
+  --    trusted.
+  select count(*) into v_helpers
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'private'
+    and p.proname in ('current_user_role', 'current_user_balance')
+    and has_function_privilege('authenticated', p.oid, 'EXECUTE');
+
+  if v_helpers <> 2 then
+    raise exception
+      'FAIL: authenticated holds EXECUTE on % of the 2 private helpers the users UPDATE policy calls; the policy would fail closed for every profile edit', v_helpers;
   end if;
 end $$;
