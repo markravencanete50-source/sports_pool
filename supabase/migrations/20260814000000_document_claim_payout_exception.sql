@@ -21,25 +21,25 @@ comment on function public.claim_pool_payout(uuid) is
   'impossible even if both guards were bypassed. Credits balance atomically.';
 
 -- ---------------------------------------------------------------------------
--- The other two client-executable SECURITY DEFINER functions.
+-- accept_terms — the one client-executable SECURITY DEFINER function in public
+-- that the 14 August sweep missed.
 --
--- These were missed by the 14 August sweep because that sweep ran against a
--- database where 20260807000003 had never applied — one of the three migrations
--- silently skipped by the duplicate-version collision. On a database built
--- completely from these files, that migration DOES run and re-creates
--- public.is_admin(), so the function is present, client-executable, and was
--- undocumented. The gap was in the audited database, not in the reasoning.
+-- It was missed because that sweep ran against our production database, where
+-- the compliance layer (20260812010000, which creates accept_terms) had only
+-- just been applied and the sweep pre-dated it in practice. On a database built
+-- completely from these files it is present, granted to authenticated, and was
+-- undocumented — so the invariant below fires. The gap was in the audited
+-- database's history, not in the reasoning.
+--
+-- NOTE ON is_admin, is_pool_participant, has_parlay_card_in_pool: these are also
+-- SECURITY DEFINER, but 20260808000000 moves them to the `private` schema, which
+-- PostgREST does not serve. They are therefore NOT client-executable public
+-- functions and the invariant correctly ignores them. An earlier draft of this
+-- migration tried to comment public.is_admin() and failed with 42883 — the
+-- function does not exist under that name after the schema move. Verify the real
+-- set with scripts/verify-provision.sql rather than assuming which schema a
+-- helper ended up in.
 -- ---------------------------------------------------------------------------
-comment on function public.is_admin() is
-  'SECURITY DEFINER by design (security-advisor exception). Reads the caller''s '
-  'own role via auth.uid() so that RLS policies can ask "is this an admin?" '
-  'without re-entering public.users and triggering 42P17 recursion — the same '
-  'defect 20260812020000 fixed for the UPDATE policy. Takes no parameters, so a '
-  'caller cannot ask about anyone but themselves. Client-executable because RLS '
-  'policy expressions are evaluated as the CALLING role: revoking EXECUTE here '
-  'fails every governed statement closed (learned in 20260805000001, reverted '
-  'in 20260805000002).';
-
 comment on function public.accept_terms(text) is
   'SECURITY DEFINER by design (security-advisor exception). Records acceptance '
   'of a specific terms version against the CALLER''s own row, deriving identity '
