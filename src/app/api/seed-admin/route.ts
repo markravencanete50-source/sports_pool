@@ -60,11 +60,37 @@ export async function POST(request: Request) {
 
   const result = await seedAdminUser();
 
-  // Log detail for the operator; do not return it to the caller.
   console.info("[seed-admin]", result.message);
 
-  return NextResponse.json(
-    { ok: result.ok },
-    { status: result.ok ? 200 : 500 }
-  );
+  // The caller has proven possession of SETUP_SECRET, so precise outcomes are
+  // safe to return — and necessary. This previously answered 200 {ok:true}
+  // for every non-error shape, including "ADMIN_USER_EMAIL is not set" and
+  // "that account has not signed up yet": an operator bootstrapping a fresh
+  // server read a no-op as success and discovered the missing admin later,
+  // after SETUP_SECRET was already unset. A skip is not a completed bootstrap.
+  switch (result.status) {
+    case "promoted":
+    case "already_admin":
+      return NextResponse.json({ ok: true, status: result.status }, { status: 200 });
+    case "skipped_no_email":
+      return NextResponse.json(
+        {
+          ok: false,
+          status: result.status,
+          error: "ADMIN_USER_EMAIL is not configured, so there is nothing to promote.",
+        },
+        { status: 503 }
+      );
+    case "user_not_found":
+      return NextResponse.json(
+        {
+          ok: false,
+          status: result.status,
+          error: "No account matches ADMIN_USER_EMAIL. Sign that account up first, then call this endpoint again.",
+        },
+        { status: 409 }
+      );
+    default:
+      return NextResponse.json({ ok: false, status: "error" }, { status: 500 });
+  }
 }
