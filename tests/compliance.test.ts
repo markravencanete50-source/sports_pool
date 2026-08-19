@@ -75,6 +75,72 @@ test("geo accepts both bare and prefixed region forms, rejects junk", () => {
   }
 });
 
+// ─── Geo behind a Cloudflare tunnel (the self-hosted stack) ─────────────────
+
+/** Run fn with VERCEL/TRUSTED_PROXY pinned, restoring whatever was there. */
+function withEdgeEnv(
+  env: { vercel?: string; trustedProxy?: string },
+  fn: () => void
+) {
+  const savedVercel = process.env.VERCEL;
+  const savedProxy = process.env.TRUSTED_PROXY;
+  if (env.vercel === undefined) delete process.env.VERCEL;
+  else process.env.VERCEL = env.vercel;
+  if (env.trustedProxy === undefined) delete process.env.TRUSTED_PROXY;
+  else process.env.TRUSTED_PROXY = env.trustedProxy;
+  try {
+    fn();
+  } finally {
+    if (savedVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = savedVercel;
+    if (savedProxy === undefined) delete process.env.TRUSTED_PROXY;
+    else process.env.TRUSTED_PROXY = savedProxy;
+  }
+}
+
+test("cf-ipcountry is IGNORED unless TRUSTED_PROXY declares Cloudflare", () => {
+  withEdgeEnv({}, () => {
+    // An origin reachable directly must not honour a forged Cloudflare header.
+    const geo = resolveGeo(headers({ "cf-ipcountry": "US", "cf-region-code": "CA" }));
+    assert.equal(geo.country, null, "forged cf-ipcountry must not be honoured");
+    assert.equal(geo.trusted, false);
+  });
+});
+
+test("cf-ipcountry is read behind a declared Cloudflare tunnel", () => {
+  withEdgeEnv({ trustedProxy: "cloudflare" }, () => {
+    const geo = resolveGeo(headers({ "cf-ipcountry": "us", "cf-region-code": "wa" }));
+    assert.deepEqual(geo, { country: "US", region: "WA", trusted: true });
+
+    // Country without the region transform still resolves — country rules apply.
+    const bare = resolveGeo(headers({ "cf-ipcountry": "GB" }));
+    assert.deepEqual(bare, { country: "GB", region: null, trusted: true });
+  });
+});
+
+test("Cloudflare sentinels XX and T1 resolve to unknown, not a country", () => {
+  withEdgeEnv({ trustedProxy: "cloudflare" }, () => {
+    for (const sentinel of ["XX", "xx", "T1"]) {
+      const geo = resolveGeo(headers({ "cf-ipcountry": sentinel }));
+      assert.equal(geo.country, null, `${sentinel} must not read as a country`);
+      assert.equal(geo.trusted, false, `${sentinel} must fall through to unknown`);
+    }
+  });
+});
+
+test("x-vercel headers gain nothing behind a Cloudflare-only edge", () => {
+  withEdgeEnv({ trustedProxy: "cloudflare" }, () => {
+    // Cloudflare does not overwrite Vercel's header names, so off Vercel they
+    // are attacker-controlled even when a tunnel fronts the origin.
+    const geo = resolveGeo(headers({
+      "x-vercel-ip-country": "US",
+      "x-vercel-ip-country-region": "CA",
+    }));
+    assert.equal(geo.country, null, "spoofed x-vercel-ip-country must not be honoured");
+    assert.equal(geo.trusted, false);
+  });
+});
+
 // ─── Age ────────────────────────────────────────────────────────────────────
 
 test("age is computed in whole years and does not round up early", () => {

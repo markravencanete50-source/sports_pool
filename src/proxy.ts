@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { buildCsp, generateNonce } from "@/lib/csp";
+import { resolveGeo } from "@/lib/compliance/geo";
 
 /**
  * Route protection. In Next.js 16 this file is `proxy.ts` (formerly `middleware.ts`).
@@ -68,18 +69,20 @@ function geoBlocklist(): Set<string> {
 }
 
 function isGeoBlocked(request: NextRequest): boolean {
-  // Only trust these headers behind Vercel's edge, which overwrites whatever
-  // the client sent. Off Vercel they are attacker-controlled.
-  if (!process.env.VERCEL) return false;
   const blocklist = geoBlocklist();
   if (blocklist.size === 0) return false;
 
-  const country = request.headers.get("x-vercel-ip-country")?.toUpperCase();
-  if (!country) return false;
-  const raw = request.headers.get("x-vercel-ip-country-region")?.toUpperCase() ?? "";
-  const region = raw.includes("-") ? raw.split("-").pop()! : raw;
+  // resolveGeo() only honours headers behind an edge that overwrites them
+  // (Vercel, or a Cloudflare tunnel declared via TRUSTED_PROXY=cloudflare).
+  // Anywhere else they are attacker-controlled and geo comes back untrusted,
+  // which fails open here — the money boundary is what fails closed.
+  const geo = resolveGeo(request.headers);
+  if (!geo.trusted || !geo.country) return false;
 
-  return blocklist.has(country) || (Boolean(region) && blocklist.has(`${country}-${region}`));
+  return (
+    blocklist.has(geo.country) ||
+    (geo.region !== null && blocklist.has(`${geo.country}-${geo.region}`))
+  );
 }
 
 export async function proxy(request: NextRequest) {

@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logEvent } from "@/lib/log";
 import { resolveRedisCreds } from "@/lib/rate-limit";
+import { hasTrustedEdge } from "@/lib/compliance/geo";
 
 /**
  * Health and readiness probe.
@@ -186,6 +187,30 @@ function checkRateLimitBackend(): Component {
   };
 }
 
+/**
+ * With geo enforcement on (the default), the compliance gate refuses money
+ * actions on an unverifiable location in production. A deployment with no
+ * trusted edge therefore serves pages normally while every purchase is
+ * refused — the exact class of silent failure this endpoint exists to name.
+ */
+function checkGeolocation(): Component {
+  if (hasTrustedEdge()) {
+    return {
+      status: "ok",
+      hard: false,
+      detail: process.env.VERCEL ? "vercel edge" : "cloudflare (TRUSTED_PROXY)",
+    };
+  }
+  return {
+    status: "degraded",
+    hard: false,
+    detail:
+      "no trusted edge — every location resolves unknown, which the compliance " +
+      "gate refuses for money actions in production. Behind the Docker stack's " +
+      "cloudflared tunnel, set TRUSTED_PROXY=cloudflare.",
+  };
+}
+
 /** Payouts fail closed rather than paying from sandbox, so a gap here matters. */
 function checkPayouts(): Component {
   const mode = process.env.PAYPAL_MODE?.trim().toLowerCase();
@@ -212,6 +237,7 @@ export async function GET(request: Request) {
     moneyPathConfig: checkCapabilities(),
     database: await checkDatabase(),
     rateLimiting: checkRateLimitBackend(),
+    geolocation: checkGeolocation(),
     payouts: checkPayouts(),
   };
 
