@@ -238,3 +238,43 @@ services:
       done'
     networks:
       - default
+
+  # ---------------------------------------------------------------------------
+  # Payment reconciliation scheduler — the SECOND of the two jobs Vercel ran
+  # from vercel.json (settle above is the first).
+  #
+  # Reconciliation cross-checks Stripe's records against the ledger and files
+  # every mismatch into app_errors, and it is the only thing that purges
+  # app_errors rows past retention. Without this service a self-hosted
+  # deployment loses the layer that notices a paid session with no card, a
+  # fabricated ledger row, or an untraceable payout — silently.
+  #
+  # Daily, matching the vercel.json schedule; the route's look-back window is
+  # sized for a daily cadence (49h, so consecutive runs overlap rather than
+  # leave gaps). The route is read-only apart from the retention purge, so an
+  # extra run after a container restart is harmless.
+  #
+  # Until STRIPE_SECRET_KEY is provisioned the route skips the Stripe checks
+  # and says so in its response — a missing key is a warning, not a nightly
+  # false incident.
+  reconcile-cron:
+    container_name: sp-reconcile-cron
+    image: alpine:3.20
+    restart: unless-stopped
+    depends_on:
+      nextjs:
+        condition: service_healthy
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+    command: >
+      sh -c 'apk add --no-cache curl >/dev/null 2>&1;
+      while true; do
+        code=$$(curl -s -o /tmp/out -w "%{http_code}" --max-time 300
+                 -H "Authorization: Bearer $$CRON_SECRET"
+                 http://nextjs:3000/api/cron/reconcile);
+        echo "[reconcile-cron] $$(date -Iseconds) HTTP $$code";
+        if [ "$$code" != "200" ]; then echo "[reconcile-cron] FAILED: $$(cat /tmp/out)"; fi;
+        sleep 86400;
+      done'
+    networks:
+      - default

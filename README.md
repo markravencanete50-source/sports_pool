@@ -317,13 +317,30 @@ docker compose build
 docker compose up -d
 ```
 
-Two things to know:
+Five things to know:
 
 - **The Dockerfile does not build the app.** It copies `.next/standalone`, so you
   must `npm run build` on the host first.
-- **Settlement runs via the `settle-cron` service**, which calls
-  `/api/cron/settle` every 15 minutes. It needs `CRON_SECRET` in `.env.docker`
-  — without it the endpoint fails closed (503) and nobody gets paid.
+- **Both scheduled jobs Vercel used to run are compose services.**
+  `settle-cron` calls `/api/cron/settle` every 15 minutes; `reconcile-cron`
+  calls `/api/cron/reconcile` daily. Both need `CRON_SECRET` in `.env.docker`
+  — without it the endpoints fail closed (503), so nobody gets paid and no
+  mismatch is ever detected.
+- **Geolocation needs `TRUSTED_PROXY=cloudflare`.** The compliance gate only
+  trusts location headers behind an edge that overwrites them. Behind the
+  stack's Cloudflare tunnel that variable makes `cf-ipcountry` trusted; without
+  it every request is "location unknown", which the money boundary refuses in
+  production — the site serves but nobody can buy a card.
+- **The error-alert digest stays on GitHub Actions.**
+  `.github/workflows/alert.yml` polls `/api/cron/alert` every two hours — point
+  its `APP_URL` secret at this host's public URL and set the same `CRON_SECRET`
+  as an Actions secret.
+- **Admin bootstrap** is the same as anywhere: the person signs up, then with
+  `ADMIN_USER_EMAIL` and `SETUP_SECRET` set in `.env.docker`,
+  `POST /api/seed-admin` with `Authorization: Bearer $SETUP_SECRET`. The
+  endpoint now answers honestly — 503 if `ADMIN_USER_EMAIL` is unset, 409 if
+  that account has not signed up yet, 200 only when the admin actually exists.
+  Unset `SETUP_SECRET` and restart afterwards.
 
 ---
 

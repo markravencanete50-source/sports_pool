@@ -80,6 +80,14 @@ Vercel → Project → Cron Jobs shows the last invocations of
 it does not match. Settlement is idempotent per pool, so once it runs again
 it catches up on everything pending.
 
+**Self-hosted (Docker/VPS):** the schedulers are the `settle-cron` and
+`reconcile-cron` compose services. `docker compose logs settle-cron` shows one
+line per invocation with the HTTP status; the same 503/401 readings apply
+(`CRON_SECRET` lives in `.env.docker`). If the service is missing entirely —
+`docker compose ps` does not list it — nothing is calling settlement and pools
+will quietly hold player money: bring the full compose stack up, not just
+`nextjs`.
+
 ---
 
 ## 2. Backup and restore (database)
@@ -160,12 +168,18 @@ row above: Deployments → latest → ⋯ → Redeploy.
 
 1. The person signs up normally through `/signup`.
 2. Set `ADMIN_USER_EMAIL` to their address and `SETUP_SECRET` to a generated
-   value on Vercel, then redeploy.
-3. `POST /api/seed-admin` with `Authorization: Bearer $SETUP_SECRET`.
+   value on Vercel, then redeploy. (Self-hosted: set both in `.env.docker` and
+   restart the `nextjs` service. The secret does not need to match any other
+   environment's — generate a fresh one per server.)
+3. `POST /api/seed-admin` with `Authorization: Bearer $SETUP_SECRET`. Read the
+   response, not just the status line: 200 means the admin exists; 503 means
+   `ADMIN_USER_EMAIL` is unset; 409 means that account has not signed up yet.
+   Only a 200 is a completed bootstrap.
 4. They enrol TOTP at `/account/security`. Until they do, they can sign in but
    cannot approve payouts or change roles.
-5. Unset `SETUP_SECRET` and redeploy. Optional now — the endpoint answers 410
-   once an admin exists — but it keeps the surface minimal.
+5. Unset `SETUP_SECRET` and redeploy (self-hosted: remove it from `.env.docker`
+   and restart). Optional now — the endpoint answers 410 once an admin exists —
+   but it keeps the surface minimal.
 
 **Creating further admins:** an existing enrolled admin promotes them through
 the admin UI. Do not reuse the bootstrap endpoint; it is closed after step 3.
