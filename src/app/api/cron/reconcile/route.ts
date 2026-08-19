@@ -54,56 +54,69 @@ export async function GET(request: Request) {
   const admin = createAdminClient();
   const mismatches: string[] = [];
 
-  try {
-    // ── 1 & 2. Stripe <-> pool_transactions ─────────────────────────────────
-    const stripeSessions = new Map<string, Stripe.Checkout.Session>();
-    for await (const session of getStripe().checkout.sessions.list({
-      created: { gte: Math.floor(since.getTime() / 1000) },
-      limit: 100,
-    })) {
-      if (session.payment_status === "paid") {
-        stripeSessions.set(session.id, session);
-      }
-    }
+  // Unprovisioned is not broken. During the handover window the client holds
+  // the Stripe account and the key may legitimately be absent; throwing here
+  // would file a false "reconciliation failed" incident into app_errors on
+  // every scheduled run. Skip the Stripe<->ledger checks LOUDLY (logged, and
+  // named in the response) and still run the checks that need no processor.
+  const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
 
+  try {
     const { data: ledgerRows, error: ledgerError } = await admin
       .from("pool_transactions")
       .select("id, stripe_session_id, amount, status, created_at")
       .gte("created_at", since.toISOString());
     if (ledgerError) throw new Error(`ledger read failed: ${ledgerError.message}`);
 
-    const ledgerBySession = new Map(
-      (ledgerRows ?? [])
-        .filter((r) => r.stripe_session_id)
-        .map((r) => [r.stripe_session_id as string, r])
-    );
-
-    for (const [sessionId, session] of stripeSessions) {
-      const row = ledgerBySession.get(sessionId);
-      if (!row) {
-        mismatches.push(
-          `PAID Stripe session ${sessionId} (${((session.amount_total ?? 0) / 100).toFixed(2)} ` +
-            `${(session.currency ?? "usd").toUpperCase()}) has NO pool_transactions row — ` +
-            `player may be charged without a card. Refund or fulfil manually.`
-        );
-      } else if (row.status !== "completed") {
-        mismatches.push(
-          `Stripe session ${sessionId} is paid but ledger row ${row.id} has status "${row.status}".`
-        );
+    // ── 1 & 2. Stripe <-> pool_transactions ─────────────────────────────────
+    const stripeSessions = new Map<string, Stripe.Checkout.Session>();
+    if (!stripeConfigured) {
+      logEvent("warn", "reconcile.stripe_skipped", {
+        reason: "STRIPE_SECRET_KEY unset — Stripe<->ledger checks did not run",
+      });
+    } else {
+      for await (const session of getStripe().checkout.sessions.list({
+        created: { gte: Math.floor(since.getTime() / 1000) },
+        limit: 100,
+      })) {
+        if (session.payment_status === "paid") {
+          stripeSessions.set(session.id, session);
+        }
       }
-    }
 
-    for (const row of ledgerRows ?? []) {
-      if (
-        row.status === "completed" &&
-        row.stripe_session_id &&
-        !stripeSessions.has(row.stripe_session_id)
-      ) {
-        mismatches.push(
-          `Ledger row ${row.id} (${row.amount}) references Stripe session ` +
-            `${row.stripe_session_id} which is not a paid session in the window — ` +
-            `possible fabricated or stale transaction feeding the pot.`
-        );
+      const ledgerBySession = new Map(
+        (ledgerRows ?? [])
+          .filter((r) => r.stripe_session_id)
+          .map((r) => [r.stripe_session_id as string, r])
+      );
+
+      for (const [sessionId, session] of stripeSessions) {
+        const row = ledgerBySession.get(sessionId);
+        if (!row) {
+          mismatches.push(
+            `PAID Stripe session ${sessionId} (${((session.amount_total ?? 0) / 100).toFixed(2)} ` +
+              `${(session.currency ?? "usd").toUpperCase()}) has NO pool_transactions row — ` +
+              `player may be charged without a card. Refund or fulfil manually.`
+          );
+        } else if (row.status !== "completed") {
+          mismatches.push(
+            `Stripe session ${sessionId} is paid but ledger row ${row.id} has status "${row.status}".`
+          );
+        }
+      }
+
+      for (const row of ledgerRows ?? []) {
+        if (
+          row.status === "completed" &&
+          row.stripe_session_id &&
+          !stripeSessions.has(row.stripe_session_id)
+        ) {
+          mismatches.push(
+            `Ledger row ${row.id} (${row.amount}) references Stripe session ` +
+              `${row.stripe_session_id} which is not a paid session in the window — ` +
+              `possible fabricated or stale transaction feeding the pot.`
+          );
+        }
       }
     }
 
@@ -139,6 +152,7 @@ export async function GET(request: Request) {
     }
 
     logEvent(mismatches.length ? "error" : "info", "reconcile.finished", {
+      stripeChecked: stripeConfigured,
       stripeSessionsPaid: stripeSessions.size,
       ledgerRows: ledgerRows?.length ?? 0,
       payoutsCompleted: payoutRows?.length ?? 0,
@@ -147,6 +161,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       since: since.toISOString(),
+      stripeChecked: stripeConfigured,
+      ...(stripeConfigured
+        ? {}
+        : { warning: "STRIPE_SECRET_KEY unset — Stripe<->ledger checks skipped" }),
       stripeSessionsPaid: stripeSessions.size,
       ledgerRows: ledgerRows?.length ?? 0,
       payoutsCompleted: payoutRows?.length ?? 0,
