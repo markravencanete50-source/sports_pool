@@ -27,12 +27,32 @@ export function isSandbox(): boolean {
 /**
  * Guard for money-moving code paths: refuse to send sandbox payouts from a
  * production deployment. Returns an error string, or null when safe.
+ *
+ * "Production" is VERCEL_ENV when the platform provides it — previews keep
+ * NODE_ENV=production, so on Vercel only VERCEL_ENV can tell them apart. Off
+ * Vercel (the self-hosted Docker stack) VERCEL_ENV never exists, and keying on
+ * it alone meant this guard silently never fired on a VPS — the exact
+ * deployment where nothing else would catch it. There NODE_ENV is the signal.
+ *
+ * A self-hosted TEST deployment has no preview tier — a production build is
+ * NODE_ENV=production even while the stack is running sandbox end-to-end
+ * tests. ALLOW_SANDBOX_PAYOUTS=true is the explicit, greppable opt-out for
+ * that window. It must be removed at go-live; /api/health reports sandbox
+ * mode in production as degraded either way, so the state stays visible.
  */
 export function assertPayoutModeSafe(): string | null {
-  if (process.env.VERCEL_ENV === "production" && isSandbox()) {
-    return "PAYPAL_MODE is 'sandbox' on a production deployment. Refusing to debit a real balance against sandbox money.";
+  const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV;
+  if (env !== "production" || !isSandbox()) return null;
+
+  if (process.env.ALLOW_SANDBOX_PAYOUTS?.trim().toLowerCase() === "true") {
+    console.warn(
+      "[paypal] ALLOW_SANDBOX_PAYOUTS is set: sandbox payouts permitted on a " +
+        "production build. Remove this variable before taking real money."
+    );
+    return null;
   }
-  return null;
+
+  return "PAYPAL_MODE is 'sandbox' on a production deployment. Refusing to debit a real balance against sandbox money. (Testing on a self-host? Set ALLOW_SANDBOX_PAYOUTS=true for the test window only.)";
 }
 
 const PAYPAL_BASE = () =>

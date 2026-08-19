@@ -28,6 +28,7 @@ import {
   uuidParamSchema,
 } from "../src/lib/validations";
 import { checkPasswordBreached } from "../src/lib/password-breach";
+import { assertPayoutModeSafe } from "../src/lib/paypal";
 
 // ─── safeInternalPath: open-redirect clamp ───────────────────────────────────
 
@@ -87,6 +88,69 @@ test("assertSameOrigin rejects malformed Origin headers", () => {
 test("assertSameOrigin lets non-browser callers (no Origin) through", () => {
   const res = assertSameOrigin(reqWith({ host: "app.example.com" }));
   assert.equal(res, null);
+});
+
+// ─── assertPayoutModeSafe: sandbox money must never leave a real balance ─────
+
+/** Pin the deployment-shape env vars for one assertion, restoring after. */
+function withPayoutEnv(
+  env: Partial<Record<"VERCEL_ENV" | "NODE_ENV" | "PAYPAL_MODE" | "ALLOW_SANDBOX_PAYOUTS", string>>,
+  fn: () => void
+) {
+  // @types/node marks NODE_ENV readonly; tests legitimately swap it.
+  const mutableEnv = process.env as Record<string, string | undefined>;
+  const keys = ["VERCEL_ENV", "NODE_ENV", "PAYPAL_MODE", "ALLOW_SANDBOX_PAYOUTS"] as const;
+  const saved = keys.map((k) => [k, process.env[k]] as const);
+  for (const k of keys) {
+    if (env[k] === undefined) delete mutableEnv[k];
+    else mutableEnv[k] = env[k];
+  }
+  try {
+    fn();
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete mutableEnv[k];
+      else mutableEnv[k] = v;
+    }
+  }
+}
+
+test("sandbox payouts are refused on a self-hosted production build", () => {
+  // No VERCEL_ENV exists off Vercel — NODE_ENV is the only production signal,
+  // and this exact shape used to slip past a VERCEL_ENV-only check.
+  withPayoutEnv({ NODE_ENV: "production", PAYPAL_MODE: "sandbox" }, () => {
+    assert.ok(assertPayoutModeSafe(), "expected the sandbox-in-production refusal");
+  });
+});
+
+test("ALLOW_SANDBOX_PAYOUTS=true is an explicit test-window opt-out", () => {
+  withPayoutEnv(
+    { NODE_ENV: "production", PAYPAL_MODE: "sandbox", ALLOW_SANDBOX_PAYOUTS: "true" },
+    () => assert.equal(assertPayoutModeSafe(), null)
+  );
+  // Anything other than exactly "true" keeps the refusal.
+  withPayoutEnv(
+    { NODE_ENV: "production", PAYPAL_MODE: "sandbox", ALLOW_SANDBOX_PAYOUTS: "1" },
+    () => assert.ok(assertPayoutModeSafe(), "only the literal 'true' may opt out")
+  );
+});
+
+test("Vercel previews may run sandbox; Vercel production may not", () => {
+  // Previews build with NODE_ENV=production — VERCEL_ENV is what tells them apart.
+  withPayoutEnv(
+    { VERCEL_ENV: "preview", NODE_ENV: "production", PAYPAL_MODE: "sandbox" },
+    () => assert.equal(assertPayoutModeSafe(), null)
+  );
+  withPayoutEnv(
+    { VERCEL_ENV: "production", NODE_ENV: "production", PAYPAL_MODE: "sandbox" },
+    () => assert.ok(assertPayoutModeSafe())
+  );
+});
+
+test("live mode passes the guard everywhere", () => {
+  withPayoutEnv({ NODE_ENV: "production", PAYPAL_MODE: "live" }, () => {
+    assert.equal(assertPayoutModeSafe(), null);
+  });
 });
 
 // ─── enforceRateLimit: fallback limiter (no Redis configured in tests) ───────
