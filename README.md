@@ -317,13 +317,19 @@ docker compose build
 docker compose up -d
 ```
 
-Two things to know:
+Three things to know:
 
 - **The Dockerfile does not build the app.** It copies `.next/standalone`, so you
   must `npm run build` on the host first.
 - **Settlement runs via the `settle-cron` service**, which calls
   `/api/cron/settle` every 15 minutes. It needs `CRON_SECRET` in `.env.docker`
   — without it the endpoint fails closed (503) and nobody gets paid.
+- **Reconciliation and error alerting have no scheduler here.** `settle-cron`
+  covers settlement only; `/api/cron/reconcile` and `/api/cron/alert` are
+  scheduled by `vercel.json` and GitHub Actions, neither of which applies to a
+  self-hosted deployment. Both gaps fail silently. See
+  [docs/RUNBOOK.md §8](docs/RUNBOOK.md) for copy-paste sidecars and the rest of
+  the VPS delta (backups, bootstrap, environment).
 
 ---
 

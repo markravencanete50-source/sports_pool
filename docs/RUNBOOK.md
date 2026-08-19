@@ -357,3 +357,262 @@ After a transfer, re-add the Actions secrets (`CRON_SECRET`, optionally
 - [ ] `/api/health` reports `ok`
 - [ ] Both workflows run manually and their trigger steps report **success**, not
       *skipped*
+
+## 8. Deploying on a VPS instead of Vercel
+
+Everything in §7 assumes the app stays on Vercel. It does not have to. The
+application is a standard Next.js standalone server and `docker-compose.yml`
+brings up the whole stack — app, Postgres, GoTrue, PostgREST, Realtime, Kong,
+and an optional Cloudflare tunnel — on any host that runs Docker.
+
+What follows is only the delta from §3 and §7. The database schema, the money
+paths and the admin model are identical; nothing in §1, §2, §4, §5 or §6 changes
+in substance.
+
+**The one thing that will actually bite you** is scheduling. Read §8.1 before
+anything else: two of the three scheduled jobs have no scheduler at all on a
+self-hosted deployment, and both fail silently.
+
+### 8.1 Scheduled jobs — the real gap
+
+Nothing in this application schedules itself. Every scheduled job is an HTTP
+endpoint that runs only when something calls it, and each one fails closed
+(503) without `CRON_SECRET`. On Vercel three separate mechanisms do the calling.
+On a VPS, `vercel.json` is inert — it is read by Vercel and by nothing else.
+
+| Job | Endpoint | What calls it on Vercel | On a VPS |
+|---|---|---|---|
+| Settlement | `/api/cron/settle` | `vercel.json` daily + `settle-pools.yml` every 30 min | **Covered** — the `settle-cron` service in `docker-compose.yml`, every 15 min |
+| Reconciliation | `/api/cron/reconcile` | `vercel.json` daily, 09:30 UTC | **NOTHING. You must add it.** |
+| Error alert digest | `/api/cron/alert` | `alert.yml` every 2 hours | **NOTHING. You must add it.** |
+
+Settlement is already handled: the compose stack ships a `settle-cron` sidecar
+that calls the endpoint every 15 minutes, and the route is idempotent per pool,
+so a repeated or overlapping call cannot pay a pool twice.
+
+Reconciliation and alerting are not handled, and their absence is quiet in the
+worst way. Reconciliation is the only thing that compares Stripe's records
+against our ledger in both directions; without it, a player who was charged but
+never credited stays invisible until they complain. The alert digest is the only
+thing that reads `app_errors`; without it the table fills up and nobody looks.
+Neither failure produces an error anywhere, because in both cases the failure is
+that nothing ran.
+
+Pick one of the three options below. Do not run two of them against the same
+job.
+
+**Option A — sidecars in `docker-compose.yml` (recommended).** Self-contained:
+no dependency on GitHub, and the schedule lives with the deployment. Add these
+two services alongside the existing `settle-cron`, which they deliberately
+mirror:
+
+```yaml
+  reconcile-cron:
+    container_name: sp-reconcile-cron
+    image: alpine:3.20
+    restart: unless-stopped
+    depends_on:
+      nextjs:
+        condition: service_healthy
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+    command: >
+      sh -c 'apk add --no-cache curl >/dev/null 2>&1;
+      while true; do
+        code=$$(curl -s -o /tmp/out -w "%{http_code}" --max-time 300
+                 -H "Authorization: Bearer $$CRON_SECRET"
+                 http://nextjs:3000/api/cron/reconcile);
+        echo "[reconcile-cron] $$(date -Iseconds) HTTP $$code";
+        if [ "$$code" != "200" ]; then echo "[reconcile-cron] FAILED: $$(cat /tmp/out)"; fi;
+        sleep 86400;
+      done'
+    networks:
+      - default
+
+  alert-cron:
+    container_name: sp-alert-cron
+    image: alpine:3.20
+    restart: unless-stopped
+    depends_on:
+      nextjs:
+        condition: service_healthy
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+    command: >
+      sh -c 'apk add --no-cache curl >/dev/null 2>&1;
+      while true; do
+        code=$$(curl -s -o /tmp/out -w "%{http_code}" --max-time 120
+                 -H "Authorization: Bearer $$CRON_SECRET"
+                 http://nextjs:3000/api/cron/alert);
+        echo "[alert-cron] $$(date -Iseconds) HTTP $$code";
+        if [ "$$code" != "200" ]; then echo "[alert-cron] FAILED: $$(cat /tmp/out)"; fi;
+        sleep 7200;
+      done'
+    networks:
+      - default
+```
+
+**Do not change those two `sleep` values without changing the route.** Each job
+reads a fixed look-back window sized to its interval plus an overlap, so that a
+boundary event is seen by two consecutive runs rather than none:
+
+- `alert` — `LOOKBACK_MINUTES = 125` in `src/app/api/cron/alert/route.ts`,
+  matching `sleep 7200` (2 hours) plus 5 minutes.
+- `reconcile` — `LOOKBACK_HOURS = 49` in `src/app/api/cron/reconcile/route.ts`,
+  which covers `sleep 86400` (daily) with a full extra day of margin, so one
+  skipped run still does not lose records.
+
+Widen the interval without widening the window and events fall between runs and
+are never reported. That is a silent loss of exactly the records these jobs
+exist to catch.
+
+**Option B — keep the GitHub Actions workflows.** `settle-pools.yml` and
+`alert.yml` are just authenticated `curl` calls; they do not care that the host
+is no longer Vercel. To retarget them, set the `APP_URL` Actions secret to the
+VPS domain — without it both default to the hard-coded
+`https://sports-pool.vercel.app` and will keep polling the old deployment. Also
+confirm the `CRON_SECRET` Actions secret matches the VPS value; when it is
+missing, both workflows **skip and still report success**, which looks green
+while nothing runs.
+
+Option B still leaves reconciliation uncovered — there is no workflow for it —
+so it needs the `reconcile-cron` sidecar or a host crontab entry regardless. If
+you take Option B, also disable the `settle-cron` service or accept that
+settlement is being driven twice; it is idempotent, so this is wasteful rather
+than dangerous.
+
+**Option C — a host crontab**, if you would rather not run sidecars:
+
+```cron
+*/15 * * * * curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/settle    >/dev/null
+15  */2 * * * curl -fsS -m 120 -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/alert     >/dev/null
+30  9  * * *  curl -fsS -m 300 -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/reconcile >/dev/null
+```
+
+`crontab` does not read your shell profile, so put `CRON_SECRET=...` at the top
+of the crontab itself or inline the value. A crontab that silently expands an
+unset variable to the empty string sends `Authorization: Bearer ` and gets a
+401 on every run, forever.
+
+**Verify, do not assume.** After whichever option, confirm each job has actually
+run — a scheduler you believe in but have never seen fire is the whole failure
+mode this section is about:
+
+```bash
+docker compose logs --tail=20 sp-settle-cron sp-reconcile-cron sp-alert-cron
+```
+
+Each should show a line ending `HTTP 200`. A `503` means `CRON_SECRET` is unset
+on the app; a `401` means the caller's value does not match the app's.
+
+### 8.2 Environment variables
+
+`.env.docker.example` is the template, not `.env.example` — it additionally
+configures the self-hosted Supabase stack. Copy it to `.env.docker`, which
+`docker-compose.yml` reads. Never commit the filled-in file.
+
+Every row of the §3 table still applies, with these differences:
+
+| §3 row | On a VPS |
+|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | Comes from the values you generate for the self-hosted stack (`SERVICE_ROLE_KEY` in `.env.docker`), not from a Supabase dashboard. Still bypasses every RLS policy; still must never be `NEXT_PUBLIC_` |
+| `CRON_SECRET` | Required on the app, and required by whatever calls the endpoints per §8.1. If you kept the Actions workflows, it is still needed in **two** places and both values must match |
+| `SETUP_SECRET` | **Still required.** It is not a Vercel feature — it gates the one-time admin bootstrap in the application itself. See §8.3 |
+| `STRIPE_WEBHOOK_SECRET` | Re-point the Stripe endpoint at the VPS domain and take the **new** signing secret. The secret is per endpoint; the old one will not verify |
+| Upstash Redis | Unchanged, but there is no Vercel Storage integration to auto-inject `KV_*`. Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` by hand at console.upstash.com. Without them every rate limit is per-instance in memory |
+| Function region | **Not applicable.** Instead, keep the app and the database on the same host or the same private network |
+| PITR backups | **Not applicable, and this is a downgrade.** See §8.4 |
+
+Set `SITE_URL`, `API_EXTERNAL_URL` and `NEXT_PUBLIC_APP_URL` to the real public
+domain. Auth redirects, e-mail confirmation links and Stripe return URLs are all
+built from these, so a stale `localhost:3000` breaks sign-up and checkout return
+in ways that look like unrelated bugs.
+
+**Environment changes need a restart, not a redeploy.** The Vercel note in §3
+about redeploying does not apply; here it is `docker compose up -d` to recreate
+the affected containers. Variables baked in at build time (`NEXT_PUBLIC_*`)
+additionally need a rebuild — see §8.5.
+
+### 8.3 Admin bootstrap
+
+The §5 procedure is unchanged in substance, because it is application logic
+rather than hosting. `/api/seed-admin` is the only way to create the first
+admin: `src/instrumentation.ts` deliberately no longer promotes anyone on boot,
+because doing so let whoever registered the `ADMIN_USER_EMAIL` address gain
+admin by waiting for a restart.
+
+Two mechanical differences on a VPS:
+
+1. **Generate a fresh `SETUP_SECRET`.** It does not need to match the value on
+   any existing deployment. It is a one-time password against this database, and
+   a new deployment against a new database has nothing to match.
+2. **Restart instead of redeploy** at steps 2 and 5 — `docker compose up -d`.
+
+So, in full:
+
+```bash
+# 1. The admin signs up normally through /signup first.
+# 2. Set ADMIN_USER_EMAIL and a generated SETUP_SECRET in .env.docker, then:
+docker compose up -d
+# 3. Run the one-time bootstrap:
+curl -X POST https://<domain>/api/seed-admin -H "Authorization: Bearer $SETUP_SECRET"
+# 4. They enrol TOTP at /account/security — until then they cannot approve payouts.
+# 5. Remove SETUP_SECRET from .env.docker and restart again.
+```
+
+Step 5 is hygiene rather than a fix: the endpoint answers `410` once any admin
+exists, so a forgotten secret cannot reopen the path.
+
+### 8.4 Backups are now your job
+
+This is the largest thing the move costs you, and it is easy to miss because
+nothing announces it.
+
+On Supabase, §2 leans on managed backups and Point-in-Time Recovery. A
+self-hosted Postgres in `docker-compose.yml` has neither. It has a bind mount at
+`./volumes/db/data` and no backup of any kind. Nothing in the compose stack will
+ever produce one.
+
+This system holds player balances and an append-only money ledger. Neither can
+be reconstructed from anywhere else. So before taking a single real payment, set
+up a scheduled `pg_dump` off the host:
+
+```bash
+docker compose exec -T db pg_dump -U postgres postgres | gzip > sp-$(date +%F).sql.gz
+```
+
+Store copies off the machine — a backup on the same VPS is a copy of the disk
+you are protecting against, not a backup. The §2 restore drill matters more
+here, not less: with managed PITR you are trusting a vendor who tests recovery,
+and with this you are trusting yourself, who has not yet.
+
+### 8.5 Build and deploy
+
+**The Dockerfile does not build the app.** It copies a prebuilt
+`.next/standalone`, so the build happens on the host first. Deploying a change
+means:
+
+```bash
+npm ci && npm run build
+docker compose build
+docker compose up -d
+```
+
+Skipping `npm run build` silently ships the previous build — `docker compose
+build` succeeds, the containers restart, and the change is simply not there.
+
+### 8.6 Checklist
+
+- [ ] `.env.docker` filled in from `.env.docker.example`, not committed
+- [ ] `SITE_URL`, `API_EXTERNAL_URL`, `NEXT_PUBLIC_APP_URL` all set to the real domain
+- [ ] `CRON_SECRET` set, and set for whatever calls the endpoints (§8.1)
+- [ ] `reconcile-cron` and `alert-cron` added, or Option B/C configured (§8.1)
+- [ ] All three cron callers observed returning **HTTP 200** in the logs
+- [ ] Stripe webhook re-pointed at the VPS domain, **new** signing secret set
+- [ ] Upstash credentials set by hand (no Vercel integration to inject them)
+- [ ] First admin created via `/api/seed-admin` and enrolled in TOTP (§8.3)
+- [ ] `SETUP_SECRET` removed after bootstrap
+- [ ] Scheduled `pg_dump` running and shipping off the host (§8.4)
+- [ ] One backup restored into a scratch database and verified (§2)
+- [ ] `curl -s -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/health` reports `ok`
+- [ ] GitHub Actions workflows either retargeted via `APP_URL` or disabled, not left polling the old Vercel domain
