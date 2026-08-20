@@ -112,13 +112,15 @@ children.push(
     spacing: { before: 200, after: 0 }, children: [new TextRun({ text: "", size: 2 })] }),
 );
 const meta = [
-  ["Report date", "8 August 2026"],
+  ["Report date", "20 August 2026"],
+  ["Supersedes", "Original assessment of 8 August 2026 (Vercel deployment only)"],
   ["Application", "Next.js (App Router) API + Supabase (Postgres/RLS), Stripe, PayPal"],
   ["Scope", "Backend / server-side API routes, authorization, money-handling logic, RLS"],
+  ["Deployment shapes assessed", "Vercel (original) and self-hosted Docker on a VPS (this revision)"],
   ["Assessment type", "White-box static security audit + logic-level attack simulation"],
   ["Repository", "markravencanete50-source/sports_pool"],
-  ["Branch", "claude/backend-security-audit-vtkdog"],
-  ["Result", "2 vulnerabilities found and fixed; 0 Critical/High remaining"],
+  ["Branch", "claude/client-project-dev-hosrp1"],
+  ["Result", "7 issues found and fixed across both rounds; 0 Critical/High remaining"],
 ];
 children.push(new Paragraph({ spacing: { before: 300 } }));
 children.push(table([2600, 6200], ["Field", "Detail"], meta.map(([a, b]) => [a, b])));
@@ -137,6 +139,9 @@ children.push(P(
 children.push(P(
   "The codebase was found to be, on the whole, unusually well-hardened: an extensive, adversarially-verified Row Level Security (RLS) migration makes the database the authorization boundary, payment fulfilment is server-authoritative through Stripe, and balance mutations are atomic. Against that strong baseline, the assessment identified two remaining vulnerabilities, both of which were fixed, verified, committed, and pushed during the engagement."
 ));
+children.push(P(
+  "This revision extends that work. The original assessment was scoped to a Vercel deployment and its conclusions were accurate for it. The platform has since been retargeted to a self-hosted Docker stack on a client-operated VPS, which is a materially different threat model: several controls in the original build inferred their trust boundary from Vercel-supplied environment signals that do not exist off that platform. Section 5 records a second round of assessment against the self-hosted shape, which found five further issues. All five were fixed, tested and pushed; two of them would have been business-critical on the first day of live operation."
+));
 children.push(H3("Findings at a glance"));
 children.push(table(
   [520, 4300, 1200, 1200, 1580],
@@ -144,10 +149,15 @@ children.push(table(
   [
     ["F-1", "Open redirect in the OAuth / email-verification callback", { text: "Medium", fill: undefined }, { text: "Fixed" }, "auth/callback"],
     ["F-2", "PostgREST filter injection in admin user search", { text: "Low", fill: undefined }, { text: "Fixed" }, "admin/users"],
+    ["S-1", "Geolocation trust inferred from Vercel, so all money actions refused off-platform", { text: "High", fill: undefined }, { text: "Fixed" }, "compliance/geo"],
+    ["S-2", "Sandbox-payout guard inert off Vercel; real balances debitable against test money", { text: "High", fill: undefined }, { text: "Fixed" }, "lib/paypal"],
+    ["S-3", "Reconciliation job absent from the self-hosted stack", { text: "Medium", fill: undefined }, { text: "Fixed" }, "docker-compose"],
+    ["S-4", "Admin bootstrap reported success when it had done nothing", { text: "Low", fill: undefined }, { text: "Fixed" }, "api/seed-admin"],
+    ["S-5", "Reconciliation filed a false incident daily while Stripe keys were unset", { text: "Low", fill: undefined }, { text: "Fixed" }, "api/cron/reconcile"],
   ]
 ));
 children.push(new Paragraph({ spacing: { after: 60 } }));
-children.push(runs([T("Overall posture after remediation: ", { bold: true }), T("No Critical, High, or Medium severity issues outstanding. ", { color: GREEN, bold: true }), T("One informational recommendation (a latent lost-update in the settlement credit path) is noted for follow-up.")]));
+children.push(runs([T("Overall posture after remediation: ", { bold: true }), T("No Critical, High, or Medium severity issues outstanding on either deployment shape. ", { color: GREEN, bold: true }), T("All three recommendations raised in the original report (R-1 to R-3) have since been implemented and are recorded as closed in section 6. One item remains genuinely open and is not a defect: the money path has not yet been exercised end to end against live Stripe test credentials, which is covered in section 5.3.")]));
 
 // ---------------- Scope & methodology ----------------
 children.push(H1("2. Scope & methodology"));
@@ -279,30 +289,88 @@ children.push(table(
   ]
 ));
 
+// ---------------- Self-hosted deployment assessment ----------------
+children.push(new Paragraph({ children: [new PageBreak()] }));
+children.push(H1("5. Self-hosted (VPS) deployment assessment"));
+children.push(P("The platform was originally built and audited for Vercel. It is now being deployed to a self-hosted Docker stack on a client-operated VPS, with Cloudflare terminating inbound traffic. That change moves the trust boundary, and several controls turned out to be reading their trust signal from the platform rather than from configuration under our control."));
+children.push(P("This is the failure mode worth naming plainly, because it recurs: a control that asks \"am I on Vercel?\" is not asking \"am I behind a trusted edge?\". On Vercel the two questions have the same answer, so the distinction is invisible until the deployment target changes. Each finding below is an instance of it."));
+
+children.push(H2("5.1 Findings"));
+
+children.push(H3("S-1 — Geolocation trust inferred from the hosting platform (High, fixed)"));
+children.push(runs([T("Location: ", { bold: true }), T("src/lib/compliance/geo.ts, src/proxy.ts")]));
+children.push(P("The compliance gate refuses money actions when it cannot establish the user's jurisdiction, which is the correct fail-closed posture. Location was resolved only from Vercel's edge headers, gated on the VERCEL environment variable. Off Vercel that variable is absent, so every request resolved to an unknown location, and with geo enforcement enabled (the database default) every purchase, deposit and payout would have been refused in production."));
+children.push(P("The user-visible symptom is the dangerous part: the site serves normally, sign-up works, pools render, and nothing appears in the error log, because a fail-closed compliance refusal is a correct outcome rather than a fault. The platform would simply have taken no money, and the cause would not have been obvious from any dashboard."));
+children.push(runs([T("Remediation: ", { bold: true }), T("Cloudflare's cf-ipcountry and cf-region-code are now honoured under the same explicit contract the rate limiter already used, TRUSTED_PROXY=cloudflare, so trust is declared by our configuration rather than inferred from the host. Cloudflare's XX and T1 sentinel values resolve to unknown rather than being read as countries. Spoofed headers still gain nothing when no trusted edge is declared, which is covered by regression tests. The health endpoint now reports the no-trusted-edge state explicitly so the silent no-sales condition is visible from a single request.")]));
+
+children.push(H3("S-2 — Sandbox-payout guard inert off Vercel (High, fixed)"));
+children.push(runs([T("Location: ", { bold: true }), T("src/lib/paypal.ts")]));
+children.push(P("A guard exists to prevent a production deployment paying out against PayPal sandbox, which would debit a real user balance and send money that does not exist. It identified production by VERCEL_ENV, which is never set outside Vercel, so on the VPS the guard could not fire. The self-hosted deployment was therefore the one environment where the control was absent and no other layer would have caught it."));
+children.push(runs([T("Remediation: ", { bold: true }), T("Production is now determined by VERCEL_ENV where the platform supplies it and NODE_ENV otherwise. Because a self-hosted build is NODE_ENV=production even during sandbox testing, an explicit ALLOW_SANDBOX_PAYOUTS opt-out covers the test window; it accepts only the literal value true, is logged loudly whenever it takes effect, and is reported by the health endpoint. Four regression tests pin the behaviour across VPS production, the test-window opt-out, Vercel preview and live mode.")]));
+
+children.push(H3("S-3 — Reconciliation absent from the self-hosted stack (Medium, fixed)"));
+children.push(runs([T("Location: ", { bold: true }), T("docker-compose.yml")]));
+children.push(P("Two scheduled jobs ran on Vercel: settlement, which pays winners, and reconciliation, which cross-checks Stripe's records against the internal ledger and files any divergence for review. The compose stack shipped a scheduler for settlement only. A self-hosted deployment would therefore have paid pools out correctly while silently losing the detective control that catches a charged player who received no card, a ledger row with no matching payment, or a completed payout with no traceable batch. The same job performs error-log retention, so that would also have stopped."));
+children.push(runs([T("Remediation: ", { bold: true }), T("A reconcile-cron service now mirrors the settlement scheduler at the daily cadence the route's look-back window is sized for. Both jobs are part of the stack rather than something an operator must remember to add.")]));
+
+children.push(H3("S-4 — Admin bootstrap reported success on a no-op (Low, fixed)"));
+children.push(runs([T("Location: ", { bold: true }), T("src/app/api/seed-admin/route.ts")]));
+children.push(P("The one-time bootstrap endpoint answered 200 with a success body in cases where it had done nothing at all, including when the target email was not configured and when no account matching it had registered yet. An operator provisioning a new environment would reasonably read that as a completed bootstrap, then remove the setup secret, and discover only later that no administrator existed."));
+children.push(runs([T("Remediation: ", { bold: true }), T("The endpoint now distinguishes its outcomes: 503 when the target email is unconfigured, 409 when that account has not yet registered, and 200 only when an administrator actually exists. The caller has already proven possession of the setup secret, so precise outcomes disclose nothing to an unauthenticated party. The endpoint continues to refuse permanently once any administrator exists.")]));
+
+children.push(H3("S-5 — False reconciliation incidents while payment keys are unset (Low, fixed)"));
+children.push(runs([T("Location: ", { bold: true }), T("src/app/api/cron/reconcile/route.ts")]));
+children.push(P("The reconciliation job constructed a Stripe client unconditionally, which throws while the secret key is unset. During the handover window, when the client legitimately holds the payment credentials and the platform does not yet have them, every scheduled run recorded a reconciliation failure. An alerting channel that reports a routine configuration state as a daily incident is one an operator learns to ignore, which defeats the purpose of the control at the moment it matters."));
+children.push(runs([T("Remediation: ", { bold: true }), T("The Stripe comparisons are skipped with a named warning in both the log and the response body when no key is configured, while the payout-traceability check and retention purge continue to run. A missing key is now reported as a missing key rather than as a failure.")]));
+
+children.push(H2("5.2 Verification"));
+children.push(P("All five fixes were verified before release: static type checking, the full linting rule set, the unit suite (61 tests, including 8 added to cover these paths), the settlement invariant sweep across 243 payout combinations, the migration and documentation guards, and a production build. Eight regression tests specifically pin the two High-severity behaviours, including the adversarial cases where a forged location header must gain the attacker nothing."));
+
+children.push(H2("5.3 Open item"));
+children.push(P("One item remains open and is not a code defect. The money path is built, statically audited and unit-verified, but it has not been exercised end to end against live Stripe test-mode credentials, because those credentials have not yet been issued to the project. Until that run is completed, the payment integration is verified by construction and by test double rather than by observation."));
+children.push(P("This is the recommended final gate before accepting real money. It is a short exercise once credentials exist: a test purchase through Stripe Checkout, confirmation that the card is issued by the webhook rather than the browser redirect, a settlement run, and a sandbox payout, followed by a reconciliation run that reports no divergence."));
+
+children.push(H2("5.4 Operational dependencies"));
+children.push(P("Two configuration values are load-bearing for correctness on the self-hosted stack and are worth stating explicitly to whoever operates the server, because in both cases the failure is silent rather than noisy:"));
+children.push(bullet([T("TRUSTED_PROXY=cloudflare", { bold: true }), T(" must be set while the stack sits behind the Cloudflare tunnel. Without it, location cannot be established and every payment is refused, while the site otherwise appears healthy. It must not be set if the origin is ever reachable directly, since the header would then be attacker-supplied.")]));
+children.push(bullet([T("CRON_SECRET", { bold: true }), T(" must be set, or both scheduled jobs refuse to run. This is deliberate: the endpoints fail closed, so an unset secret means no settlement rather than settlement exposed to anonymous callers. The consequence is that nobody is paid until it is configured.")]));
+children.push(P("The health endpoint reports the state of both, along with payment credentials, database connectivity and the rate-limiting backend. A single authenticated request to it answers whether the deployment is fully provisioned."));
+
 // ---------------- Recommendations ----------------
 children.push(new Paragraph({ children: [new PageBreak()] }));
-children.push(H1("5. Recommendations (no action taken)"));
-children.push(P("These are hardening opportunities, not exploited vulnerabilities. They are listed for the team to schedule; I did not change them to avoid destabilizing money-critical paths that cannot be tested in this environment."));
-children.push(H3("R-1 — Latent lost-update in the settlement credit path (Informational)"));
+children.push(H1("6. Recommendations from the original assessment (all now closed)"));
+children.push(P("These were raised as hardening opportunities in the 8 August report rather than exploited vulnerabilities, and were left unchanged at the time to avoid destabilizing money-critical paths that could not be tested in that environment. All three have since been implemented and verified. They are retained here so the record shows what was raised and how it was resolved."));
+children.push(H3("R-1 — Latent lost-update in the settlement credit path (Informational) — CLOSED"));
 children.push(runs([T("Location: ", { bold: true }), T("src/lib/materialize-winners.ts")]));
 children.push(P("Unlike claim-payout and admin payout (which the team deliberately moved to atomic, relative balance math via RPCs), the settlement credit still reads the balance, computes previous_balance + amount in JavaScript, and writes the absolute result back. If a concurrent balance change (e.g. a user claim) lands between the read and the write, it would be clobbered. The window is narrow — settlement is a singleton cron — and per-pool credits are guarded against double-credit, so this is a latent robustness issue rather than an active exploit. Recommend routing this credit through the existing credit_user_balance RPC for consistency with the other two money paths."));
-children.push(H3("R-2 — Authentication rate limiting"));
+children.push(runs([T("Resolution: ", { bold: true, color: GREEN }), T("Implemented as recommended. The settlement credit now moves the balance through the credit_user_balance RPC as a single atomic relative increment, matching the claim-payout and admin-payout paths. The read-modify-write window no longer exists.")]));
+children.push(H3("R-2 — Authentication rate limiting — CLOSED"));
 children.push(P("The sign-in and sign-up routes have no application-level rate limiting or lockout, leaving room for credential-stuffing and password-guessing against the platform. Recommend per-IP / per-account throttling (e.g. at the edge/middleware) and enabling Supabase's leaked-password protection when the plan allows (already noted in the signup validation comments)."));
-children.push(H3("R-3 — Legacy picks endpoint hygiene"));
+children.push(runs([T("Resolution: ", { bold: true, color: GREEN }), T("Implemented. Both the sign-in and sign-up routes now enforce rate limits, backed by Upstash Redis where provisioned and by an in-memory limiter otherwise. Client identification deliberately avoids the client-supplied leftmost forwarded-for value, which would have allowed an attacker to place every request in its own bucket. Breached-password checking against the Have I Been Pwned range API is also in place, failing open so that an outage at that service cannot block legitimate sign-ups.")]));
+children.push(H3("R-3 — Legacy picks endpoint hygiene — CLOSED"));
 children.push(P("The legacy /cards/[cardId]/submit route writes to the older picks table, which is not used by settlement (settlement reads card_picks) and lacks the per-game kickoff lock the parlay path enforces. It cannot affect money today. Recommend removing the dead route (as was already done for the unpaid-card purchase route) to eliminate confusion and future footguns."));
+children.push(runs([T("Resolution: ", { bold: true, color: GREEN }), T("Implemented. The route now returns 410 and names the correct endpoint, so any straggler caller fails loudly rather than writing picks that would never be scored, and the legacy picks table has been dropped from the schema by migration.")]));
 
 // ---------------- Actions summary ----------------
-children.push(H1("6. Summary of actions taken"));
-children.push(bullet([T("Fixed F-1", { bold: true }), T(" (open redirect) in src/app/(auth)/auth/callback/route.ts — added same-origin path validation and an origin guard.")]));
-children.push(bullet([T("Fixed F-2", { bold: true }), T(" (filter injection) in src/app/api/admin/users/route.ts — strip PostgREST filter metacharacters before interpolation.")]));
-children.push(bullet("Verified both fixes with isolated proof-of-concept harnesses (all payloads neutralized; legitimate inputs preserved)."));
-children.push(bullet([T("Committed", { bold: true }), T(' both fixes (commit e6b3b7f) and pushed to branch claude/backend-security-audit-vtkdog.')]));
-children.push(bullet("Documented recommendations R-1..R-3 for follow-up; made no changes to untested money-critical paths."));
+children.push(H1("7. Summary of actions taken"));
+children.push(H3("Original assessment (8 August 2026)"));
+children.push(bullet([T("Fixed F-1", { bold: true }), T(" (open redirect) in src/app/(auth)/auth/callback/route.ts, adding same-origin path validation and an origin guard.")]));
+children.push(bullet([T("Fixed F-2", { bold: true }), T(" (filter injection) in src/app/api/admin/users/route.ts, stripping PostgREST filter metacharacters before interpolation.")]));
+children.push(bullet("Verified both fixes with isolated proof-of-concept harnesses; all payloads neutralized, legitimate inputs preserved."));
+children.push(bullet("Documented recommendations R-1 to R-3 for follow-up, making no changes to untested money-critical paths at that time."));
+children.push(H3("Since the original assessment"));
+children.push(bullet("Implemented all three recommendations (R-1 atomic settlement credit, R-2 authentication rate limiting and breached-password checking, R-3 legacy pick route removal and table drop)."));
+children.push(H3("Self-hosted deployment assessment (20 August 2026)"));
+children.push(bullet([T("Fixed S-1", { bold: true }), T(" by resolving geolocation from a declared trusted edge rather than an inferred hosting platform, restoring the ability to take payment on the self-hosted stack without weakening the anti-spoofing property.")]));
+children.push(bullet([T("Fixed S-2", { bold: true }), T(" by making the sandbox-payout guard fire on any production build, with an explicit and logged opt-out for the testing window.")]));
+children.push(bullet([T("Fixed S-3", { bold: true }), T(" by adding the reconciliation scheduler to the container stack, restoring the detective control over payment-to-ledger divergence.")]));
+children.push(bullet([T("Fixed S-4 and S-5", { bold: true }), T(", so that the administrator bootstrap reports honestly and reconciliation distinguishes an unconfigured payment processor from a failure.")]));
+children.push(bullet("Verified the full set against type checking, linting, 61 unit tests, the 243-combination settlement sweep, the migration and documentation guards, and a production build."));
 children.push(new Paragraph({ spacing: { before: 200 } }));
-children.push(runs([T("Bottom line: ", { bold: true }), T("the platform's backend is in strong security shape. Two real issues were found and remediated; the money-handling core withstood every attack attempted against it.", { })]));
+children.push(runs([T("Bottom line: ", { bold: true }), T("the platform's backend is in strong security shape on both deployment shapes. Seven issues have been found and remediated across the two rounds, and the money-handling core withstood every attack attempted against it. The controls that failed on the move to self-hosting failed safely in every case except one, S-2, which is the finding worth remembering: a guard that identifies its environment by asking which vendor is hosting it will be absent precisely when the vendor changes. The remaining gate before live operation is not a defect but an exercise, namely the end-to-end payment run described in section 5.3.", { })]));
 
 children.push(new Paragraph({ spacing: { before: 300 }, border: { top: { style: BorderStyle.SINGLE, size: 6, color: "CCCCCC", space: 8 } },
-  children: [new TextRun({ text: "Prepared by an automated authorized security assessment. Confidential — internal use only.", italics: true, size: 17, color: GREY })] }));
+  children: [new TextRun({ text: "Prepared as an authorized security assessment for the owner of the Gridiron platform. Confidential: contains defensive control detail and should be shared only with parties operating or auditing this system.", italics: true, size: 17, color: GREY })] }));
 
 // Exported so scripts/gen-combined-doc.cjs can assemble every document into one
 // deliverable without duplicating a single line of this content. Running this file
