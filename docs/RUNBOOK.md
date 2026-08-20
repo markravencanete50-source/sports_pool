@@ -211,9 +211,34 @@ provisioned.
   while leaving the enrolment routes ungated, so nobody can be locked out of
   enrolling. **Each admin must enrol at `/account/security` before they can
   approve a payout.**
-- **E2E money-path test (BE-10)**: requires real Stripe test-mode keys;
-  procedure sketch lives in the audit document §9.A. Run it before the first
-  real deposit.
+- **E2E money-path test (BE-10)**: requires real Stripe test-mode keys and
+  PayPal sandbox credentials. Run it before the first real deposit.
+
+  Check the credentials BEFORE starting, because the run is partly manual and
+  the expensive failure is discovering a bad key half way through, with
+  half-finished rows to clean up before retrying:
+
+  ```
+  npm run preflight:money
+  ```
+
+  It authenticates against Stripe, PayPal and Supabase read-only, moves no
+  money, prints no secrets, and **refuses to run against a live Stripe key** —
+  a rehearsal is a procedure designed to be got wrong the first time, and
+  getting it wrong against real cards is not a rehearsal. On success it prints
+  the ordered steps, ending with `scripts/verify-money-path.ts`, which asserts
+  the database landed correctly rather than leaving somebody to eyeball five
+  tables.
+
+  The step that cannot be replaced by inspection is **resending the
+  `checkout.session.completed` event from the Stripe dashboard**: fulfilment is
+  idempotent by construction, but a genuinely duplicated delivery is the only
+  thing that proves it.
+
+  The forgery half of the webhook's contract is already covered automatically —
+  `tests/e2e/smoke.test.ts` asserts that unsigned and forged deliveries are
+  refused, and those assertions are deployment-independent, so they run against
+  production too.
 
 ## 5. Admin bootstrap and offboarding
 

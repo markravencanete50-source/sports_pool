@@ -1,5 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 
 /**
  * End-to-end smoke harness (9.C).
@@ -215,6 +216,60 @@ describe("e2e smoke", () => {
           `${path} must fail closed without the secret, got ${res.status}`
         );
       }
+    });
+
+    /*
+     * The Stripe webhook's authentication IS its signature — it carries no
+     * session and sits outside every auth guard, so a forged delivery that got
+     * through would issue cards nobody paid for.
+     *
+     * These assertions are deployment-independent ON PURPOSE: each one is a
+     * REJECTION, so they hold without knowing the deployment's real
+     * STRIPE_WEBHOOK_SECRET and can therefore run against production. The
+     * positive case (a correctly-signed delivery is fulfilled exactly once)
+     * needs the real secret and belongs to the money-path run, not here.
+     *
+     * 503 is an acceptable answer to all of them: it means the secret is unset,
+     * so the endpoint is disabled and fulfilment is impossible either way.
+     */
+    test("the Stripe webhook refuses an unsigned delivery", { skip }, async () => {
+      const res = await get("/api/stripe/webhook", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "checkout.session.completed" }),
+      });
+      assert.ok(
+        [400, 503].includes(res.status),
+        `an unsigned webhook must be refused, got ${res.status}`
+      );
+    });
+
+    test("the Stripe webhook refuses a forged signature", { skip }, async () => {
+      // Correctly FORMED but computed with a secret we invented: exactly what
+      // an attacker who has read Stripe's documentation would send.
+      const body = JSON.stringify({
+        id: "evt_forged",
+        type: "checkout.session.completed",
+        data: { object: { id: "cs_forged" } },
+      });
+      const ts = Math.floor(Date.now() / 1000);
+      const forged = createHmac("sha256", "whsec_not_the_real_secret")
+        .update(`${ts}.${body}`)
+        .digest("hex");
+
+      const res = await get("/api/stripe/webhook", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "stripe-signature": `t=${ts},v1=${forged}`,
+        },
+        body,
+      });
+      assert.ok(
+        [400, 503].includes(res.status),
+        `a forged webhook signature must be refused, got ${res.status}`
+      );
+      assert.notEqual(res.status, 200, "a forged webhook was ACCEPTED");
     });
 
     test("CSRF: a cross-origin state change is refused", { skip }, async () => {
