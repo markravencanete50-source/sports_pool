@@ -44,9 +44,9 @@ select 'RLS enabled on every public table' as check,
        end as result
 
 union all
-select 'All 35 migrations recorded',
-       (select case when count(*) = 35 then 'PASS (' || count(*) || ')'
-                    else 'CHECK: ' || count(*) || ' recorded, expected 35' end
+select 'All 36 migrations recorded',
+       (select case when count(*) = 36 then 'PASS (' || count(*) || ')'
+                    else 'CHECK: ' || count(*) || ' recorded, expected 36' end
         from supabase_migrations.schema_migrations)
 
 union all

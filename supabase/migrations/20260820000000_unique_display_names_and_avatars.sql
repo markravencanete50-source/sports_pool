@@ -59,9 +59,12 @@ $fn$;
 comment on function public.display_name_key(text) is
   'Normalises a display name for uniqueness: strips zero-width and bidi control characters, collapses internal whitespace, trims, lowercases. IMMUTABLE so it can back a unique index.';
 
--- Harmless to call (it only folds a string the caller already has) and the
--- availability RPC below relies on it.
-grant execute on function public.display_name_key(text) to authenticated, anon;
+-- The index expression does NOT need the caller to hold EXECUTE — only direct
+-- calls do — so this grant exists solely for the availability RPC, which is
+-- authenticated-only. anon is deliberately excluded: nothing anonymous calls
+-- this, and an unused grant is surface for no benefit.
+grant execute on function public.display_name_key(text) to authenticated;
+revoke execute on function public.display_name_key(text) from anon, public;
 
 -- ---------------------------------------------------------------------------
 -- 2. Reserved names.
@@ -426,6 +429,10 @@ begin
 
   if has_function_privilege('anon', 'public.is_display_name_available(text)', 'EXECUTE') then
     raise exception 'anon can probe display-name availability';
+  end if;
+
+  if has_function_privilege('anon', 'public.display_name_key(text)', 'EXECUTE') then
+    raise exception 'anon retains EXECUTE on display_name_key';
   end if;
 
   -- The profile-edit path this whole feature depends on must still exist.

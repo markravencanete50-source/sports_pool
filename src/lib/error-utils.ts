@@ -70,3 +70,31 @@ export function extractErrorMessage(error: unknown): string {
 
   return "An unexpected error occurred";
 }
+
+/**
+ * Server-side: log a database error in full, return nothing useful to the caller.
+ *
+ * WHY. Several routes returned `error.message` straight from PostgREST, which
+ * carries schema detail — table and column names, constraint names, type
+ * information, and sometimes the offending value. On a PUBLIC endpoint that is
+ * free reconnaissance for anyone probing the API, and it is never information
+ * the user can act on: a player cannot do anything with
+ * "duplicate key value violates unique constraint users_display_name_key_uidx".
+ *
+ * Deliberately NOT applied to messages the application itself authored —
+ * validation failures, business rules, "pool is closed" — which the user does
+ * need to read. This is only for errors that came back from the database.
+ *
+ * The operator loses nothing: the full error, with its code, goes to the log.
+ */
+export function logDbError(
+  scope: string,
+  error: { message?: string; code?: string; details?: string | null } | null
+): void {
+  console.error(
+    `[${scope}] database error:`,
+    error?.code ?? "no-code",
+    error?.message ?? "no-message",
+    error?.details ?? ""
+  );
+}

@@ -8,6 +8,7 @@ import {
   getPoolsFinancials,
 } from "@/lib/pool-financials";
 import { NextResponse } from "next/server";
+import { logDbError } from "@/lib/error-utils";
 import { PoolStatus } from "@/lib/enums";
 
 // SECURITY: never embed `users(*)` — that table carries email, role and balance,
@@ -65,7 +66,11 @@ export async function GET(request: Request) {
     const { data, count: total, error } = await query.range(from, to);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logDbError("pools:list", error);
+      return NextResponse.json(
+        { error: "Something went wrong. Please try again." },
+        { status: 400 }
+      );
     }
 
     const rawPools = data || [];

@@ -29,6 +29,7 @@ import {
 } from "../src/lib/validations";
 import { checkPasswordBreached } from "../src/lib/password-breach";
 import { assertPayoutModeSafe } from "../src/lib/paypal";
+import { readImageDimensions } from "../src/lib/image-dimensions";
 import {
   displayNameKey,
   normalizeDisplayName,
@@ -475,4 +476,73 @@ test("the display-name schema returns the value that will be stored", () => {
   for (const bad of ["ab", "!!!", "a".repeat(200), ""]) {
     assert.equal(displayNameSchema.safeParse(bad).success, false, `should reject: ${bad}`);
   }
+});
+
+// ─── image dimensions: the avatar decompression-bomb defence ────────────────
+//
+// Byte size does not bound decode cost. A 545-byte PNG can declare 30000x30000,
+// which a browser expands to ~3.6GB of RGBA. Uploaded as an avatar that is a
+// denial of service against every OTHER user who loads the page, so the header
+// is parsed and implausible dimensions are refused before anything is stored.
+
+/** Build a PNG header declaring the given size. Only IHDR matters here. */
+function pngHeader(width: number, height: number): Uint8Array {
+  const b = new Uint8Array(24);
+  b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0); // signature
+  b.set([0x49, 0x48, 0x44, 0x52], 12); // "IHDR"
+  new DataView(b.buffer).setUint32(16, width);
+  new DataView(b.buffer).setUint32(20, height);
+  return b;
+}
+
+test("PNG dimensions are read from the header", () => {
+  assert.deepEqual(readImageDimensions(pngHeader(64, 64), "image/png"), {
+    width: 64,
+    height: 64,
+  });
+  // The bomb: tiny file, enormous declared size.
+  assert.deepEqual(readImageDimensions(pngHeader(30000, 30000), "image/png"), {
+    width: 30000,
+    height: 30000,
+  });
+});
+
+test("JPEG dimensions are read from the frame header", () => {
+  // SOI, SOF0 (length 17, 8-bit, 600 high, 800 wide), component data, EOI.
+  const jpeg = new Uint8Array([
+    0xff, 0xd8,
+    0xff, 0xc0, 0x00, 0x11, 0x08,
+    0x02, 0x58, // height 600
+    0x03, 0x20, // width 800
+    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+    0xff, 0xd9,
+  ]);
+  assert.deepEqual(readImageDimensions(jpeg, "image/jpeg"), {
+    width: 800,
+    height: 600,
+  });
+});
+
+test("WebP dimensions are read from the VP8 chunk", () => {
+  const webp = new Uint8Array(30);
+  webp.set([0x52, 0x49, 0x46, 0x46], 0); // "RIFF"
+  webp.set([0x57, 0x45, 0x42, 0x50], 8); // "WEBP"
+  webp.set([0x56, 0x50, 0x38, 0x20], 12); // "VP8 "
+  new DataView(webp.buffer).setUint16(26, 120, true);
+  new DataView(webp.buffer).setUint16(28, 90, true);
+  assert.deepEqual(readImageDimensions(webp, "image/webp"), {
+    width: 120,
+    height: 90,
+  });
+});
+
+test("unreadable headers refuse rather than throw", () => {
+  // Every one of these must come back null, which the route treats as a
+  // refusal. Throwing here would turn a malformed upload into a 500.
+  assert.equal(readImageDimensions(new Uint8Array([]), "image/png"), null);
+  assert.equal(readImageDimensions(new Uint8Array([0x89, 0x50]), "image/png"), null);
+  assert.equal(readImageDimensions(new Uint8Array(40), "image/jpeg"), null);
+  assert.equal(readImageDimensions(new Uint8Array(10), "image/webp"), null);
+  // Zero dimensions are not a valid image either.
+  assert.equal(readImageDimensions(pngHeader(0, 100), "image/png"), null);
 });

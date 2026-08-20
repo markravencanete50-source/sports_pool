@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertSameOrigin } from "@/lib/request-guards";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { readImageDimensions } from "@/lib/image-dimensions";
 
 /**
  * Avatar upload and removal.
@@ -33,6 +34,19 @@ export const maxDuration = 30;
 
 const BUCKET = "avatars";
 const MAX_BYTES = 2 * 1024 * 1024; // 2MB, matching the bucket's own limit.
+
+/**
+ * Dimension caps. Byte size does NOT bound the cost of displaying an image:
+ * a 2MB PNG may declare 30000x30000, which a browser expands to roughly 3.6GB
+ * of RGBA to paint. Stored as an avatar that is a denial of service against
+ * every other user who loads a page it appears on, not against us.
+ *
+ * 4096 on a side is far beyond what an avatar needs and still leaves the
+ * worst case at ~67MB decoded. The total-pixel cap additionally refuses long
+ * thin images (1x50000000) that pass a per-side check.
+ */
+const MAX_DIMENSION = 4096;
+const MAX_PIXELS = 4096 * 4096;
 
 type ImageKind = { mime: string; ext: string };
 
@@ -130,6 +144,30 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Upload a JPEG, PNG or WebP image." },
       { status: 415 }
+    );
+  }
+
+  // Declared dimensions, read from the header without decoding. A file whose
+  // header cannot be parsed is refused: we are about to serve this to other
+  // people, so "cannot tell" is not good enough.
+  const dims = readImageDimensions(bytes, kind.mime as "image/jpeg" | "image/png" | "image/webp");
+  if (!dims) {
+    return NextResponse.json(
+      { error: "That image could not be read. Try re-saving it, or use a different file." },
+      { status: 415 }
+    );
+  }
+  if (
+    dims.width > MAX_DIMENSION ||
+    dims.height > MAX_DIMENSION ||
+    dims.width * dims.height > MAX_PIXELS
+  ) {
+    return NextResponse.json(
+      {
+        error: `Image is too large at ${dims.width}x${dims.height} pixels. ` +
+          `Maximum is ${MAX_DIMENSION}x${MAX_DIMENSION}.`,
+      },
+      { status: 413 }
     );
   }
 

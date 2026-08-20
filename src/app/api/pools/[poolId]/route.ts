@@ -5,6 +5,7 @@ import { updatePoolWithGamesSchema } from "@/lib/validations";
 import { assertSameOrigin } from "@/lib/request-guards";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
+import { logDbError } from "@/lib/error-utils";
 
 // SECURITY: never embed `users(*)`. That table carries email, role and balance,
 // and the shipped RLS policy on it was `select using (true)` — so an
@@ -320,7 +321,11 @@ export async function DELETE(
     const { error } = await admin.from("pools").delete().eq("id", poolId);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      logDbError("pools:detail", error);
+      return NextResponse.json(
+        { error: "Something went wrong. Please try again." },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json(
