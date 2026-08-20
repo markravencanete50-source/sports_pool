@@ -64,7 +64,7 @@ export function LandingFooter() {
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="rounded-full px-2 py-1 transition-all duration-200 hover:bg-white/5 hover:text-foreground"
+                    className="inline-flex min-h-11 items-center rounded-full px-3 py-2 transition-all duration-200 hover:bg-white/5 hover:text-foreground"
                   >
                     {link.label}
                   </Link>
@@ -84,7 +84,7 @@ export function LandingFooter() {
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="rounded-full px-2 py-1 transition-all duration-200 hover:bg-white/5 hover:text-foreground"
+                    className="inline-flex min-h-11 items-center rounded-full px-3 py-2 transition-all duration-200 hover:bg-white/5 hover:text-foreground"
                   >
                     {link.label}
                   </Link>

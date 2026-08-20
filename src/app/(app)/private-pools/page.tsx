@@ -83,7 +83,7 @@ export default function PrivatePools() {
             onStatusFilterChange={handleStatusFilterChange}
             rightElement={
               <Link href="/create-pool">
-                <div className="btn-3d-primary px-6 py-2 text-sm flex items-center gap-2 cursor-pointer">
+                <div className="btn-3d-primary min-h-11 px-6 py-2 text-sm flex items-center justify-center gap-2 cursor-pointer">
                   <Plus className="w-4 h-4" /> Create New Pool
                 </div>
               </Link>
@@ -111,7 +111,7 @@ export default function PrivatePools() {
           onStatusFilterChange={handleStatusFilterChange}
           rightElement={
             <Link href="/create-pool">
-              <div className="btn-3d-primary px-6 py-2 text-sm flex items-center gap-2 cursor-pointer">
+              <div className="btn-3d-primary min-h-11 px-6 py-2 text-sm flex items-center justify-center gap-2 cursor-pointer">
                 <Plus className="w-4 h-4" /> Create New Pool
               </div>
             </Link>

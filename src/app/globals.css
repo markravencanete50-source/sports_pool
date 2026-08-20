@@ -454,3 +454,18 @@ html.dark [data-sonner-toaster] [data-sonner-toast] [data-description],
 .dark [data-sonner-toaster] [data-sonner-toast] [data-description] {
   color: hsl(220 10% 60%) !important;
 }
+
+/*
+ * Sonner's close button ships at 20x20, which fails WCAG 2.5.8 (Target Size
+ * Minimum, AA) and is genuinely awkward to hit with a thumb. The toast itself
+ * is dismissable by swipe and auto-dismisses after 5s, so this is a secondary
+ * affordance — but a control that is offered should be usable. 24px is the
+ * standard's floor; the icon inside keeps its original size.
+ */
+[data-sonner-toaster] [data-close-button] {
+  width: 24px !important;
+  height: 24px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}

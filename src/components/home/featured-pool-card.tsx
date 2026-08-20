@@ -34,7 +34,7 @@ export function FeaturedPoolCard({ pool }: FeaturedPoolCardProps) {
                   <h3 className="text-xl sm:text-2xl font-black font-display uppercase italic text-white group-hover:text-primary transition-colors neon-text break-words">
                     {hasPool ? pool.name : "Main Public Pool"}
                   </h3>
-                  <span className="px-2 py-0.5 rounded bg-primary text-white text-[10px] font-bold uppercase tracking-wider animate-bounce">
+                  <span className="px-2 py-0.5 rounded bg-primary text-white text-[11px] font-bold uppercase tracking-wider animate-bounce">
                     Live
                   </span>
                 </div>

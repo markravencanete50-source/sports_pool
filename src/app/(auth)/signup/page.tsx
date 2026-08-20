@@ -160,9 +160,9 @@ export default function Signup() {
               id="accept-terms"
               type="checkbox"
               {...register("acceptTerms")}
-              className="mt-1 size-4 shrink-0 rounded border-white/20 bg-black/20 accent-primary focus:outline-none focus:ring-2 focus:ring-primary"
+              className="mt-0.5 size-6 shrink-0 rounded border-white/20 bg-black/20 accent-primary focus:outline-none focus:ring-2 focus:ring-primary"
             />
-            <label htmlFor="accept-terms" className="text-xs text-muted-foreground leading-relaxed">
+            <label htmlFor="accept-terms" className="text-sm text-muted-foreground leading-relaxed">
               I am of legal age in my jurisdiction and I accept the{" "}
               <Link href="/terms" className="text-primary hover:underline">Terms</Link>,{" "}
               <Link href="/contest-rules" className="text-primary hover:underline">Contest Rules</Link>{" "}

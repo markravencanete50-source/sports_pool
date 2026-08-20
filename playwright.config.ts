@@ -20,6 +20,21 @@ import { defineConfig, devices } from "@playwright/test";
 
 const BASE = process.env.E2E_BASE_URL?.trim().replace(/\/$/, "");
 
+/**
+ * Run against a Chromium already on the machine instead of Playwright's own
+ * download. Needed in sandboxes and locked-down CI images where the bundled
+ * browser cannot be fetched, and where the installed build number will not
+ * match what this Playwright version expects.
+ *
+ *   CHROMIUM_EXECUTABLE_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome
+ *
+ * Unset (the normal case) this is an empty object and nothing changes.
+ */
+const chromiumPath = process.env.CHROMIUM_EXECUTABLE_PATH?.trim();
+const launchOverride = chromiumPath
+  ? { launchOptions: { executablePath: chromiumPath } }
+  : {};
+
 export default defineConfig({
   testDir: "./tests/browser",
   // A slow cold start on a serverless preview should not read as a failure.
@@ -40,10 +55,10 @@ export default defineConfig({
   },
 
   projects: [
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"], ...launchOverride } },
     // The product is played on a phone during games; layout regressions there
-    // are not hypothetical.
-    { name: "mobile-chromium", use: { ...devices["Pixel 7"] } },
+    // are not hypothetical. mobile-layout.spec.ts runs only in this project.
+    { name: "mobile-chromium", use: { ...devices["Pixel 7"], ...launchOverride } },
   ],
 
   // Only boot a server when no deployment was named.

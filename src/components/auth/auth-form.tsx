@@ -31,10 +31,11 @@ export function AuthForm({
 
             <div className="text-center text-sm text-muted-foreground">
               {footerText}{" "}
-              <Link href={footerLinkHref}>
-                <span className="text-primary hover:underline cursor-pointer">
-                  {footerLinkText}
-                </span>
+              <Link
+                href={footerLinkHref}
+                className="inline-flex min-h-11 items-center px-1 text-primary hover:underline"
+              >
+                {footerLinkText}
               </Link>
             </div>
           </div>

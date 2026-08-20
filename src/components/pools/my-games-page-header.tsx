@@ -50,7 +50,7 @@ export function MyGamesPageHeader({
             <button
               type="button"
               onClick={() => setFilterOpen((o) => !o)}
-              className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 text-sm"
+              className="flex min-h-11 items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 text-sm"
               aria-expanded={filterOpen}
               aria-haspopup="listbox"
               aria-label={`Filter: ${currentLabel}. Click to change.`}
@@ -79,7 +79,7 @@ export function MyGamesPageHeader({
                       onOutcomeFilterChange(opt.value);
                       setFilterOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-white/10 ${
+                    className={`w-full min-h-11 text-left px-3 py-2 text-sm hover:bg-white/10 ${
                       outcomeFilter === opt.value
                         ? "bg-primary/20 text-primary"
                         : ""
@@ -100,7 +100,7 @@ export function MyGamesPageHeader({
               placeholder={searchPlaceholder}
               value={searchValue}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full bg-black/20 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full min-h-11 bg-black/20 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-base md:text-sm focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
         )}
