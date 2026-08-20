@@ -14,6 +14,7 @@ import {
   RefreshCw,
   DollarSign,
   Wallet,
+  UserCircle,
 } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
 import { FlameCursor } from "@/components/ui/flame-cursor";
@@ -68,6 +69,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { href: "/create-pool", label: "Create Pool", icon: UserPlus },
         { href: "/my-games", label: "My Games", icon: Trophy },
         { href: "/my-games/withdrawals", label: "Withdrawals", icon: Wallet },
+        { href: "/account/profile", label: "Profile", icon: UserCircle },
         { href: "/white-label", label: "White Label", icon: Briefcase },
       ];
       if (isAdmin) {

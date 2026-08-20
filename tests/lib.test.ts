@@ -29,6 +29,12 @@ import {
 } from "../src/lib/validations";
 import { checkPasswordBreached } from "../src/lib/password-breach";
 import { assertPayoutModeSafe } from "../src/lib/paypal";
+import {
+  displayNameKey,
+  normalizeDisplayName,
+  checkDisplayNameShape,
+  displayNameSchema,
+} from "../src/lib/display-name";
 
 // ─── safeInternalPath: open-redirect clamp ───────────────────────────────────
 
@@ -405,4 +411,68 @@ test("HIBP failure fails OPEN (signup proceeds), marked unchecked", async (t) =>
   globalThis.fetch = (async () => new Response("nope", { status: 403 })) as typeof fetch;
   const result403 = await checkPasswordBreached("whatever-Passw0rd");
   assert.deepEqual(result403, { checked: false, breached: false, count: 0 });
+});
+
+// ─── display names: uniqueness key, shape rules, impersonation defences ──────
+
+test("the uniqueness key folds case and collapses whitespace", () => {
+  const variants = ["John Smith", "john smith", "JOHN  SMITH", "  John   Smith  "];
+  const keys = new Set(variants.map(displayNameKey));
+  assert.equal(keys.size, 1, `expected one key, got ${[...keys].join(" | ")}`);
+  assert.equal(displayNameKey("John Smith"), "john smith");
+});
+
+test("invisible characters cannot be used to clone a taken name", () => {
+  // Each of these renders identically to "admin" and must normalise to it,
+  // or the unique index and the reserved list are both trivially bypassed.
+  const disguises = [
+    "ad​min",  // zero-width space
+    "ad‌min",  // zero-width non-joiner
+    "ad‍min",  // zero-width joiner
+    "﻿admin",  // BOM
+    "admin⁠",  // word joiner
+    "ad‮min",  // right-to-left override
+  ];
+  for (const d of disguises) {
+    assert.equal(displayNameKey(d), "admin", `${JSON.stringify(d)} must fold to "admin"`);
+  }
+});
+
+test("the stored form keeps the user's capitalisation", () => {
+  // Only the KEY is lowercased. Storing the folded value would silently
+  // rename every account that uses capitals.
+  assert.equal(normalizeDisplayName("John Smith"), "John Smith");
+  assert.equal(normalizeDisplayName("  John   Smith  "), "John Smith");
+  assert.equal(normalizeDisplayName("ad​min"), "admin");
+});
+
+test("shape rules match the users_name_format constraint", () => {
+  assert.equal(checkDisplayNameShape("Bob"), null);
+  assert.equal(checkDisplayNameShape("Bob_the-Builder.1"), null);
+  assert.equal(checkDisplayNameShape("a".repeat(24)), null);
+
+  assert.equal(checkDisplayNameShape("ab"), "too_short");
+  assert.equal(checkDisplayNameShape("a".repeat(25)), "too_long");
+  assert.equal(checkDisplayNameShape("..."), "no_alphanumeric");
+  assert.equal(checkDisplayNameShape("bad!name"), "invalid_characters");
+  // ASCII-only is deliberate; see the note in src/lib/display-name.ts. It is
+  // also what keeps the JS and Postgres case-folding difference unreachable.
+  assert.equal(checkDisplayNameShape("café"), "invalid_characters");
+  assert.equal(checkDisplayNameShape("Ünicode"), "invalid_characters");
+});
+
+test("whitespace-only and padded names are judged on their trimmed form", () => {
+  assert.equal(checkDisplayNameShape("   "), "too_short");
+  assert.equal(checkDisplayNameShape("  ab  "), "too_short");
+  assert.equal(checkDisplayNameShape("  Bob  "), null);
+});
+
+test("the display-name schema returns the value that will be stored", () => {
+  const ok = displayNameSchema.safeParse("  John   Smith  ");
+  assert.ok(ok.success);
+  assert.equal(ok.data, "John Smith");
+
+  for (const bad of ["ab", "!!!", "a".repeat(200), ""]) {
+    assert.equal(displayNameSchema.safeParse(bad).success, false, `should reject: ${bad}`);
+  }
 });

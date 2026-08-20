@@ -259,6 +259,23 @@ export const RATE_LIMITS = {
   payoutRequest: { limit: 12, windowMs: 60 * 60_000 },
   /** Payout-account churn. */
   payoutAccount: { limit: 12, windowMs: 60 * 60_000 },
+  /**
+   * Display-name availability probing. This endpoint answers "does an account
+   * hold this name" for any string, which is a name-enumeration oracle by
+   * construction. public.profiles is already world-readable by design (chat
+   * authorship, winner lists), so the names are not secret — but a
+   * purpose-built checker that answers thousands of times a minute is a
+   * different thing from a public list, and it costs a query each time.
+   * Generous enough to type a name and see it validate as you go.
+   */
+  displayNameCheck: { limit: 60, windowMs: 5 * 60_000 },
+  /** Profile edits. Each rename writes users and mirrors into profiles. */
+  profileUpdate: { limit: 20, windowMs: 60 * 60_000 },
+  /**
+   * Avatar upload. Each call moves up to 2MB through the server and stores it,
+   * so this bounds both bandwidth and the storage a single account can churn.
+   */
+  avatarUpload: { limit: 10, windowMs: 60 * 60_000 },
   /** Checkout-session creation abuse (each call hits Stripe). */
   checkout: { limit: 30, windowMs: 60 * 60_000 },
   /** Payment confirmation polling abuse. */

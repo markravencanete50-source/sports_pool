@@ -22,6 +22,11 @@ const PROTECTED_PATHS = [
   // --- added: these were reachable by anonymous visitors in production ---
   "/dashboard",
   "/winnings",
+  // Every /account surface (profile, security, close) is personal and its
+  // APIs all answer 401 anonymously. Without this an anonymous visitor gets a
+  // rendered page that then fails to load itself, which reads as a broken site
+  // rather than as "sign in first".
+  "/account",
 ];
 
 /** Signed-in AND role=admin. */
