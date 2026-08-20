@@ -245,10 +245,10 @@ c.push(pageBreak());
 c.push(H1("3.  How the database and backend work"));
 
 c.push(H2("The shape of it"));
-c.push(P("There is no separate backend server to maintain. The website and its backend are one application, deployed together on Vercel, talking to a Postgres database hosted by Supabase."));
+c.push(P("There is no separate backend server to maintain. The website and its backend are one application, deployed together on your own server, talking to a Postgres database hosted by Supabase."));
 c.push(spacer(60));
 c.push(table([2500, 6500], ["Piece", "What it does"], [
-  ["The application", "Serves the pages and contains the backend logic. Runs on demand rather than on a server you rent by the month."],
+  ["The application", "Serves the pages and contains the backend logic. Runs in a container on your own server, alongside the two scheduled jobs."],
   ["The database (Postgres)", "Stores everything and, importantly, enforces the rules itself rather than trusting the application to."],
   ["Stripe", "Takes entry payments. Confirms them directly to our server."],
   ["PayPal", "Sends withdrawals out."],
@@ -357,7 +357,7 @@ c.push(table([500, 2900, 1100, 4500], ["#", "Task", "Effort", "What it means if 
 c.push(spacer(160));
 c.push(H2("Checking readiness yourself"));
 c.push(P("The platform reports its own status. One command, no engineer required:"));
-c.push(...code('curl -H "Authorization: Bearer YOUR_CRON_SECRET" https://sports-pool.vercel.app/api/health'));
+c.push(...code('curl -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR-DOMAIN/api/health'));
 c.push(P("It lists every component and names anything missing. Today it reports one thing outstanding: payouts are disabled pending PayPal. When it reports \"ok\", the platform is fully provisioned."));
 
 c.push(spacer(180));

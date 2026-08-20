@@ -114,14 +114,15 @@ policy as non-optional.
   restore, run `/api/cron/reconcile` immediately and work every mismatch it
   files.
 
-### 2.1 Self-hosted (Docker/VPS) backups
+### 2.1 Backups when the database is bundled with the app
 
 Everything above assumes managed Supabase, where backups are a dashboard
-setting. **The compose stack has no such setting.** Postgres runs in the `db`
-container with its data in the `./volumes/db/data` bind mount, and nothing
-backs it up unless you arrange it. There is no free daily snapshot and no PITR
-to buy: on this shape, backup is entirely your responsibility, and the ledger
-it holds is financial record.
+setting. **This section applies only if you run `--profile bundled-db`**, which
+puts Postgres in a container on your own host. It is not the recommended
+production shape, and backups are the main reason why: nothing snapshots
+`./volumes/db/data` unless you arrange it, there is no free daily backup and no
+PITR to buy, and the ledger in that volume is a financial record. If you find
+yourself building the procedure below, reconsider managed Supabase first.
 
 At minimum, a nightly logical dump kept off the same machine:
 
@@ -417,35 +418,56 @@ explanation of a decision that looks arbitrary otherwise.
 After a transfer, re-add the Actions secrets (`CRON_SECRET`, optionally
 `APP_URL`) — repository secrets do not follow a transfer.
 
-### 7.4 The self-hosted path
+### 7.4 Moving hosting to a VPS
 
-On a VPS the compose stack runs Postgres, GoTrue, PostgREST, Realtime and Kong
-itself, so there is no Supabase account to transfer and §7.1's provision-versus-
-transfer question does not arise. What replaces it:
+**Recommendation: move the app, keep the database where it is.** `docker compose
+up -d` runs the Next.js app, both schedulers and the tunnel against the existing
+managed Supabase project. Hosting moves; the database does not.
 
-1. **Generate the stack's own secrets.** `JWT_SECRET`, and the `ANON_KEY` and
-   `SERVICE_ROLE_KEY` **signed with it** — these three are a matched set and
-   cannot be copied from the old project. Also `POSTGRES_PASSWORD`,
-   `SECRET_KEY_BASE`, and a fresh `CRON_SECRET` and `SETUP_SECRET`. Nothing
-   secret carries across from the development environment, which is the point.
-2. **Apply the schema**, pointing the Supabase CLI at the stack's database, then
-   `npm run seed` for `platform_settings` and the teams. Skipping the seed does
-   not crash anything; it quietly charges a default platform fee the client
-   never chose.
-3. **Prove the guards survived**, exactly as in §7.1 step 4:
-   `scripts/verify-provision.sql` must read PASS on every check.
-4. **Fill `.env.docker`** from §3 and §3.1, including `TRUSTED_PROXY` and the
-   app's own copies of the Supabase URL and keys.
-5. **Build on the host first.** The Dockerfile copies a prebuilt
-   `.next/standalone`; it does not run `next build`. So `npm ci && npm run build`
-   before `docker compose build`.
-6. **Bring the whole stack up**, not just `nextjs` — the schedulers are services
-   (§3.1), and `docker compose ps` must list `settle-cron` and `reconcile-cron`.
-7. **Re-point the Stripe webhook** at the new domain and set the **new** signing
+That is the safer split, for three reasons that all point the same way:
+
+- **Backups.** Managed Supabase keeps daily backups on every plan and sells
+  point-in-time recovery as a switch. A bundled Postgres has neither until
+  someone builds it (§2.1), and the volume in question holds the money ledger.
+- **Patching.** Postgres and GoTrue CVEs become the server administrator's job
+  the moment they run on your host. GoTrue is the authentication service.
+- **It is already done.** The database was provisioned onto the client's own
+  Supabase project and verified — 35 migrations, `verify-provision.sql` PASS on
+  every check. Rebuilding it on the VPS discards proven work and re-opens the
+  window in which a provisioning mistake goes unnoticed.
+
+Nothing about the security model changes: RLS lives in the schema, so the
+authorization boundary is identical wherever Postgres runs.
+
+**The steps:**
+
+1. **Keep** the Supabase project, its URL, anon key and service-role key.
+2. **Fill `.env.docker`** from §3 and §3.1. Only the `APPLICATION VARS` block
+   and `TUNNEL_TOKEN` are needed; everything marked `[BUNDLED-DB ONLY]` stays
+   blank. Point `NEXT_PUBLIC_SUPABASE_URL` at the managed project.
+3. **Set `TRUSTED_PROXY=cloudflare`** if the stack sits behind the tunnel. This
+   is the one whose absence fails silently — see §3.1.
+4. **Build on the host first.** The Dockerfile copies a prebuilt
+   `.next/standalone` rather than running `next build`, so
+   `npm ci && npm run build` before `docker compose build`.
+5. **`docker compose up -d`**, then confirm `docker compose ps` lists
+   `settle-cron` and `reconcile-cron`. Without them nobody is paid and no
+   payment divergence is detected.
+6. **Re-point the Stripe webhook** at the new domain and set the **new** signing
    secret. The secret is per endpoint; the old one will not verify.
-8. **Create the first admin** (§5), then confirm `/api/health` reports `ok` and
+7. **Update `APP_URL`** in the GitHub Actions secrets so the error digest polls
+   the new host.
+8. **Confirm `/api/health` reports `ok`**, with `geolocation` not degraded, and
    run the black-box suite against the live URL.
-9. **Arrange backups** (§2.1). Nothing does this for you on a VPS.
+9. **Decommission the Vercel project** only once the VPS has served real traffic
+   and both schedulers have been observed running.
+
+**If you choose the bundled database anyway** (`--profile bundled-db`), add:
+generate a matched `JWT_SECRET` / `ANON_KEY` / `SERVICE_ROLE_KEY` set plus
+`POSTGRES_PASSWORD` and `SECRET_KEY_BASE`; apply the migrations and `npm run
+seed` against it; make `verify-provision.sql` read PASS; ensure Postgres is not
+reachable from the internet and the Studio dashboard is not exposed; and build
+the backup procedure in §2.1 **before** the first real deposit.
 
 The tunnel is worth stating plainly: the stack expects to sit behind
 cloudflared, and `TRUSTED_PROXY=cloudflare` is what makes the app trust that
@@ -471,14 +493,11 @@ platform can take money safely.
       *skipped*
 - [ ] PITR enabled (§2)
 
-**Self-hosted Docker on a VPS** (§7.4):
+**VPS hosting + managed Supabase** — the recommended shape (§7.4):
 
-- [ ] Fresh `JWT_SECRET` with `ANON_KEY` and `SERVICE_ROLE_KEY` signed by it
-- [ ] Fresh `POSTGRES_PASSWORD`, `SECRET_KEY_BASE`, `CRON_SECRET`, `SETUP_SECRET`
-- [ ] `npm run db:migrate` — 35 migrations applied
-- [ ] `npm run seed` — `platform_settings` and teams present
-- [ ] `scripts/verify-provision.sql` reads PASS on every check
+- [ ] Supabase project left in place; URL and both keys copied into `.env.docker`
 - [ ] `.env.docker` complete per §3 and §3.1, **including `TRUSTED_PROXY`**
+- [ ] Everything marked `[BUNDLED-DB ONLY]` left blank
 - [ ] `npm ci && npm run build` on the host before `docker compose build`
 - [ ] `docker compose ps` lists `settle-cron` **and** `reconcile-cron`
 - [ ] Stripe webhook re-pointed at the new domain, new signing secret set
@@ -487,4 +506,7 @@ platform can take money safely.
       **200**, not 503 or 409
 - [ ] `/api/health` reports `ok`, with `geolocation` **not** degraded
 - [ ] `alert.yml` Actions secret and `APP_URL` pointed at the VPS, run manually
-- [ ] Nightly database dump running and **one restore rehearsed** (§2.1)
+- [ ] PITR enabled on the Supabase project (§2)
+- [ ] Vercel project decommissioned only after the VPS has served real traffic
+- [ ] *Bundled database only:* Postgres not internet-reachable, Studio not
+      exposed, nightly dump running and **one restore rehearsed** (§2.1)

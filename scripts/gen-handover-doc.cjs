@@ -480,7 +480,7 @@ c.push(P("Work top to bottom. Everything in §10.1 must be true before the platf
 
 c.push(H2("10.1 What the client must do — the entire technical handover"));
 c.push(P("Nothing in this subsection needs an engineer beyond whoever administers the server. It is credentials and one verification URL."));
-c.push(P("Two deployment shapes are supported and the steps differ slightly. Where an item says HOST, read it as the Vercel project's environment variables, or as the .env.docker file on a self-hosted VPS. The self-hosted path is the one currently being provisioned."));
+c.push(P("The platform is moving from Vercel to a client-operated VPS, which runs the app and both scheduled jobs in containers against the existing managed Supabase database. Where an item below says HOST, read it as the .env.docker file beside docker-compose.yml. The Vercel equivalent is named where it differs, because the Vercel deployment stays live until the VPS has served real traffic."));
 c.push(checklist([
   ["Set the production credentials on the HOST", "SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, PAYPAL_MODE=live plus PayPal client id/secret, CRON_SECRET, and the two Upstash variables. docs/RUNBOOK.md section 3 is the table: where each value comes from and what breaks without it"],
   ["Self-hosted only: set TRUSTED_PROXY=cloudflare", "Load-bearing, and it fails silently. The stack sits behind a Cloudflare tunnel, and this is what tells the app to trust that edge for the visitor's location. Without it every location is unverifiable, so the compliance gate refuses every purchase while the site otherwise looks healthy. Do not set it if the server is ever reachable directly, bypassing the tunnel"],

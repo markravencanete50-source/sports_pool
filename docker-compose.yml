@@ -1,5 +1,23 @@
 name: sportspool
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TWO MODES.
+#
+# DEFAULT — app only, against MANAGED SUPABASE. `docker compose up -d` brings up
+# the Next.js app, the two schedulers and the tunnel, pointed at a hosted
+# Supabase project via NEXT_PUBLIC_SUPABASE_URL / the keys in .env.docker.
+# This is the recommended shape for production: Supabase keeps daily backups
+# and sells point-in-time recovery as a switch, and patches Postgres and the
+# auth service for you. The database here is a money ledger, and those two
+# properties are worth more than the control given up.
+#
+# BUNDLED DATABASE — `docker compose --profile bundled-db up -d` additionally
+# starts Postgres, GoTrue, PostgREST, Realtime and Kong on this host. Useful for
+# local development and air-gapped installs. If you run it in production you own
+# backups (RUNBOOK §2.1), CVE patching for Postgres and GoTrue, and keeping the
+# database off the public internet. Do not choose it casually for real money.
+# ─────────────────────────────────────────────────────────────────────────────
+
 networks:
   default:
     name: sportspool_default
@@ -10,6 +28,7 @@ services:
 
   db:
     container_name: sp-db
+    profiles: ["bundled-db"]
     image: public.ecr.aws/supabase/postgres:17.6.1.084
     restart: unless-stopped
     healthcheck:
@@ -38,6 +57,7 @@ services:
 
   auth:
     container_name: sp-auth
+    profiles: ["bundled-db"]
     image: public.ecr.aws/supabase/gotrue:v2.188.1
     restart: unless-stopped
     depends_on:
@@ -80,6 +100,7 @@ services:
 
   rest:
     container_name: sp-rest
+    profiles: ["bundled-db"]
     image: public.ecr.aws/supabase/postgrest:v14.1
     restart: unless-stopped
     depends_on:
@@ -99,6 +120,7 @@ services:
 
   realtime:
     container_name: sp-realtime
+    profiles: ["bundled-db"]
     image: public.ecr.aws/supabase/realtime:v2.78.18
     restart: unless-stopped
     depends_on:
@@ -134,6 +156,7 @@ services:
 
   kong:
     container_name: sp-kong
+    profiles: ["bundled-db"]
     image: kong/kong:3.9.1
     restart: unless-stopped
     healthcheck:
@@ -175,9 +198,10 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
-      kong:
-        condition: service_healthy
+    # Deliberately no depends_on: in the default mode there is no Kong to wait
+    # for, and Supabase is reached over the network at request time rather than
+    # at container start. Under --profile bundled-db the app simply retries
+    # during the few seconds the database stack takes to become healthy.
     env_file: .env.docker
     environment:
       NODE_ENV: production

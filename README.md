@@ -62,7 +62,7 @@ pays the winners automatically.
 | Validation | Zod |
 | Styling | Tailwind CSS 4 + Radix UI |
 | Rate limiting | Upstash Redis (optional; in-memory fallback) |
-| Scheduling | Vercel Cron + GitHub Actions |
+| Scheduling | Compose sidecars (`settle-cron`, `reconcile-cron`); GitHub Actions for the error digest. `vercel.json` crons remain for the Vercel deployment |
 
 ---
 
@@ -307,8 +307,19 @@ settlement tests and a production build.
 
 ## Self-hosting with Docker
 
-`docker-compose.yml` brings up the app plus a full self-hosted Supabase stack
-(Postgres, GoTrue, PostgREST, Realtime, Kong) and an optional Cloudflare tunnel.
+`docker-compose.yml` runs the app, both scheduled jobs and an optional
+Cloudflare tunnel. It has two modes:
+
+- **Default — app only, against managed Supabase.** `docker compose up -d`.
+  This is the recommended production shape: Supabase keeps daily backups, sells
+  point-in-time recovery as a switch, and patches Postgres and the auth service.
+  The database holds a money ledger, and those properties are worth more than
+  the control given up.
+- **Bundled database.** `docker compose --profile bundled-db up -d` also starts
+  Postgres, GoTrue, PostgREST, Realtime and Kong on the host. Good for local
+  development. In production it means you own backups (`docs/RUNBOOK.md` §2.1),
+  CVE patching for Postgres and GoTrue, and keeping the database off the public
+  internet.
 
 ```bash
 cp .env.docker.example .env.docker   # then fill it in

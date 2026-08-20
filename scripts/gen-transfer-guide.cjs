@@ -155,14 +155,14 @@ c.push(pageBreak());
 
 // ══ 0. STATUS ═══════════════════════════════════════════════════════════════
 c.push(H1("Where this stands right now"));
-c.push(P("The heavy lifting is done. Your project now runs on your own GitHub, Supabase and Vercel accounts, and the parts that are hardest to get right — the database and its security controls — have been rebuilt from scratch on your infrastructure and independently verified."));
+c.push(P("The heavy lifting is done. Your project now runs on your own GitHub and Supabase accounts, and the parts that are hardest to get right — the database and its security controls — have been rebuilt from scratch on your infrastructure and independently verified."));
 c.push(spacer(60));
 c.push(H2("Done and verified"));
 c.push(table([4400, 4600], ["What", "Evidence"], [
   ["Source code on your GitHub", "Full history, every commit intact"],
   ["Database rebuilt on your Supabase", "All 35 build steps applied; 7 of 7 money-guard checks pass"],
   ["Reference data loaded", "All 32 NFL teams and your platform settings"],
-  ["Website live on your Vercel", "Serving from your account, security verified by 14 automated checks"],
+  ["Website live and verified", "Serving from your own account, security verified by 14 automated checks"],
   ["Abuse protection active", "Distributed rate limiting on your own Upstash database"],
 ]));
 c.push(spacer(140));
@@ -185,12 +185,12 @@ c.push(pageBreak());
 // ══ 1. WHAT IS HAPPENING ════════════════════════════════════════════════════
 c.push(H1("1.  What is happening, in plain English"));
 
-c.push(P("Your platform currently runs on three services that are in our name. To hand the project over properly, all three need to be in yours."));
+c.push(P("Your platform runs on three things, and all three need to be in your name for the handover to be complete."));
 c.push(spacer(60));
 c.push(table([2200, 6800], ["Service", "What it does for you"], [
   ["GitHub", "Stores the source code and its full history."],
   ["Supabase", "The database. Holds players, entries, balances and every transaction."],
-  ["Vercel", "The hosting. Runs the website and serves it to your players."],
+  ["Your server (VPS)", "The hosting. Runs the website and serves it to your players."],
 ]));
 
 c.push(spacer(140));
@@ -217,12 +217,12 @@ c.push(P("This is the only section that needs a reply. Please fill in the right-
 c.push(spacer(100));
 
 c.push(H2("A.  Accounts to create"));
-c.push(P("Please create these three free accounts, then invite us to each one. Instructions for inviting are in section 3."));
+c.push(P("Please create these free accounts, then invite us to each one. Instructions for inviting are in section 3."));
 c.push(spacer(60));
 c.push(table([2200, 3900, 2900], ["Account", "What we need", "Your answer"], [
   ["GitHub", "Your GitHub username, or your company organisation name.", BLANK],
   ["Supabase", "The email address you signed up with, and your organisation name.", BLANK],
-  ["Vercel", "The email address you signed up with, and your team name.", BLANK],
+  ["Your server (VPS)", "Who is providing and administering it, and the address we should point the site at. We do not need login access unless you want us to set it up.", BLANK],
 ]));
 
 c.push(spacer(180));
@@ -254,7 +254,7 @@ c.push(spacer(80));
 c.push(table([2000, 7000], ["Service", "How to invite us"], [
   ["GitHub", "You do not need to invite us. When we start the transfer, GitHub will email you a request to accept — simply accept it, and the code becomes yours."],
   ["Supabase", "Open your organisation, go to Team or Members, choose Invite, enter our email address and select Owner or Administrator. You can remove us once the work is finished."],
-  ["Vercel", "Open your team, go to Settings and then Members, choose Invite, enter our email address. Remove us once the site is live and working."],
+  ["Your server (VPS)", "However your server administrator prefers. If they are running the setup themselves, we do not need access at all — we will send them the instructions and answer questions."],
 ]));
 
 c.push(spacer(160));
@@ -269,7 +269,7 @@ c.push(H2("What it will cost you"));
 c.push(table([2200, 2000, 4800], ["Service", "Cost", "Notes"], [
   ["GitHub", "Free", "Private repositories are included at no cost."],
   ["Supabase", "Free to start", "A paid plan is needed for point-in-time backups, which we strongly recommend before you hold real player balances. Around 25 US dollars a month."],
-  ["Vercel", "Free to start", "The free plan is enough today. A paid plan is worth it later for more frequent automated jobs and better support."],
+  ["Your server (VPS)", "Typically 5 to 20 US dollars a month", "Whatever your provider charges. The site and its two scheduled jobs run there."],
   ["Stripe / PayPal", "Per transaction", "No monthly fee; they take a percentage of each payment."],
 ]));
 
