@@ -292,7 +292,7 @@ children.push(table(
 // ---------------- Self-hosted deployment assessment ----------------
 children.push(new Paragraph({ children: [new PageBreak()] }));
 children.push(H1("5. Self-hosted (VPS) deployment assessment"));
-children.push(P("The platform was originally built and audited for Vercel. It is now being deployed to a self-hosted Docker stack on a client-operated VPS, with Cloudflare terminating inbound traffic. That change moves the trust boundary, and several controls turned out to be reading their trust signal from the platform rather than from configuration under our control."));
+children.push(P("The platform was originally built and audited for Vercel. It is now being deployed to a Docker stack on a client-operated VPS, with Cloudflare terminating inbound traffic. The VPS runs the application and its two scheduled jobs; the database remains on managed Supabase, for the reasons in 5.5. That change moves the trust boundary, and several controls turned out to be reading their trust signal from the platform rather than from configuration under our control."));
 children.push(P("This is the failure mode worth naming plainly, because it recurs: a control that asks \"am I on Vercel?\" is not asking \"am I behind a trusted edge?\". On Vercel the two questions have the same answer, so the distinction is invisible until the deployment target changes. Each finding below is an instance of it."));
 
 children.push(H2("5.1 Findings"));
@@ -335,6 +335,13 @@ children.push(P("Two configuration values are load-bearing for correctness on th
 children.push(bullet([T("TRUSTED_PROXY=cloudflare", { bold: true }), T(" must be set while the stack sits behind the Cloudflare tunnel. Without it, location cannot be established and every payment is refused, while the site otherwise appears healthy. It must not be set if the origin is ever reachable directly, since the header would then be attacker-supplied.")]));
 children.push(bullet([T("CRON_SECRET", { bold: true }), T(" must be set, or both scheduled jobs refuse to run. This is deliberate: the endpoints fail closed, so an unset secret means no settlement rather than settlement exposed to anonymous callers. The consequence is that nobody is paid until it is configured.")]));
 children.push(P("The health endpoint reports the state of both, along with payment credentials, database connectivity and the rate-limiting backend. A single authenticated request to it answers whether the deployment is fully provisioned."));
+
+children.push(H2("5.5 Database placement"));
+children.push(P("The container stack is capable of running its own Postgres, authentication service, REST gateway and realtime service alongside the application, and did so by default. Following the deployment documentation as written would therefore have relocated the money ledger onto the VPS. That was assessed and rejected, and the default was changed so the bundled database is now opt-in."));
+children.push(P("The reasoning is a security one rather than a preference. Managed Supabase retains daily backups on every plan and offers point-in-time recovery as a purchasable setting; a Postgres container writing to a directory on the host has neither until an operator builds, schedules and rehearses a backup procedure themselves. The data in question is an append-only financial ledger which the dispute process treats as the record of authority, and which cannot be reconstructed from any other source. A deployment whose backup posture depends on a task nobody has been assigned is not a backup posture."));
+children.push(P("Two lesser factors point the same way. Self-hosting transfers responsibility for Postgres and authentication-service vulnerability patching to whoever administers the server, and the authentication service is a component where a delayed patch is a direct exposure. It also discards a database that was already provisioned and verified against the structural money-guard checks, reopening a window in which a provisioning error passes unnoticed."));
+children.push(P("Nothing in the authorization model depends on this choice. Row Level Security is defined in the schema and enforced by Postgres wherever it runs, so the boundary is identical either way. The decision concerns durability and maintenance burden, not access control."));
+
 
 // ---------------- Recommendations ----------------
 children.push(new Paragraph({ children: [new PageBreak()] }));
