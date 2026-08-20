@@ -114,6 +114,36 @@ policy as non-optional.
   restore, run `/api/cron/reconcile` immediately and work every mismatch it
   files.
 
+### 2.1 Self-hosted (Docker/VPS) backups
+
+Everything above assumes managed Supabase, where backups are a dashboard
+setting. **The compose stack has no such setting.** Postgres runs in the `db`
+container with its data in the `./volumes/db/data` bind mount, and nothing
+backs it up unless you arrange it. There is no free daily snapshot and no PITR
+to buy: on this shape, backup is entirely your responsibility, and the ledger
+it holds is financial record.
+
+At minimum, a nightly logical dump kept off the same machine:
+
+```bash
+docker compose exec -T db pg_dump -U postgres -Fc postgres > sp-$(date +%F).dump
+```
+
+Notes that matter:
+
+- **Off the box.** A dump beside the database is not a backup; it dies with the
+  disk. Ship it to object storage or another host.
+- **Test the restore, not the dump.** `pg_restore` into a scratch container and
+  run the reconciliation invariant query in §5 of the README against it.
+  A backup nobody has restored is a hypothesis.
+- **Retention.** Keep enough history to survive a corruption you notice late.
+  Financial records argue for weeks, not days.
+- **Point-in-time recovery** is possible with continuous WAL archiving, which
+  is a real piece of setup. If the client wants PITR without operating it,
+  managed Supabase is the easier answer and that is a legitimate reason to
+  prefer it over self-hosting the database.
+- Record each rehearsal date here, as above.
+
 ---
 
 ## 3. Provisioning that must happen before launch
@@ -139,7 +169,7 @@ policy as non-optional.
 | `PAYPAL_MODE=live` + production client id/secret | Vercel env | The code fails closed to "not configured", so payouts simply won't send until this is right |
 | `CRON_SECRET` | **Two places.** Vercel env, **and** GitHub → Settings → Secrets and variables → Actions | Vercel: settlement, reconciliation and the alert digest answer 503 until set. GitHub: without the Actions secret `settle-pools.yml` and `alert.yml` **skip and still report success** — a green workflow doing nothing. Both values must match. Verify by running either workflow manually and confirming its trigger step says success, not skipped |
 
-| Unset `SETUP_SECRET` | Vercel env | Hygiene only, no longer a hole. `/api/seed-admin` now refuses with 410 once any admin exists, so a forgotten secret cannot reopen the bootstrap path |
+| Unset `SETUP_SECRET` | Host env | Hygiene only, no longer a hole. `/api/seed-admin` now refuses with 410 once any admin exists, so a forgotten secret cannot reopen the bootstrap path |
 | Function region | Vercel → Settings → Functions → Region → the region nearest the database (`pdx1` for `us-west-2`) | Functions default to `iad1` (Washington). A database on the opposite coast adds a cross-country round trip to every query, and purchase and settlement make several each. Match the region; a healthy database check should read tens of ms, not 200+ |
 | MFA for admin accounts | Enrol at `/account/security` (TOTP) | **Built and enforced** — see §4. Every admin must enrol; payout approval, role changes and platform-fee edits refuse a session without a verified factor |
 | PITR backups | Supabase dashboard | See §2 |
@@ -147,6 +177,28 @@ policy as non-optional.
 **Environment variables only apply to new deployments.** Vercel snapshots them at
 deploy time, so adding one changes nothing until you redeploy. After setting any
 row above: Deployments → latest → ⋯ → Redeploy.
+
+### 3.1 Self-hosted (Docker/VPS) differences
+
+The **Where** column above names Vercel because that is where this project was
+first deployed. On the self-hosted stack every one of those values instead goes
+into `.env.docker` beside `docker-compose.yml`, and the equivalent of a redeploy
+is `docker compose up -d`, which recreates the containers so they re-read the
+file. Restarting only the `nextjs` service is enough for app-level variables;
+anything the Supabase containers read needs the whole stack.
+
+Four items are specific to this shape, and the first is the one that bites:
+
+| Item | Why |
+|---|---|
+| `TRUSTED_PROXY=cloudflare` | **Load-bearing, and it fails silently.** The stack terminates ingress at the cloudflared tunnel, and this variable is what tells the app to trust that edge for the visitor's IP and location. Without it every location is unverifiable, and because the compliance gate correctly fails closed on an unknown location, **every purchase and payout is refused while the site otherwise looks completely healthy.** Nothing appears in the error log, because a compliance refusal is a correct outcome rather than a fault. Do **not** set it if the origin is reachable directly, bypassing the tunnel — the header would then be attacker-supplied. For region-level rules (blocking `US-WA` rather than all of `US`), also enable Cloudflare's "Add visitor location headers" managed transform so `cf-region-code` arrives |
+| The two scheduler services | `settle-cron` and `reconcile-cron` in `docker-compose.yml` replace the `vercel.json` crons. They ship with the stack, but only run if you bring the whole stack up — `docker compose ps` must list both. Without `settle-cron` nobody is paid; without `reconcile-cron` payment-to-ledger divergence goes undetected |
+| `CRON_SECRET` in Actions (still) | The error-digest workflow (`alert.yml`) has no compose equivalent and still polls from GitHub Actions. Point its `APP_URL` secret at the VPS's public URL, or add a third sidecar following the same pattern and disable the workflow so the window is not paged twice |
+| `ALLOW_SANDBOX_PAYOUTS` | Test window only. A self-hosted production build is `NODE_ENV=production` even while running sandbox tests, so the sandbox-payout guard refuses unless this is exactly `true`. **Remove it before taking real money.** `/api/health` reports sandbox-in-production as degraded regardless, so the state stays visible |
+
+`/api/health` covers all four alongside everything in the table above, so the
+same single request answers whether a self-hosted deployment is fully
+provisioned.
 
 ## 4. Known-open items (by design or pending external action)
 
@@ -233,6 +285,12 @@ during.
   whoever it is.
 
 ## 7. Moving the project to the client's accounts
+
+> **Which path applies.** Sections 7.1 to 7.4 describe moving to the client's
+> own **managed Supabase + Vercel** accounts. If the client is deploying the
+> **self-hosted Docker stack on their own VPS** — the current plan — most of it
+> does not apply, because the stack brings its own Postgres, auth and gateway.
+> Read **7.4** instead, then 7.3 for the repository.
 
 Three accounts hold this project: Supabase (database), Vercel (hosting) and
 GitHub (source). They move independently, and the database is the only one with
@@ -359,11 +417,51 @@ explanation of a decision that looks arbitrary otherwise.
 After a transfer, re-add the Actions secrets (`CRON_SECRET`, optionally
 `APP_URL`) — repository secrets do not follow a transfer.
 
-### 7.4 Checklist
+### 7.4 The self-hosted path
+
+On a VPS the compose stack runs Postgres, GoTrue, PostgREST, Realtime and Kong
+itself, so there is no Supabase account to transfer and §7.1's provision-versus-
+transfer question does not arise. What replaces it:
+
+1. **Generate the stack's own secrets.** `JWT_SECRET`, and the `ANON_KEY` and
+   `SERVICE_ROLE_KEY` **signed with it** — these three are a matched set and
+   cannot be copied from the old project. Also `POSTGRES_PASSWORD`,
+   `SECRET_KEY_BASE`, and a fresh `CRON_SECRET` and `SETUP_SECRET`. Nothing
+   secret carries across from the development environment, which is the point.
+2. **Apply the schema**, pointing the Supabase CLI at the stack's database, then
+   `npm run seed` for `platform_settings` and the teams. Skipping the seed does
+   not crash anything; it quietly charges a default platform fee the client
+   never chose.
+3. **Prove the guards survived**, exactly as in §7.1 step 4:
+   `scripts/verify-provision.sql` must read PASS on every check.
+4. **Fill `.env.docker`** from §3 and §3.1, including `TRUSTED_PROXY` and the
+   app's own copies of the Supabase URL and keys.
+5. **Build on the host first.** The Dockerfile copies a prebuilt
+   `.next/standalone`; it does not run `next build`. So `npm ci && npm run build`
+   before `docker compose build`.
+6. **Bring the whole stack up**, not just `nextjs` — the schedulers are services
+   (§3.1), and `docker compose ps` must list `settle-cron` and `reconcile-cron`.
+7. **Re-point the Stripe webhook** at the new domain and set the **new** signing
+   secret. The secret is per endpoint; the old one will not verify.
+8. **Create the first admin** (§5), then confirm `/api/health` reports `ok` and
+   run the black-box suite against the live URL.
+9. **Arrange backups** (§2.1). Nothing does this for you on a VPS.
+
+The tunnel is worth stating plainly: the stack expects to sit behind
+cloudflared, and `TRUSTED_PROXY=cloudflare` is what makes the app trust that
+edge. If the client fronts it with their own nginx or exposes the origin
+directly, that variable must **not** be set, and both rate limiting and
+jurisdiction enforcement will need a different trusted-edge signal before the
+platform can take money safely.
+
+### 7.5 Checklists
+
+**Managed Supabase + Vercel:**
 
 - [ ] New Supabase project created in the client's organisation, `us-east-1`
 - [ ] `npm run db:migrate` — 35 migrations applied
 - [ ] `npm run seed` — `platform_settings` and teams present
+- [ ] `scripts/verify-provision.sql` reads PASS on every check
 - [ ] Vercel project owned by the client, all §3 variables set, redeployed
 - [ ] Stripe webhook re-pointed at the new domain, new signing secret set
 - [ ] GitHub repository transferred, Actions secrets re-added
@@ -371,3 +469,22 @@ After a transfer, re-add the Actions secrets (`CRON_SECRET`, optionally
 - [ ] `/api/health` reports `ok`
 - [ ] Both workflows run manually and their trigger steps report **success**, not
       *skipped*
+- [ ] PITR enabled (§2)
+
+**Self-hosted Docker on a VPS** (§7.4):
+
+- [ ] Fresh `JWT_SECRET` with `ANON_KEY` and `SERVICE_ROLE_KEY` signed by it
+- [ ] Fresh `POSTGRES_PASSWORD`, `SECRET_KEY_BASE`, `CRON_SECRET`, `SETUP_SECRET`
+- [ ] `npm run db:migrate` — 35 migrations applied
+- [ ] `npm run seed` — `platform_settings` and teams present
+- [ ] `scripts/verify-provision.sql` reads PASS on every check
+- [ ] `.env.docker` complete per §3 and §3.1, **including `TRUSTED_PROXY`**
+- [ ] `npm ci && npm run build` on the host before `docker compose build`
+- [ ] `docker compose ps` lists `settle-cron` **and** `reconcile-cron`
+- [ ] Stripe webhook re-pointed at the new domain, new signing secret set
+- [ ] `ALLOW_SANDBOX_PAYOUTS` removed once testing is finished
+- [ ] First admin created and enrolled in two-factor (§5) — bootstrap returned
+      **200**, not 503 or 409
+- [ ] `/api/health` reports `ok`, with `geolocation` **not** degraded
+- [ ] `alert.yml` Actions secret and `APP_URL` pointed at the VPS, run manually
+- [ ] Nightly database dump running and **one restore rehearsed** (§2.1)

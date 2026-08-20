@@ -135,12 +135,12 @@ c.push(
 );
 c.push(table([2500, 6300], ["Field", "Detail"], [
   ["Document", "Project handover — explanation, architecture, and readiness checklist"],
-  ["Date", "13 August 2026 (supersedes the 8 August edition)"],
+  ["Date", "20 August 2026 (supersedes the 13 August edition)"],
   ["Repository", "markravencanete50-source/sports_pool — main @ b279d97"],
   ["Product", "Real-money NFL prediction pools (parlay cards, prize pots, payouts)"],
-  ["Stack", "Next.js 16.3 · TypeScript 6 · Supabase (Postgres + RLS) · Stripe · PayPal · Vercel"],
+  ["Stack", "Next.js 16.3 · TypeScript 6 · Supabase (Postgres + RLS) · Stripe · PayPal · Vercel or self-hosted Docker"],
   ["Scale", "53 API routes · 34 migrations · 26 tables · 63 components · 25 pages · ~25,700 lines TS/TSX"],
-  ["Production", "Deployed and verified live; 13 of 13 end-to-end assertions pass against it"],
+  ["Production", "Deployed and verified live on Vercel; now being retargeted to a self-hosted Docker stack on a client-operated VPS. Both paths are covered in §10.1"],
   ["Status", { text: "Handover-ready. Every remaining item is a production credential, a legal opinion, or a processor approval — none is application code. See §10.", bold: true }],
 ]));
 c.push(new Paragraph({ children: [new PageBreak()] }));
@@ -216,7 +216,7 @@ c.push(table([2400, 6400], ["Component", "Role"], [
   ["Stripe", "Card payments in. The webhook is the authoritative fulfilment trigger."],
   ["PayPal Payouts", "Withdrawals out."],
   ["ESPN scoreboard API", "Fixtures, live status and final scores."],
-  ["Vercel Cron + GitHub Actions", "Scheduled settlement (daily and every 30 minutes respectively)."],
+  ["Scheduled jobs", "Settlement and payment reconciliation. On Vercel: vercel.json crons plus GitHub Actions. Self-hosted: the settle-cron and reconcile-cron compose services. See §10.1."],
   ["Upstash Redis (optional)", "Shared-store rate limiting across serverless instances."],
 ]));
 
@@ -407,7 +407,7 @@ c.push(runs([T("Run everything locally with "), M("npm run check"), T(" before p
 
 c.push(H2("8.1 The end-to-end smoke suite"));
 c.push(runs([T("Separately from CI, "), M("tests/e2e/smoke.test.ts"), T(" runs black-box against a RUNNING deployment — preview, staging or production:")]));
-c.push(runs([M("E2E_BASE_URL=https://sports-pool.vercel.app npm run test:e2e")]));
+c.push(runs([M("E2E_BASE_URL=https://<your-domain> npm run test:e2e")]));
 c.push(P("It asserts the CSP carries a nonce and no unsafe-inline, that framing is denied and sniffing disabled, the health endpoint's two response shapes, anonymous rejection on four money routes, that a cross-origin state change is refused, that the retired card endpoints still answer 410 rather than 404, and that an unknown API path 404s across every HTTP method."));
 c.push(P("Without E2E_BASE_URL every test SKIPS rather than fails, so it can never become a green test that checks nothing. It found a real production defect on its first run: unmatched API paths were answering HTTP 200 with HTML to any non-GET method, so a client posting to a renamed money endpoint saw a success."));
 c.push(note("What this suite is NOT",
@@ -479,11 +479,13 @@ c.push(H1("10. Handover checklist"));
 c.push(P("Work top to bottom. Everything in §10.1 must be true before the platform takes real money."));
 
 c.push(H2("10.1 What the client must do — the entire technical handover"));
-c.push(P("Nothing in this subsection needs an engineer. It is credentials and one verification URL."));
+c.push(P("Nothing in this subsection needs an engineer beyond whoever administers the server. It is credentials and one verification URL."));
+c.push(P("Two deployment shapes are supported and the steps differ slightly. Where an item says HOST, read it as the Vercel project's environment variables, or as the .env.docker file on a self-hosted VPS. The self-hosted path is the one currently being provisioned."));
 c.push(checklist([
-  ["Set the production credentials on Vercel", "SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, PAYPAL_MODE=live plus PayPal client id/secret, CRON_SECRET, and the two Upstash variables. docs/RUNBOOK.md section 3 is the table: where each value comes from and what breaks without it"],
-  ["REDEPLOY after setting them", "Vercel snapshots environment variables into a deployment. Adding one changes nothing until a new build exists. This step is missed constantly and it is the single most likely reason a correctly-set key appears not to work"],
-  ["Mirror CRON_SECRET into GitHub Actions secrets", "Same value, second place. Without it settle-pools.yml and alert.yml SKIP and still report success - a green workflow doing nothing. Verify by running either workflow manually and confirming its trigger step says success, not skipped"],
+  ["Set the production credentials on the HOST", "SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, PAYPAL_MODE=live plus PayPal client id/secret, CRON_SECRET, and the two Upstash variables. docs/RUNBOOK.md section 3 is the table: where each value comes from and what breaks without it"],
+  ["Self-hosted only: set TRUSTED_PROXY=cloudflare", "Load-bearing, and it fails silently. The stack sits behind a Cloudflare tunnel, and this is what tells the app to trust that edge for the visitor's location. Without it every location is unverifiable, so the compliance gate refuses every purchase while the site otherwise looks healthy. Do not set it if the server is ever reachable directly, bypassing the tunnel"],
+  ["RESTART or REDEPLOY after setting them", "Environment variables are read at start-up, not live. On Vercel: Deployments, latest, Redeploy, because variables are snapshotted into a build. Self-hosted: docker compose up -d to recreate the containers. This step is missed constantly and it is the single most likely reason a correctly-set key appears not to work"],
+  ["Confirm both scheduled jobs are running", "Settlement pays pools out and reconciliation catches payment-to-ledger divergence. On Vercel these are the two vercel.json crons plus the GitHub Actions workflows, and CRON_SECRET must be mirrored into GitHub Actions secrets or settle-pools.yml and alert.yml SKIP while still reporting success - a green workflow doing nothing. Self-hosted: the settle-cron and reconcile-cron compose services carry both, and only the error-digest workflow still needs the Actions secret. Verify with docker compose logs settle-cron, or by running a workflow manually and confirming its trigger step says success, not skipped"],
   ["Register the Stripe webhook", "Endpoint /api/stripe/webhook subscribed to checkout.session.completed, then put its signing secret in STRIPE_WEBHOOK_SECRET. Unset is verifiable from outside: the endpoint answers 503 Webhook not configured instead of 400 Missing stripe-signature"],
   ["Check one URL until it says ok", "curl -H \"Authorization: Bearer $CRON_SECRET\" https://<domain>/api/health returns a component-by-component breakdown naming every unset variable and what it costs. This is the readiness test and it needs no engineer to interpret"],
   ["Run the money path once in Stripe test mode", "Purchase, webhook, card issued, picks, settlement, balance credit, PayPal payout - including a deliberately duplicated webhook delivery to prove idempotency under real conditions rather than by inspection. This is the one item that genuinely cannot be closed without live processor credentials"],
@@ -560,7 +562,8 @@ c.push(numbered("If this happens on every purchase, the fee trigger or column de
 c.push(H2("12.4 Incident: settlement is not running"));
 c.push(numbered("A 503 from /api/cron/settle means CRON_SECRET is unset on the host — the endpoint fails closed by design."));
 c.push(numbered("A 401 means the scheduler's secret does not match the host's."));
-c.push(numbered("If the GitHub Actions run skipped with a warning, its CRON_SECRET secret is missing; the daily Vercel cron is still covering settlement in the meantime."));
+c.push(numbered("On Vercel: if the GitHub Actions run skipped with a warning, its CRON_SECRET secret is missing; the daily vercel.json cron still covers settlement in the meantime."));
+c.push(numbered("Self-hosted: check the scheduler container with docker compose logs settle-cron, which prints one line per invocation with its HTTP status. If docker compose ps does not list the service at all, nothing is calling settlement and pools are holding player money — bring the full stack up rather than the app alone."));
 
 /* ─────────────── 13. Quick reference ─────────────── */
 c.push(H1("13. Quick reference"));

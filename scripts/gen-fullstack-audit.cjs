@@ -190,6 +190,14 @@ children.push(kvTable([
   ["Verdict", "Ready for handover, and materially further along than at the start of this cycle. The 13 August verification found the audited remediation had NEVER REACHED PRODUCTION — a sub-daily Vercel cron made Vercel refuse to create deployments, so five commits including the whole compliance layer silently never shipped while CI stayed green. That is fixed and guarded. Since then the developer has provisioned and verified every money-path credential except PayPal: the service-role key that had left settlement and Stripe fulfilment dead for eight days, the Stripe webhook that was rejecting every delivery, distributed rate limiting, and the shared secret that had left settlement's fast cadence and the error pager silently skipping. Three items remain — PayPal credentials, the test-mode money-path run, and a legal opinion on jurisdictions. Nothing outstanding is application code. See Section 13."],
 ], 2600));
 
+children.push(spacer(160));
+children.push(P(
+  "SCOPE NOTE, added 20 August 2026. This part is a dated audit record and has deliberately not been rewritten. Its findings, verifications and remediation dates describe the platform as deployed on Vercel between 12 and 14 August, which is what was audited, and altering that record to match a later deployment would destroy its value as evidence."
+));
+children.push(P(
+  "The platform has since been retargeted to a self-hosted Docker stack on a client-operated VPS. That move was assessed separately and found five further issues, all fixed; they are recorded in Part IV, section 5. Where this part gives an operational instruction in Vercel terms, Part I section 10.1 and the runbook in Part VI carry the equivalent for the self-hosted path. The security findings and their remediation apply to both shapes, because they are properties of the application rather than of the host."
+));
+
 children.push(pageBreak());
 
 // Contents
@@ -304,7 +312,7 @@ children.push(kvTable([
   ["Payments out", "PayPal Payouts, admin-approved."],
   ["Sports data", "ESPN scoreboard feed."],
   ["Throttling", "Upstash Redis via HTTP REST, with an in-memory fallback."],
-  ["Hosting", "Vercel. One cron: /api/cron/settle, daily at 08:00 UTC."],
+  ["Hosting", "Audited on Vercel; since retargeted to a self-hosted Docker stack on a client VPS. See the scope note below."],
 ], 2200));
 
 children.push(spacer(160));
@@ -507,7 +515,7 @@ children.push(P(
 
 children.push(H2("7.2  Scheduled work"));
 children.push(P(
-  "Two Vercel crons run, both authenticated by a bearer secret that fails closed when unset. /api/cron/settle now runs hourly rather than daily — a pool whose last game ends Sunday evening settles within the hour instead of Monday morning, which is the difference between winnings appearing promptly and players reading the delay as a fault. Settlement is idempotent per pool, so the tighter schedule adds no double-pay risk. /api/cron/reconcile runs daily, pulling Stripe and PayPal records against the ledger and filing mismatches in app_errors; it also purges error rows past the 90-day retention window."
+  "Two scheduled jobs run, both authenticated by a bearer secret that fails closed when unset. /api/cron/settle now runs hourly rather than daily — a pool whose last game ends Sunday evening settles within the hour instead of Monday morning, which is the difference between winnings appearing promptly and players reading the delay as a fault. Settlement is idempotent per pool, so the tighter schedule adds no double-pay risk. /api/cron/reconcile runs daily, pulling Stripe and PayPal records against the ledger and filing mismatches in app_errors; it also purges error rows past the 90-day retention window."
 ));
 
 children.push(H2("7.3  Observability"));

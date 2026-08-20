@@ -77,7 +77,7 @@ c.push(
   new Paragraph({ alignment: AlignmentType.CENTER, border: { top: { style: BorderStyle.SINGLE, size: 12, color: NAVY, space: 10 } }, spacing: { before: 200, after: 300 }, children: [new TextRun({ text: "", size: 2 })] }),
 );
 const meta = [
-  ["Stack", "Next.js 15 (App Router, route handlers) · TypeScript · Supabase (Postgres + RLS + Auth) · Stripe · PayPal Payouts · ESPN feed · Vercel Cron"],
+  ["Stack", "Next.js 16 (App Router, route handlers) · TypeScript · Supabase (Postgres + RLS + Auth) · Stripe · PayPal Payouts · ESPN feed · scheduled jobs (Vercel Cron, or compose services when self-hosted)"],
   ["Runtime model", "Server-side route handlers under src/app/api; two Supabase clients (session/anon vs service-role); DB is the authorization boundary"],
   ["Audience", "Engineers, reviewers, security"],
   ["Companion docs", "Backend_Security_Audit_Report.docx · Backend_Explained_Simply.docx"],
@@ -92,7 +92,7 @@ c.push(new Paragraph({ children: [new PageBreak()] }));
 
 // 1 Architecture
 c.push(H1("1. Architecture overview"));
-c.push(P("The backend is a set of Next.js App Router route handlers (src/app/api/**/route.ts) executing server-side. There is no separate API server; each handler is a serverless function. State lives in Supabase Postgres; authentication is Supabase Auth (JWT in HTTP-only cookies). External integrations are Stripe (card acquiring), PayPal Payouts (withdrawals), the ESPN scoreboard feed (scores), and Vercel Cron (scheduled settlement)."));
+c.push(P("The backend is a set of Next.js App Router route handlers (src/app/api/**/route.ts) executing server-side. There is no separate API server; each handler is a serverless function. State lives in Supabase Postgres; authentication is Supabase Auth (JWT in HTTP-only cookies). External integrations are Stripe (card acquiring), PayPal Payouts (withdrawals), and the ESPN scoreboard feed (scores). Settlement and reconciliation are driven by whatever calls their endpoints on a schedule: Vercel Cron on Vercel, or the settle-cron and reconcile-cron services when self-hosted. The route handlers are identical either way; only the caller differs."));
 c.push(H2("1.1 The two Supabase clients"));
 c.push(P("Every data access uses one of two clients, and choosing correctly is the backbone of the access-control model:"));
 c.push(table([2600, 6200],
@@ -221,7 +221,7 @@ c.push(...code([
   "  insert parlay_card + pool_transaction (fee derived by DB trigger)",
 ]));
 
-c.push(H2("4.2 Settlement (Vercel Cron)"));
+c.push(H2("4.2 Settlement (scheduled)"));
 c.push(...code([
   "GET /api/cron/settle    (requireSecret CRON_SECRET, fail-closed)",
   "runSettlement():",
