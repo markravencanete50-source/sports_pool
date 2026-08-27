@@ -18,14 +18,28 @@ name: Error alert digest
 # settle-pools.yml already does for settlement, and vercel.json keeps only
 # day-granularity entries. scripts/check-vercel-crons.ts enforces that in CI.
 #
-# SETUP — add this under Settings > Secrets and variables > Actions:
+# SETUP — add BOTH of these under Settings > Secrets and variables > Actions:
 #   CRON_SECRET  same value as the CRON_SECRET env var on Vercel
+#   APP_URL      the production origin to watch, with no trailing slash,
+#                e.g. https://www.playsportspool.com
+#
+# APP_URL may be a repository *variable* instead of a secret — it is a public
+# URL, not a credential — and the variable wins if both are set.
+#
+# APP_URL IS REQUIRED, AND DELIBERATELY HAS NO DEFAULT. It used to fall back to
+# a hard-coded 'https://sports-pool.vercel.app'. This repository is linked to
+# TWO Vercel projects in two different accounts, each with its own Supabase
+# project and therefore its own app_errors table, so that hard-coded host named
+# one specific account's deployment rather than "production". An alarm pointed
+# at the wrong deployment is the worst possible state for an alarm: it reports
+# "no errors in the window" forever while the environment it was meant to watch
+# burns. Requiring the value turns that into a visible skip.
 #
 # And on the Vercel project, to get the digest delivered rather than only
 # logged:
 #   ALERT_WEBHOOK_URL  Slack/Discord/Mattermost-compatible incoming webhook
 #
-# UNCONFIGURED vs BROKEN. A missing Actions secret SKIPS with a warning rather
+# UNCONFIGURED vs BROKEN. Incomplete configuration SKIPS with a warning rather
 # than failing, because a scheduled job that fails every run trains everyone to
 # ignore its email — the exact opposite of what an alarm is for. A genuine
 # failure to reach the endpoint still fails loudly.
@@ -58,25 +72,40 @@ jobs:
         id: cfg
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || secrets.APP_URL }}
         run: |
           set -euo pipefail
 
+          missing=""
           if [ -z "${CRON_SECRET:-}" ]; then
+            missing="CRON_SECRET"
+          fi
+          if [ -z "${APP_URL:-}" ]; then
+            missing="${missing:+${missing} and }APP_URL"
+          fi
+
+          if [ -n "$missing" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::CRON_SECRET is not set as an Actions secret, so error alerting is INACTIVE. Errors are still recorded in app_errors and in the Vercel log stream, but nothing is watching them. Add CRON_SECRET under Settings > Secrets and variables > Actions, using the same value as CRON_SECRET on the Vercel project."
-            echo "### Error alerting skipped — CRON_SECRET not configured" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::${missing} is not configured, so error alerting is INACTIVE. Errors are still recorded in app_errors and in the Vercel log stream, but nothing is watching them. Set CRON_SECRET (same value as on the Vercel project) and APP_URL (the production origin to watch) under Settings > Secrets and variables > Actions."
+            echo "### Error alerting skipped — ${missing} not configured" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Errors are still captured in \`app_errors\`, but no digest is being sent." >> "$GITHUB_STEP_SUMMARY"
-            echo "Add \`CRON_SECRET\` under **Settings > Secrets and variables > Actions** to enable it." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "Set \`CRON_SECRET\` and \`APP_URL\` under **Settings > Secrets and variables > Actions** to enable it." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+
+          # Name the deployment being watched. With two Vercel projects live on
+          # this repo, "no errors" is only meaningful next to the host it was
+          # asked about.
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "Watching ${APP_URL}"
+          echo "### Watching \`${APP_URL}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Poll error digest
         if: steps.cfg.outputs.configured == 'true'
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_URL: ${{ secrets.APP_URL || 'https://sports-pool.vercel.app' }}
+          APP_URL: ${{ vars.APP_URL || secrets.APP_URL }}
         run: |
           set -euo pipefail
 

@@ -12,11 +12,29 @@ name: Settle pools
 # idx_user_transactions_winning_per_pool, so a pool cannot be paid twice no
 # matter how many schedulers call it.
 #
-# SETUP — add this under Settings > Secrets and variables > Actions:
+# SETUP — add BOTH of these under Settings > Secrets and variables > Actions:
 #   CRON_SECRET  same value as the CRON_SECRET env var on Vercel
+#   APP_URL      the production origin this should settle, with no trailing
+#                slash, e.g. https://www.playsportspool.com
 #
-# APP_URL defaults to the production domain below and only needs an Actions
-# secret to override it; it is a public URL, not a credential.
+# APP_URL may be a repository *variable* instead of a secret — it is a public
+# URL, not a credential — and the variable wins if both are set.
+#
+# APP_URL IS REQUIRED, AND DELIBERATELY HAS NO DEFAULT.
+#
+# It used to fall back to a hard-coded 'https://sports-pool.vercel.app'. A
+# hard-coded host is safe only while exactly one deployment of this repository
+# exists, and that stopped being true: the repo is linked to TWO Vercel projects
+# in two different accounts, each backed by its OWN Supabase project.
+#
+# So the fallback did not name "production". It named one specific account's
+# deployment. Forgetting the secret after a handover therefore would not stop
+# settlement — it would keep settling against the wrong deployment and the
+# wrong database, green the whole time, while the real production got nothing.
+# A workflow that lies about which environment it acted on is worse than one
+# that does not run.
+#
+# Requiring the value turns that silent mis-target into a visible skip.
 #
 # UNCONFIGURED vs BROKEN — these are deliberately different outcomes.
 #
@@ -25,11 +43,11 @@ name: Settle pools
 # emails, which trains everyone to ignore this workflow's email — the opposite
 # of what a money-moving alarm should do.
 #
-# The distinction that matters: a missing Actions secret does NOT mean
-# settlement has stopped. The Vercel Cron in vercel.json still settles daily at
-# 08:00 UTC, and /api/cron/settle fails closed on its own. It only means the
-# faster cadence is inactive. So an unconfigured secret now SKIPS with a warning
-# annotation, while a genuine settlement failure still fails the run loudly.
+# The distinction that matters: missing configuration does NOT mean settlement
+# has stopped. The Vercel Cron in vercel.json still settles daily at 08:00 UTC,
+# and /api/cron/settle fails closed on its own. It only means the faster cadence
+# is inactive. So incomplete configuration SKIPS with a warning annotation,
+# while a genuine settlement failure still fails the run loudly.
 
 on:
   schedule:
@@ -57,25 +75,40 @@ jobs:
         id: cfg
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || secrets.APP_URL }}
         run: |
           set -euo pipefail
 
+          missing=""
           if [ -z "${CRON_SECRET:-}" ]; then
+            missing="CRON_SECRET"
+          fi
+          if [ -z "${APP_URL:-}" ]; then
+            missing="${missing:+${missing} and }APP_URL"
+          fi
+
+          if [ -n "$missing" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::CRON_SECRET is not set as an Actions secret, so the 30-minute settlement cadence is INACTIVE. Settlement still runs once daily via Vercel Cron (vercel.json, 08:00 UTC). To enable the faster cadence add CRON_SECRET under Settings > Secrets and variables > Actions, using the same value as CRON_SECRET on the Vercel project."
-            echo "### Settlement skipped — CRON_SECRET not configured" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::${missing} is not configured, so the 30-minute settlement cadence is INACTIVE. Settlement still runs once daily via Vercel Cron (vercel.json, 08:00 UTC). To enable the faster cadence, set CRON_SECRET (same value as on the Vercel project) and APP_URL (the production origin to settle) under Settings > Secrets and variables > Actions."
+            echo "### Settlement skipped — ${missing} not configured" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "The 30-minute cadence is inactive. Vercel Cron still settles daily at 08:00 UTC." >> "$GITHUB_STEP_SUMMARY"
-            echo "Add \`CRON_SECRET\` under **Settings > Secrets and variables > Actions** to enable it." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "Set \`CRON_SECRET\` and \`APP_URL\` under **Settings > Secrets and variables > Actions** to enable it." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+
+          # Say WHICH deployment is about to be settled. With two Vercel
+          # projects live on this repo, "settlement ran" is not a useful log
+          # line unless it names the host it ran against.
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "Settling against ${APP_URL}"
+          echo "### Settling \`${APP_URL}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Trigger settlement
         if: steps.cfg.outputs.configured == 'true'
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_URL: ${{ secrets.APP_URL || 'https://sports-pool.vercel.app' }}
+          APP_URL: ${{ vars.APP_URL || secrets.APP_URL }}
         run: |
           set -euo pipefail
 

@@ -70,8 +70,17 @@ jobs:
       #
       # The production alias is what users actually resolve and is public, so
       # it is what deserves verifying. Same convention as settle-pools.yml: a
-      # public URL with an optional secret override, not a credential.
-      E2E_BASE_URL: ${{ inputs.url || secrets.APP_URL || 'https://sports-pool.vercel.app' }}
+      # public URL, configured rather than hard-coded, and readable from a
+      # repository variable as well as a secret because it is not a credential.
+      #
+      # NO HARD-CODED FALLBACK. It used to end in 'https://sports-pool.vercel.app'.
+      # This repository is linked to TWO Vercel projects in two different
+      # accounts, so a deployment_status event from either one would have been
+      # verified against that single hard-coded host — passing on a deployment
+      # that was never the one under test, and reporting a green post-deploy
+      # check for a release nobody had actually looked at. Unset is caught by
+      # the guard step below and fails loudly instead.
+      E2E_BASE_URL: ${{ inputs.url || vars.APP_URL || secrets.APP_URL }}
 
     steps:
       - uses: actions/checkout@v7
@@ -86,7 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${E2E_BASE_URL:-}" ]; then
-            echo "::error::No deployment URL available. Both suites SKIP without one, so this would be a green run that verified nothing."
+            echo "::error::No deployment URL available. Both suites SKIP without one, so this would be a green run that verified nothing. Set APP_URL (the production origin, e.g. https://www.playsportspool.com) under Settings > Secrets and variables > Actions, or pass a URL to the manual trigger."
             exit 1
           fi
           echo "Verifying ${E2E_BASE_URL}"
