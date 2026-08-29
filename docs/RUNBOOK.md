@@ -427,11 +427,101 @@ Whichever route, after the move:
 
 - Re-enter every variable in §3 in the new project.
 - **Redeploy.** Environment variables are snapshotted into a deployment.
-- Update `APP_URL` in the GitHub Actions secrets if the domain changes;
-  `settle-pools.yml` and `alert.yml` default to the old production URL.
+- Set `APP_URL` in the GitHub Actions secrets (or repository variables) to the
+  new origin. It is **required** — `settle-pools.yml`, `alert.yml` and
+  `post-deploy.yml` have no default host and skip or fail loudly without it.
+  See §7.2.3.
 - Re-point the Stripe webhook endpoint at the new domain and put the **new**
   signing secret into `STRIPE_WEBHOOK_SECRET`. The secret is per endpoint; the
   old one will not verify.
+
+#### 7.2.1 One repository, two Vercel projects
+
+**Symptom:** a push to `main` deploys to the old Vercel account instead of (or
+as well as) the client's.
+
+**Why.** The Git connection is a property of the *Vercel project*, not of this
+repository. Nothing committed here decides it — not `vercel.json`, and not a
+`.vercel/` directory (there is none, and there should not be; it is a local CLI
+link, listed in `.gitignore`). Every Vercel project that has this repository
+connected builds every push, in parallel, in whichever account owns it. Two
+connected projects means two deployments per push, into two accounts, each
+against its own Supabase project.
+
+**Fix.** In the account being retired: **Vercel dashboard → the project →
+Settings → Git → Disconnect**. Pushes stop building there immediately. The
+project, its environment variables, its domains and its existing deployments all
+survive, so it can still be redeployed by hand and rolled back to.
+
+**Sequence matters.** Disconnect only *after* the client's project has built
+this repository successfully and served real traffic. Disconnecting first leaves
+no automatic deployment target at all.
+
+> **Do not** reach for `vercel.json`'s `git.deploymentEnabled` to solve this.
+> Both projects read the same `vercel.json` from the same branch, so it would
+> switch off the client's deploys too.
+
+#### 7.2.2 "This domain is linked to another Vercel account"
+
+A domain can be **claimed by only one Vercel account at a time**. Adding it to a
+project in a second account produces:
+
+> This domain is linked to another Vercel account. To use it with this project,
+> add a TXT record at `_vercel.playsportspool.com` to verify ownership.
+
+This is an ownership check, not a DNS-routing problem. The `A`/`CNAME` side was
+confirmed already correct — `playsportspool.com` and `www.playsportspool.com`
+both resolve to Vercel's edge. Nothing about the CNAME needs changing;
+verification is the only blocker.
+
+**Preferred route — release the claim.** In the account that currently holds the
+domain, remove `playsportspool.com` *and* `www.playsportspool.com` (project
+Settings → Domains, and the account-level Domains tab). Adding them in the
+client's account then verifies with no TXT record at all. This is the correct
+end state: one domain, one account, nothing to keep in sync.
+
+**Fallback route — prove ownership by TXT.** Use this only if the old account is
+temporarily unreachable.
+
+The gotcha that blocks most attempts: **the apex and the `www` host verify
+separately, produce two different tokens, and both records live at the same
+name `_vercel`.**
+
+```
+_vercel   TXT   vc-domain-verify=playsportspool.com,3ebbd19c85b98b5426af
+_vercel   TXT   vc-domain-verify=www.playsportspool.com,4003c4faa98e11c7d86e
+```
+
+Those are **two separate TXT records sharing one name**, not one record to be
+overwritten. DNS allows any number of TXT records on the same name. If the DNS
+provider's UI looks like it permits only one value per host, add a *second*
+record with the same host `_vercel` rather than editing the first — replacing
+it verifies one hostname and un-verifies the other, which is the state that
+loops indefinitely.
+
+Second gotcha: `_vercel` is a name **relative to the zone**. Some providers want
+`_vercel`, others want the fully-qualified `_vercel.playsportspool.com`.
+Entering the fully-qualified form where a relative name is expected silently
+creates `_vercel.playsportspool.com.playsportspool.com`, which never verifies
+and gives no error.
+
+Verification is not instant. Press **Refresh** on each domain row after the
+records propagate. Once both read Valid the TXT records can be deleted — they
+prove ownership once, they do not maintain it.
+
+#### 7.2.3 After the domain lands
+
+- **`NEXT_PUBLIC_APP_URL`** on the client's Vercel project must be
+  `https://www.playsportspool.com` — the canonical host, since the apex
+  308-redirects to `www`. It is not cosmetic: `/api/stripe/create-checkout-session`
+  throws without it, and the signup confirmation link, `sitemap.ts` and
+  `robots.ts` all emit whatever it says. **Redeploy after setting it**, because
+  environment variables are snapshotted into a deployment.
+- **`APP_URL`** in Actions secrets or repository variables, same origin. All
+  three scheduled workflows now require it (§7.2 bullet above).
+- **Stripe webhook** re-pointed at the new domain, with the **new** signing
+  secret in `STRIPE_WEBHOOK_SECRET`. The secret is per endpoint.
+- Confirm `/api/health` reports `ok` on the new origin.
 
 ### 7.3 Source
 
@@ -510,6 +600,12 @@ platform can take money safely.
 - [ ] `npm run seed` — `platform_settings` and teams present
 - [ ] `scripts/verify-provision.sql` reads PASS on every check
 - [ ] Vercel project owned by the client, all §3 variables set, redeployed
+- [ ] `NEXT_PUBLIC_APP_URL` set to the canonical origin, then redeployed (§7.2.3)
+- [ ] Domain verified in the client's account, and released from the old one so
+      it is claimed in exactly one place (§7.2.2)
+- [ ] Old Vercel project's Git connection **disconnected**, so one push no longer
+      deploys to two accounts (§7.2.1)
+- [ ] `APP_URL` set in Actions secrets/variables — required, no default (§7.2.3)
 - [ ] Stripe webhook re-pointed at the new domain, new signing secret set
 - [ ] GitHub repository transferred, Actions secrets re-added
 - [ ] First admin created and enrolled in two-factor (§5)
