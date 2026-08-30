@@ -75,10 +75,24 @@ Two shapes:
 
 ### 1.5 Settlement cron did not run
 
-Vercel → Project → Cron Jobs shows the last invocations of
-`/api/cron/settle` (hourly). A 503 means `CRON_SECRET` is unset; a 401 means
-it does not match. Settlement is idempotent per pool, so once it runs again
-it catches up on everything pending.
+**Vercel Cron is the primary scheduler.** Vercel → Project → Cron Jobs shows
+the last invocations of `/api/cron/settle`, which `vercel.json` schedules every
+30 minutes. A 503 means `CRON_SECRET` is unset; a 401 means it does not match.
+Settlement is idempotent per pool, so once it runs again it catches up on
+everything pending.
+
+`settle-pools.yml` in GitHub Actions calls the same endpoint and is a backstop
+only. **Do not read its schedule as a guarantee.** It declares every 30 minutes;
+measured over twelve consecutive runs the real gaps were 2.2h to 12.5h (mean
+6.6h, ~3.6 runs/day) because GitHub throttles scheduled workflows. It also skips
+entirely unless both `CRON_SECRET` and `APP_URL` are configured — a skipped run
+still reports green, so check the *step* conclusion, not the run's.
+
+That sub-daily `vercel.json` schedule is legal only because production is on
+Vercel **Pro**. On Hobby, Vercel refuses the deployment outright and the commit
+silently never builds; `scripts/check-vercel-crons.ts` guards this, and
+`REQUIRE_DAILY_CRONS=1` restores the strict day-granularity rule if the target
+ever moves back to a Hobby project.
 
 **Self-hosted (Docker/VPS):** the schedulers are the `settle-cron` and
 `reconcile-cron` compose services. `docker compose logs settle-cron` shows one

@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/settle",
-      "schedule": "0 8 * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/reconcile",

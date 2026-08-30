@@ -1,11 +1,11 @@
 /**
  * Vercel cron guard.
  *
- * WHY THIS EXISTS. This project is on the Vercel Hobby plan, where cron
- * schedules are day-granularity. A sub-daily expression is not clamped or
- * ignored — Vercel REFUSES TO CREATE THE DEPLOYMENT. There is no failed build
- * to open, no error in the deployment list, nothing: the commit simply never
- * deploys, and production keeps serving the previous release.
+ * WHY THIS EXISTS. On the Vercel Hobby plan cron schedules are
+ * day-granularity. A sub-daily expression is not clamped or ignored — Vercel
+ * REFUSES TO CREATE THE DEPLOYMENT. There is no failed build to open, no error
+ * in the deployment list, nothing: the commit simply never deploys, and
+ * production keeps serving the previous release.
  *
  * This is not hypothetical, and the repository had already learned it once.
  * 662c420 chose a once-daily schedule on purpose and wrote down why:
@@ -21,13 +21,27 @@
  * layer — were never deployed, while CI stayed green the whole time. A gate that
  * is green while production is stale is worse than no gate.
  *
- * So the rule is enforced here rather than remembered: every schedule in
- * vercel.json must run at most once per day. The frequent cadence belongs in
- * .github/workflows/, which is free and has no granularity limit.
+ * So the rule was enforced here rather than remembered: while the deployment
+ * target was Hobby, every schedule in vercel.json had to run at most once per
+ * day, and the frequent cadence lived in .github/workflows/.
  *
- * WHEN THIS PROJECT MOVES TO PRO. Sub-daily schedules become legal. Set
- * ALLOW_SUBDAILY_CRONS=1 (or delete this check) and retire the Actions
- * workflows — in that order, not before.
+ * THAT MOVE HAS NOW HAPPENED. Production deploys to the `sports-pool` project
+ * in the StackablyLTV team, which is on PRO, where sub-daily schedules are
+ * legal. So the day-granularity rule is no longer the default.
+ *
+ * It is inverted rather than deleted, because the hazard still exists for any
+ * Hobby target: set REQUIRE_DAILY_CRONS=1 to restore the strict check. The
+ * every-5-fields, path and unknown-top-level-key checks below stay
+ * unconditional — those refuse a deployment on every plan.
+ *
+ * WHY THE CADENCE MOVED HERE FROM GITHUB ACTIONS. settle-pools.yml declared
+ * an every-30-minutes schedule and never delivered it. Measured across the
+ * last twelve scheduled runs, the real gaps were 2.2h to 12.5h, mean 6.6h —
+ * about 3.6 runs a day against the 48 the schedule asks for. GitHub throttles scheduled
+ * workflows and makes no delivery guarantee, which is fine for a catch-up job
+ * and useless for "a pool that finishes at 4pm should pay out in minutes".
+ * Vercel Cron on Pro actually honours the schedule, so it is now the primary
+ * mechanism and the workflow is a backstop.
  *
  * Offline and instant, so it can block a merge.
  */
@@ -87,7 +101,10 @@ for (const key of Object.keys(config)) {
 }
 
 const crons = Array.isArray(config.crons) ? (config.crons as Cron[]) : [];
-const allowSubDaily = process.env.ALLOW_SUBDAILY_CRONS === "1";
+
+// Default: sub-daily allowed, because production is on Pro. Opt back in to the
+// strict rule when the deployment target is a Hobby project.
+const requireDaily = process.env.REQUIRE_DAILY_CRONS === "1";
 
 for (const [i, cron] of crons.entries()) {
   const where = typeof cron?.path === "string" ? cron.path : `crons[${i}]`;
@@ -110,7 +127,7 @@ for (const [i, cron] of crons.entries()) {
     continue;
   }
 
-  if (allowSubDaily) continue;
+  if (!requireDaily) continue;
 
   const [minute, hour] = fields;
 
@@ -120,20 +137,20 @@ for (const [i, cron] of crons.entries()) {
 
   if (multiValued(minute) || multiValued(hour)) {
     problems.push(
-      `${where}: schedule "${schedule}" runs more than once a day. On the Hobby ` +
-        `plan Vercel REFUSES THE DEPLOYMENT for a sub-daily schedule — the commit ` +
-        `never builds and production silently keeps serving the old release.\n` +
-        `    Use a fixed minute and hour (e.g. "0 8 * * *") and put the frequent ` +
-        `cadence in .github/workflows/ instead.\n` +
-        `    On Pro this restriction lifts: set ALLOW_SUBDAILY_CRONS=1.`
+      `${where}: schedule "${schedule}" runs more than once a day, and ` +
+        `REQUIRE_DAILY_CRONS=1 asks for a Hobby-safe config. On Hobby, Vercel ` +
+        `REFUSES THE DEPLOYMENT for a sub-daily schedule — the commit never ` +
+        `builds and production silently keeps serving the old release.\n` +
+        `    Use a fixed minute and hour (e.g. "0 8 * * *"), or drop ` +
+        `REQUIRE_DAILY_CRONS if this really is deploying to Pro.`
     );
   }
 }
 
 if (problems.length === 0) {
   console.log(
-    `vercel cron check passed — ${crons.length} cron(s), all day-granularity` +
-      `${allowSubDaily ? " (sub-daily allowed)" : ""}`
+    `vercel cron check passed — ${crons.length} cron(s)` +
+      `${requireDaily ? ", all day-granularity" : " (sub-daily allowed: Pro)"}`
   );
   process.exit(0);
 }

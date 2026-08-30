@@ -3,9 +3,22 @@ name: Settle pools
 # Pool settlement needs to run often on game days — a pool that finishes at 4pm
 # should pay out in minutes, not the next morning.
 #
-# Vercel Cron on the Hobby plan is day-granularity only; sub-daily schedules
-# require Pro. vercel.json therefore carries a once-daily schedule that is valid
-# on any plan, and this workflow supplies the frequent cadence for free.
+# THIS WORKFLOW IS NOW A BACKSTOP, NOT THE PRIMARY SCHEDULER.
+#
+# It used to supply the frequent cadence, because Vercel Cron on the Hobby plan
+# is day-granularity only. Production now deploys to the StackablyLTV team on
+# PRO, so vercel.json carries the real `*/30 * * * *` settle schedule and Vercel
+# runs it.
+#
+# The move happened because this workflow never actually delivered `*/30`.
+# Measured across the last twelve scheduled runs, the gaps were 2.2h to 12.5h,
+# mean 6.6h — roughly 3.6 runs a day against the 48 the schedule asks for.
+# GitHub throttles scheduled workflows and guarantees no delivery time, which
+# is fine for a catch-up job and useless for paying out minutes after a game.
+#
+# It is kept rather than deleted because /api/cron/settle is idempotent, so a
+# second scheduler costs nothing and covers the case where a deployment breaks
+# Vercel's crons. Do not rely on its timing.
 #
 # Running both is safe: /api/cron/settle is idempotent by design. Balance
 # credits are guarded by a pre-check on user_transactions plus the UNIQUE index
