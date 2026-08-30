@@ -55,7 +55,15 @@ test.describe("mobile layout", () => {
 
   for (const path of PAGES) {
     test(`${path} does not scroll sideways`, async ({ page }) => {
-      await page.goto(path, { waitUntil: "networkidle" });
+      // NOT networkidle. This app holds a Supabase realtime connection open, so
+      // the network never goes idle and every navigation times out — the same
+      // trap public-surface.spec.ts documents. It was missed here, and these
+      // three tests then passed locally (where SUPABASE_URL is a placeholder
+      // that never connects) while failing every post-deploy run against
+      // production. "load" rather than "domcontentloaded" because these are
+      // LAYOUT assertions: fonts and images must have settled or the measured
+      // widths are wrong.
+      await page.goto(path, { waitUntil: "load" });
       // Entrance animations transform elements off-canvas mid-flight; measuring
       // during one reports overflow that no user ever sees.
       await page.waitForTimeout(1000);
@@ -100,7 +108,8 @@ test.describe("mobile layout", () => {
     const failures: string[] = [];
 
     for (const path of PAGES) {
-      await page.goto(path, { waitUntil: "networkidle" });
+      // "load", not networkidle — see the note above.
+      await page.goto(path, { waitUntil: "load" });
       await page.waitForTimeout(600);
 
       const small = await page.evaluate((min) => {
@@ -154,7 +163,8 @@ test.describe("mobile layout", () => {
     const failures: string[] = [];
 
     for (const path of PAGES) {
-      await page.goto(path, { waitUntil: "networkidle" });
+      // "load", not networkidle — see the note above.
+      await page.goto(path, { waitUntil: "load" });
       await page.waitForTimeout(400);
 
       const small = await page.evaluate((min) => {
