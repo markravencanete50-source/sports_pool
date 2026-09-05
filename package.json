@@ -99,10 +99,10 @@
     "docx": "^9.5.1",
     "dotenv": "^17.4.2",
     "eslint": "^9.39.5",
-    "eslint-config-next": "16.3.0",
-    "supabase": "^2.113.0",
+    "eslint-config-next": "16.3.4",
+    "supabase": "^2.116.0",
     "tailwindcss": "^4",
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3"
   },
   "overrides": {
