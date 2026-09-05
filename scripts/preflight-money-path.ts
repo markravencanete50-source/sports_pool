@@ -63,7 +63,7 @@ async function main() {
 
     try {
       const { default: Stripe } = await import("stripe");
-      const stripe = new Stripe(stripeKey, { apiVersion: "2026-07-29.dahlia" });
+      const stripe = new Stripe(stripeKey, { apiVersion: "2026-08-26.dahlia" });
       // Cheapest authenticated call that proves the key is live and usable.
       const balance = await stripe.balance.retrieve();
       add(

@@ -58,12 +58,8 @@ updates:
           - "@supabase/*"
       development:
         dependency-type: "development"
-    labels:
-      - "dependencies"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
-    labels:
-      - "dependencies"

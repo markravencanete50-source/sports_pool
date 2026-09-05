@@ -16,7 +16,7 @@ export function getStripe(): Stripe {
       // Must match the version the installed SDK major is built against —
       // stripe v22 types this as a literal, so a stale pin fails typecheck
       // rather than drifting silently. Moving the SDK major moves this line.
-      apiVersion: "2026-07-29.dahlia",
+      apiVersion: "2026-08-26.dahlia",
       typescript: true,
     });
   }
