@@ -84,6 +84,24 @@ export async function requireAdmin(
     );
   }
 
+  /*
+   * SESSION STEP-UP FOR EVERY ADMIN ROUTE. The console itself is only reachable
+   * at aal2 (src/proxy.ts), and a direct API call must not be the way around
+   * that: if the caller has a verified authenticator, this session must have
+   * used it. An admin with NO factor yet is still allowed onto read routes so
+   * they can reach enrolment; requireMfa below closes the money routes to them.
+   */
+  const { data: aalCheck } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aalCheck?.nextLevel === "aal2" && aalCheck?.currentLevel !== "aal2") {
+    return NextResponse.json(
+      {
+        error: "This session needs two-factor verification. Re-authenticate with your authenticator app.",
+        code: "mfa_challenge_required",
+      },
+      { status: 403 }
+    );
+  }
+
   if (options.permission && !hasPermission(adminRole, options.permission)) {
     return NextResponse.json(
       {

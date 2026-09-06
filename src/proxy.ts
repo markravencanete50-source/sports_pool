@@ -188,6 +188,29 @@ export async function proxy(request: NextRequest) {
         })
       );
     }
+
+    /*
+     * STEP-UP. A session cookie is not enough to open the console: the person
+     * at the keyboard must have presented their authenticator in THIS session
+     * (aal2). A lingering login on a shared or stolen browser therefore stops
+     * at a code prompt, and an admin with no authenticator is sent to enrol —
+     * the same rollout-safe order the money APIs use (requireAdmin), applied
+     * one layer earlier so the whole surface is behind it, not only the money.
+     */
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const hasVerifiedFactor = aal?.nextLevel === "aal2";
+    const atAal2 = aal?.currentLevel === "aal2";
+    if (!hasVerifiedFactor) {
+      const enrol = new URL("/account/security", request.url);
+      enrol.searchParams.set("reason", "admin_mfa");
+      enrol.searchParams.set("next", pathname);
+      return withCsp(NextResponse.redirect(enrol));
+    }
+    if (!atAal2) {
+      const challenge = new URL("/mfa", request.url);
+      challenge.searchParams.set("next", pathname);
+      return withCsp(NextResponse.redirect(challenge));
+    }
   }
 
   return withCsp(supabaseResponse);

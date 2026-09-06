@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import Layout from "@/components/layout";
 import { toast } from "sonner";
+import { DASHBOARD_PATH, safeInternalPath } from "@/lib/routes";
 
 /*
  * Two-factor enrolment.
@@ -26,6 +29,8 @@ interface Factor {
 }
 
 export default function SecurityPage() {
+  const searchParams = useSearchParams();
+  const fromAdminGate = searchParams.get("reason") === "admin_mfa";
   const [factors, setFactors] = useState<Factor[]>([]);
   const [level, setLevel] = useState<{ current: string | null; next: string | null }>({
     current: null,
@@ -86,6 +91,12 @@ export default function SecurityPage() {
       setPending(null);
       setCode("");
       await load();
+      // Arrived here from the admin console gate: enrolment just verified the
+      // factor, which also raised this session to aal2, so go straight back.
+      const next = safeInternalPath(searchParams.get("next"));
+      if (searchParams.get("reason") === "admin_mfa" && next !== DASHBOARD_PATH) {
+        window.location.assign(next);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "That code was not accepted");
     } finally {
@@ -99,9 +110,15 @@ export default function SecurityPage() {
         <header className="space-y-2">
           <h1 className="text-3xl font-bold">Security</h1>
           <p className="text-muted-foreground">
-            Two-factor authentication. Required for admin accounts before
-            approving payouts, changing roles, or editing pool settings.
+            Two-factor authentication. Required to open the admin console and
+            for every admin action that moves money or changes a role.
           </p>
+          {fromAdminGate && (
+            <p role="status" className="rounded-lg border border-primary/40 bg-primary/10 p-3 text-sm">
+              The admin console needs an authenticator app on your account. Set one up below — you
+              will be taken back to the console as soon as the first code is accepted.
+            </p>
+          )}
         </header>
 
         {loading ? (
@@ -130,8 +147,14 @@ export default function SecurityPage() {
 
             {isProtected && level.current !== "aal2" && (
               <p role="alert" className="text-sm text-amber-400">
-                You have a second factor, but this session has not used it. Sign
-                out and back in to complete admin actions.
+                You have a second factor, but this session has not used it.{" "}
+                <Link
+                  href={`/mfa?next=${encodeURIComponent(safeInternalPath(searchParams.get("next")) || DASHBOARD_PATH)}`}
+                  className="underline text-primary"
+                >
+                  Enter your code now
+                </Link>{" "}
+                to complete admin actions.
               </p>
             )}
 

@@ -30,7 +30,8 @@
     "test:browser": "playwright test",
     "docs:brief": "node scripts/gen-client-brief.cjs",
     "docs:transfer": "node scripts/gen-transfer-guide.cjs",
-    "preflight:money": "tsx scripts/preflight-money-path.ts"
+    "preflight:money": "tsx scripts/preflight-money-path.ts",
+    "auth:config": "tsx scripts/apply-auth-config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

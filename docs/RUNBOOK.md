@@ -714,3 +714,16 @@ the admin typed. The log records these actions and nothing else.
 reauthentication) are wired in `supabase/config.toml` for the CLI. The hosted project does
 not read the repo: paste each into Supabase Dashboard → Authentication → Email Templates
 with the subject from `config.toml`. See `supabase/templates/_base.md`.
+
+### 8.5 Opening the console requires a fresh second factor
+
+`/admin` is gated in `src/proxy.ts` on an **aal2 session**: after the role check, an admin
+whose session has not presented their authenticator is sent to `/mfa` (code prompt), and one
+with no authenticator at all is sent to `/account/security` to enrol and then straight back.
+`requireAdmin()` applies the same rule to every `/api/admin/*` call, so a direct API request
+cannot bypass the console gate. The practical effect: a lingering login on a shared or stolen
+browser stops at a code prompt, and every admin must enrol an authenticator app before they
+can use the console at all.
+
+Lost authenticator: a super admin removes the factor (Supabase Dashboard → Authentication →
+Users → the user → factors) and the admin re-enrols at `/account/security`.

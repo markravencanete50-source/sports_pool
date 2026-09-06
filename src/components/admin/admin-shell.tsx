@@ -261,9 +261,21 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <p className="text-muted-foreground">
           {overview.data?.config.environment} · {overview.data?.config.commit ?? "local"}
         </p>
-        <Link href={DASHBOARD_PATH} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="w-3 h-3" /> Back to the app
-        </Link>
+        <div className="flex items-center justify-between gap-2">
+          <Link href={DASHBOARD_PATH} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-3 h-3" /> Back to the app
+          </Link>
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch("/api/auth/signout", { method: "POST", credentials: "include" }).catch(() => undefined);
+              window.location.assign("/login");
+            }}
+            className="text-muted-foreground hover:text-red-300"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   );
