@@ -324,6 +324,7 @@ export async function POST(request: Request) {
       {
         user: { id: authData.user.id, email: authData.user.email },
         message: "Account created successfully",
+        confirmationRequired: !authData.session,
       },
       { status: 201 }
     );

@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     if (limited) return limited;
 
     const supabase = await createClient();
-    const auth = await requireAdmin(supabase);
+    const auth = await requireAdmin(supabase, { permission: "games.sync" });
     if (auth instanceof NextResponse) return auth;
 
     let rows: { id: string; name: string; city: string; abbreviation: string; logo: string; primary_color: string; secondary_color: string }[];

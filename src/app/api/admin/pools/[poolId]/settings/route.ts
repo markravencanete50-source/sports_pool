@@ -33,7 +33,7 @@ export async function PUT(
     const { poolId } = await params;
     const supabase = await createClient();
 
-    const auth = await requireAdmin(supabase, { requireMfa: true });
+    const auth = await requireAdmin(supabase, { permission: "pools.edit", requireMfa: true });
     if (auth instanceof NextResponse) return auth;
 
     const { data: pool } = await supabase

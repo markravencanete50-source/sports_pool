@@ -14,7 +14,9 @@ export function NavItem({
   onNavigate,
 }: NavItemProps & { onNavigate?: () => void }) {
   return (
-    <Link href={href} onClick={onNavigate}>
+    // No viewport prefetch: every sidebar link is on screen at once, and each
+    // prefetch is a proxied request with its own session lookup.
+    <Link href={href} onClick={onNavigate} prefetch={false}>
       <div
         className={cn(
           "flex items-center gap-3 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden active:scale-[0.98]",

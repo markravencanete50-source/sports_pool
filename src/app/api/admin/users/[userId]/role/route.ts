@@ -20,7 +20,7 @@ export async function PATCH(
 
     const { userId } = await params;
     const supabase = await createClient();
-    const auth = await requireAdmin(supabase, { requireMfa: true });
+    const auth = await requireAdmin(supabase, { permission: "admins.manage", requireMfa: true });
     if (auth instanceof NextResponse) return auth;
     const { user } = auth;
 

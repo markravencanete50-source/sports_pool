@@ -151,6 +151,7 @@ export function resolveAdminRole(row: {
 }): AdminRole | null {
   if (row.role !== "admin") return null;
   const narrowed = row.admin_role;
+  if (narrowed && !(ADMIN_ROLES as readonly string[]).includes(narrowed)) return null;
   if (narrowed && (ADMIN_ROLES as readonly string[]).includes(narrowed)) {
     return narrowed as AdminRole;
   }

@@ -19,11 +19,8 @@ export type RequireAdminResult = AdminIdentity | NextResponse;
 
 export interface RequireAdminOptions {
   /**
-   * Demand a second factor for this call.
-   *
-   * Set on the routes that move money or change privilege — payout completion,
-   * role changes, platform-fee edits. Left off for read-only admin screens, so
-   * an admin can still see the dashboard while they enrol.
+   * Retained for existing callers. Every admin API now requires aal2;
+   * enrolment uses the separate authenticated /api/me/mfa routes.
    */
   requireMfa?: boolean;
   /**
@@ -44,11 +41,14 @@ export async function requireAdmin(
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("users")
     .select("role, admin_role, account_status")
     .eq("id", user.id)
     .single();
+  if (profileError || !profile) {
+    return NextResponse.json({ error: "Could not verify admin access." }, { status: 403 });
+  }
   /*
    * The users table is AUTHORITATIVE. The JWT's app_metadata.role claim is
    * deliberately NOT consulted.
@@ -77,27 +77,32 @@ export async function requireAdmin(
   // A blocked or suspended admin is not an admin. The status is what the
   // console itself sets, so an offboarded operator loses the console the
   // moment their account is closed, not when their token expires.
-  if ((profile?.account_status as string | undefined) && profile?.account_status !== "active") {
+  if (profile.account_status !== "active") {
     return NextResponse.json(
       { error: "Forbidden. This account is not active.", code: "account_inactive" },
       { status: 403 }
     );
   }
 
-  /*
-   * SESSION STEP-UP FOR EVERY ADMIN ROUTE. The console itself is only reachable
-   * at aal2 (src/proxy.ts), and a direct API call must not be the way around
-   * that: if the caller has a verified authenticator, this session must have
-   * used it. An admin with NO factor yet is still allowed onto read routes so
-   * they can reach enrolment; requireMfa below closes the money routes to them.
-   */
-  const { data: aalCheck } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (aalCheck?.nextLevel === "aal2" && aalCheck?.currentLevel !== "aal2") {
+  // Enrolment does not require admin access, so an unenrolled account must
+  // never bypass the console's MFA gate through a direct API request.
+  const { data: aal, error: aalError } =
+    await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aalError || !aal) {
     return NextResponse.json(
-      {
-        error: "This session needs two-factor verification. Re-authenticate with your authenticator app.",
-        code: "mfa_challenge_required",
-      },
+      { error: "Could not verify your authentication level. Please sign in again." },
+      { status: 403 }
+    );
+  }
+  if (aal.nextLevel !== "aal2") {
+    return NextResponse.json(
+      { error: "Set up two-factor authentication in account security.", code: "mfa_enrollment_required" },
+      { status: 403 }
+    );
+  }
+  if (aal.currentLevel !== "aal2") {
+    return NextResponse.json(
+      { error: "Verify this session with your authenticator app.", code: "mfa_challenge_required" },
       { status: 403 }
     );
   }
@@ -113,65 +118,6 @@ export async function requireAdmin(
       },
       { status: 403 }
     );
-  }
-
-  /*
-   * SECOND FACTOR — audit finding BE-4.
-   *
-   * An admin can approve payouts and set the platform fee, so a single phished
-   * password moved money. This is the step that closes it.
-   *
-   * The rollout problem with MFA enforcement is that switching it on before
-   * anyone has enrolled locks every admin out of the system they would need in
-   * order to enrol. So this does NOT check "is MFA on" — it checks the two
-   * things that are individually safe:
-   *
-   *   1. If the admin HAS a verified factor, the session must actually be at
-   *      aal2. Holding a factor you never present is not authentication.
-   *   2. If they have NO factor, they are refused with an instruction to enrol,
-   *      and the enrolment routes are deliberately not behind this check.
-   *
-   * Either way there is no state in which an admin is locked out of enrolling,
-   * and no state in which a privileged action happens on one factor.
-   */
-  if (options.requireMfa) {
-    const { data: aal, error: aalError } =
-      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-
-    if (aalError) {
-      // Fail closed: unable to establish assurance level is not permission.
-      return NextResponse.json(
-        { error: "Could not verify your authentication level. Please sign in again." },
-        { status: 403 }
-      );
-    }
-
-    // nextLevel is aal2 exactly when the user has at least one verified factor.
-    const hasVerifiedFactor = aal?.nextLevel === "aal2";
-    const atAal2 = aal?.currentLevel === "aal2";
-
-    if (!hasVerifiedFactor) {
-      return NextResponse.json(
-        {
-          error:
-            "Two-factor authentication is required for this action. " +
-            "Set it up in your admin security settings, then try again.",
-          code: "mfa_enrollment_required",
-        },
-        { status: 403 }
-      );
-    }
-
-    if (!atAal2) {
-      return NextResponse.json(
-        {
-          error:
-            "This action needs two-factor verification. Please re-authenticate with your authenticator app.",
-          code: "mfa_challenge_required",
-        },
-        { status: 403 }
-      );
-    }
   }
 
   return { user, adminRole, permissions: permissionsFor(adminRole) };

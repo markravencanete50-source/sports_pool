@@ -2,7 +2,9 @@ import { createClient } from "@/lib/supabase/server";
 import { signinSchema } from "@/lib/validations";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/request-guards";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { readAccountStanding } from "@/lib/account-standing";
 
 export async function POST(request: Request) {
   try {
@@ -41,23 +43,23 @@ export async function POST(request: Request) {
      * own-row-only under RLS, but this check must not depend on the row being
      * readable through the session that is being refused.
      */
-    if (data.user && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const { createAdminClient } = await import("@/lib/supabase/admin");
-      const { data: standing } = await createAdminClient()
-        .from("users")
-        .select("account_status, suspended_until, status_reason")
-        .eq("id", data.user.id)
-        .maybeSingle();
-
-      const status = (standing?.account_status as string | undefined) ?? "active";
-      const suspendedUntil = standing?.suspended_until
-        ? new Date(standing.suspended_until as string)
-        : null;
+    if (data.user) {
+      let standing: Awaited<ReturnType<typeof readAccountStanding>>;
+      try {
+        standing = await readAccountStanding(createAdminClient(), data.user.id);
+      } catch {
+        await supabase.auth.signOut({ scope: "local" });
+        return NextResponse.json(
+          { error: "Could not verify your account status. Please try again.", code: "account_status_unavailable" },
+          { status: 503 }
+        );
+      }
+      const { status, suspendedUntil } = standing;
       const stillSuspended =
         status === "suspended" && (!suspendedUntil || suspendedUntil > new Date());
 
       if (status === "blocked" || stillSuspended) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: "local" });
         const { logEvent } = await import("@/lib/log");
         logEvent("warn", "auth.signin_refused_standing", {
           userId: data.user.id,
@@ -77,11 +79,14 @@ export async function POST(request: Request) {
         );
       }
 
-      // Cheap "last activity" for the admin console. Fire-and-forget.
-      void createAdminClient()
-        .from("users")
-        .update({ last_active_at: new Date().toISOString() })
-        .eq("id", data.user.id);
+      // Execute the lazy PostgREST query after responding, without delaying login.
+      after(async () => {
+        const { error: activityError } = await createAdminClient()
+          .from("users")
+          .update({ last_active_at: new Date().toISOString() })
+          .eq("id", data.user!.id);
+        if (activityError) console.error("[signin] Failed to record activity");
+      });
     }
 
     // Do NOT return `data.session`. It carries the refresh token, which is a

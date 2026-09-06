@@ -28,9 +28,8 @@ describe("admin roles and permissions", () => {
     assert.equal(hasPermission(null, "users.view"), false);
   });
 
-  test("an unknown admin_role value falls back to super admin rather than nothing", () => {
-    // The column is CHECK-constrained, so this only guards a future enum drift.
-    assert.equal(resolveAdminRole({ role: "admin", admin_role: "made_up" }), "super_admin");
+  test("an unknown admin_role fails closed instead of granting super admin", () => {
+    assert.equal(resolveAdminRole({ role: "admin", admin_role: "made_up" }), null);
   });
 
   test("narrowed roles cannot reach money or admin management", () => {
