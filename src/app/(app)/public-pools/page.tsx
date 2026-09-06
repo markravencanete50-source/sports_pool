@@ -81,7 +81,7 @@ export default function PublicPools() {
       <select
         value={sport}
         onChange={(e) => handleSportChange(e.target.value)}
-        className="bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        className="bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-base md:text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         aria-label="Filter by sport"
       >
         <option value="all">All sports</option>

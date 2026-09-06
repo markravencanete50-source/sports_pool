@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { signinSchema, SigninInput } from "@/lib/validations";
 import { toast } from "sonner";
 import { extractErrorMessage } from "@/lib/error-utils";
-import { useEffect, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { safeInternalPath } from "@/lib/routes";
 
@@ -18,14 +18,17 @@ function LoginForm() {
     useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Set once a submit has navigated, so the refetched user below does not
+  // trigger a second push to the same destination.
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
-    if (!isLoadingUser && isAuthenticated) {
+    if (!isLoadingUser && isAuthenticated && !submitted) {
       // `redirect` is attacker-supplied; unclamped it sends a signed-in visitor
       // straight off-site.
       router.push(safeInternalPath(searchParams.get("redirect")));
     }
-  }, [isAuthenticated, isLoadingUser, router, searchParams]);
+  }, [isAuthenticated, isLoadingUser, router, searchParams, submitted]);
 
   const {
     register,
@@ -37,11 +40,12 @@ function LoginForm() {
 
   const onSubmit = async (data: SigninInput) => {
     try {
+      setSubmitted(true);
       await signin(data);
       toast.success("Welcome back!");
-      const redirect = safeInternalPath(searchParams.get("redirect"));
-      setTimeout(() => router.push(redirect), 400);
+      router.replace(safeInternalPath(searchParams.get("redirect")));
     } catch (err) {
+      setSubmitted(false);
       const errorMessage = extractErrorMessage(err);
       toast.error(errorMessage);
     }
@@ -71,6 +75,11 @@ function LoginForm() {
         footerLinkHref="/signup"
         onSubmit={handleSubmit(onSubmit)}
       >
+        {searchParams.get("registered") === "1" && (
+          <p role="status" className="rounded-lg bg-primary/10 p-3 text-sm">
+            Check your email to confirm your account before logging in.
+          </p>
+        )}
         {signinError && (
           <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg">
             {extractErrorMessage(signinError)}

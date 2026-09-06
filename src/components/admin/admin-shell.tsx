@@ -269,7 +269,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
             type="button"
             onClick={async () => {
               await fetch("/api/auth/signout", { method: "POST", credentials: "include" }).catch(() => undefined);
-              window.location.assign("/login");
+              // Full reload on purpose: drop every cached query and realtime token
+              // the console held. Client navigation would retain that state.
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- signout must discard in-memory credentials and admin cache
+              window.location.assign(`${window.location.origin}/login`);
             }}
             className="text-muted-foreground hover:text-red-300"
           >

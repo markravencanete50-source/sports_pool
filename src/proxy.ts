@@ -118,6 +118,17 @@ export async function proxy(request: NextRequest) {
     return res;
   };
 
+  /*
+   * API routes authenticate themselves (createClient() + getUser(), or the
+   * cron/webhook secrets) and none of them is in the path lists below, so
+   * the session lookup here would be a second Supabase round-trip on every
+   * API call — measurable on sign-in, where the dashboard fires a dozen of
+   * them at once. Pass API requests straight through.
+   */
+  if (!isDocumentRequest) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
   let supabaseResponse = NextResponse.next({
     request: { headers: requestHeaders },
   });

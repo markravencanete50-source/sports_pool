@@ -19,12 +19,15 @@ export default function Signup() {
   const { signup, isSigningUp, signupError, isAuthenticated, isLoadingUser } =
     useAuth();
   const router = useRouter();
+  // Set once a submit has navigated, so the refetched user does not push a
+  // second time to the same destination.
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
-    if (!isLoadingUser && isAuthenticated) {
+    if (!isLoadingUser && isAuthenticated && !submitted) {
       router.push(DASHBOARD_PATH);
     }
-  }, [isAuthenticated, isLoadingUser, router]);
+  }, [isAuthenticated, isLoadingUser, router, submitted]);
 
   const {
     register,
@@ -54,10 +57,16 @@ export default function Signup() {
 
   const onSubmit = async (data: SignupInput) => {
     try {
-      await signup(data);
-      toast.success("A verification link has been sent to your email.");
-      setTimeout(() => router.push(DASHBOARD_PATH), 500);
+      setSubmitted(true);
+      const result = await signup(data);
+      if (result.confirmationRequired) {
+        router.replace("/login?registered=1");
+      } else {
+        toast.success("Your account is ready.");
+        router.replace(DASHBOARD_PATH);
+      }
     } catch (err) {
+      setSubmitted(false);
       // A server rejection (email already taken, breached password, an
       // under-age date that only the server re-checks) deserves the same
       // treatment as a client-side one: say so where the user is looking.

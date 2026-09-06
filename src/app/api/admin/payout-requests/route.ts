@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/require-admin";
 export async function GET(request: Request) {
   try {
     const supabase = await createClient();
-    const auth = await requireAdmin(supabase);
+    const auth = await requireAdmin(supabase, { permission: "withdrawals.view" });
     if (auth instanceof NextResponse) return auth;
 
     const admin = createAdminClient();

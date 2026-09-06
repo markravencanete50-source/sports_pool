@@ -11,6 +11,19 @@ import { NextResponse } from "next/server";
 import { logDbError } from "@/lib/error-utils";
 import { PoolStatus, PoolType } from "@/lib/enums";
 
+/**
+ * Undo a half-created pool. pool_games / pool_participants / pool_invitations
+ * reference pools WITHOUT on delete cascade, so a bare delete of the pool row
+ * fails silently once games are attached and the abandoned pool stays visible
+ * in every list (five such orphans were found on the dev database).
+ */
+async function rollbackPool(admin: ReturnType<typeof createAdminClient>, poolId: string) {
+  await admin.from("pool_games").delete().eq("pool_id", poolId);
+  await admin.from("pool_participants").delete().eq("pool_id", poolId);
+  await admin.from("pool_invitations").delete().eq("pool_id", poolId);
+  await admin.from("pools").delete().eq("id", poolId);
+}
+
 // SECURITY: never embed `users(*)` — that table carries email, role and balance,
 // and shipped with `select using (true)` RLS. This list endpoint has no auth
 // check, so the over-select let an anonymous `curl /api/pools?limit=50` harvest
@@ -306,7 +319,7 @@ export async function POST(request: Request) {
             }
 
             if (gameWeek && gameWeek !== poolWeek) {
-              await admin.from("pools").delete().eq("id", pool.id);
+              await rollbackPool(admin, pool.id);
               return NextResponse.json(
                 {
                   error: `Game week mismatch. All games must be from week ${poolWeek}. Found game from week ${gameWeek}.`,
@@ -344,7 +357,7 @@ export async function POST(request: Request) {
       if (gameWeeks.length > 0) {
         const uniqueWeeks = [...new Set(gameWeeks)];
         if (uniqueWeeks.length > 1) {
-          await admin.from("pools").delete().eq("id", pool.id);
+          await rollbackPool(admin, pool.id);
           return NextResponse.json(
             {
               error: `All games must be from the same week. Found games from weeks: ${uniqueWeeks.join(
@@ -355,7 +368,7 @@ export async function POST(request: Request) {
           );
         }
         if (uniqueWeeks[0] !== poolWeek) {
-          await admin.from("pools").delete().eq("id", pool.id);
+          await rollbackPool(admin, pool.id);
           return NextResponse.json(
             {
               error: `All games must be from week ${poolWeek}. Found games from week ${uniqueWeeks[0]}.`,
@@ -400,7 +413,7 @@ export async function POST(request: Request) {
 
         if (gamesError) {
           console.error("Error storing games:", gamesError);
-          await admin.from("pools").delete().eq("id", pool.id);
+          await rollbackPool(admin, pool.id);
           return NextResponse.json(
             {
               error: "Failed to add games to pool",
@@ -421,7 +434,7 @@ export async function POST(request: Request) {
             "Pool creation error - pool_games insert failed:",
             poolGamesError
           );
-          await admin.from("pools").delete().eq("id", pool.id);
+          await rollbackPool(admin, pool.id);
           return NextResponse.json(
             {
               error: "Failed to add games to pool",
@@ -433,7 +446,15 @@ export async function POST(request: Request) {
       }
     }
 
-    const { error: participantError } = await supabase
+    /*
+     * The creator joins with the service role, like the pool row itself. The
+     * client-side INSERT policy on pool_participants admits public pools and
+     * accepted invitations only, so under the session client a PRIVATE pool's
+     * own creator was refused ("new row violates row-level security"), the
+     * pool was rolled back, and every private pool creation failed with
+     * "Failed to add participant".
+     */
+    const { error: participantError } = await admin
       .from("pool_participants")
       .insert({
         pool_id: pool.id,
@@ -445,7 +466,7 @@ export async function POST(request: Request) {
         "Pool creation error - pool_participants insert failed:",
         participantError
       );
-      await admin.from("pools").delete().eq("id", pool.id);
+      await rollbackPool(admin, pool.id);
       return NextResponse.json(
         {
           error: "Failed to add participant",

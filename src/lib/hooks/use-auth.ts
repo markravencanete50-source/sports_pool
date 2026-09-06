@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { signinSchema, signupSchema } from "@/lib/validations";
+import { signinSchema, signupSchema, type SignupInput } from "@/lib/validations";
 import { useRouter } from "next/navigation";
 import { DASHBOARD_PATH } from "@/lib/routes";
 import { clearRealtimeToken } from "@/lib/supabase/realtime-client";
@@ -25,14 +25,14 @@ export function useAuth() {
   });
 
   const signupMutation = useMutation({
-    mutationFn: async (data: { email: string; password: string; name: string }) => {
+    mutationFn: async (data: SignupInput) => {
       const validated = signupSchema.parse(data);
       const res = await apiRequest("POST", "/api/auth/signup", validated);
       return res.json();
     },
     onSuccess: () => {
+      // The signup page navigates itself once the account exists.
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      router.push(DASHBOARD_PATH);
     },
   });
 
@@ -43,8 +43,10 @@ export function useAuth() {
       return res.json();
     },
     onSuccess: () => {
+      // Navigation belongs to the caller (the login page honours ?redirect=).
+      // Pushing here as well sent the router to /dashboard twice, and a third
+      // time when the refetched user flipped the page's own effect.
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      router.push(DASHBOARD_PATH);
     },
   });
 

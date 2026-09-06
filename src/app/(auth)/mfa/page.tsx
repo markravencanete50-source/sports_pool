@@ -43,7 +43,6 @@ function MfaChallenge() {
           router.replace(next);
           return;
         }
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- the challenge state comes from the server after mount
         setState(json);
       })
       .catch(() => {

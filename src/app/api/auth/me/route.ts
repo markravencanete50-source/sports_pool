@@ -14,10 +14,15 @@ export async function GET() {
       );
     }
 
-    // Get user profile
+    // Get user profile — named columns, not *. The row also carries the
+    // console's internal fields (admin_note, status_reason, who changed the
+    // status), which are revoked from the authenticated role and must never
+    // reach the person the note is about.
     const { data: profile, error: profileError } = await supabase
       .from("users")
-      .select("*")
+      .select(
+        "id, email, name, avatar, role, admin_role, balance, account_status, suspended_until, tenant_id, last_active_at, created_at, updated_at"
+      )
       .eq("id", user.id)
       .maybeSingle();
 

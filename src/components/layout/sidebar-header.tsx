@@ -14,6 +14,7 @@ export function SidebarHeader({
     <Link
       href={DASHBOARD_PATH}
       onClick={onNavigate}
+      prefetch={false}
       className="h-20 px-2 flex items-center justify-center gap-2 border-b border-white/5 overflow-hidden cursor-pointer hover:bg-white/5 transition-colors duration-200"
     >
       <SportPoolLogo

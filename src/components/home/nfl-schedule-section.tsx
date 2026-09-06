@@ -181,7 +181,7 @@ export function NFLScheduleSection({
               value={selectedTeam || ""}
               onChange={(e) => setSelectedTeam(e.target.value || null)}
               aria-label="Filter by team"
-              className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 min-h-9 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 min-h-9 text-base md:text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">All Teams</option>
               {allTeams.map((teamId) => (
