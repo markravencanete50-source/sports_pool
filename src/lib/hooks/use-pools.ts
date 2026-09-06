@@ -14,8 +14,8 @@ import type { UsePoolsParams, PoolsListResult } from "@/lib/types";
 export type { UsePoolsParams, PoolsListResult } from "@/lib/types";
 
 export function usePools(params: UsePoolsParams = {}) {
-  const { type, status, search = "", page = 1, limit = 12 } = params;
-  const queryKey = ["/api/pools", type, status, search, page, limit];
+  const { type, status, search = "", sport = "", page = 1, limit = 12 } = params;
+  const queryKey = ["/api/pools", type, status, search, sport, page, limit];
 
   return useQuery({
     queryKey,
@@ -25,6 +25,7 @@ export function usePools(params: UsePoolsParams = {}) {
       if (status && status !== PoolsListStatusFilter.ALL)
         urlParams.append("status", status);
       if (search.trim()) urlParams.append("search", search.trim());
+      if (sport && sport !== "all") urlParams.append("sport", sport);
       urlParams.append("page", String(page));
       urlParams.append("limit", String(limit));
       const url = `/api/pools?${urlParams.toString()}`;

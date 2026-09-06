@@ -10,6 +10,7 @@ import { StaggerGroup, StaggerItem } from "@/components/motion/reveal";
 import { usePools } from "@/lib/hooks/use-pools";
 import { Plus } from "lucide-react";
 import { PoolType, PoolsListStatusFilter } from "@/lib/enums";
+import { SPORTS } from "@/lib/constants";
 import type { Pool } from "@/lib/types";
 
 const SEARCH_DEBOUNCE_MS = 400;
@@ -41,6 +42,7 @@ export default function PublicPools() {
     PoolsListStatusFilter.ALL
   );
   const [page, setPage] = useState(1);
+  const [sport, setSport] = useState<string>("all");
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -59,13 +61,38 @@ export default function PublicPools() {
     setStatusFilter(value);
   };
 
+  const handleSportChange = (value: string) => {
+    if (value !== sport) setPage(1);
+    setSport(value);
+  };
+
   const { data, isLoading, error } = usePools({
     type: PoolType.PUBLIC,
     status: statusFilter,
     search: debouncedSearch,
+    sport,
     page,
     limit: PAGE_SIZE,
   });
+
+  const sportFilter = (
+    <label className="flex items-center gap-2 text-xs font-mono uppercase text-muted-foreground">
+      Sport
+      <select
+        value={sport}
+        onChange={(e) => handleSportChange(e.target.value)}
+        className="bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        aria-label="Filter by sport"
+      >
+        <option value="all">All sports</option>
+        {SPORTS.map((s) => (
+          <option key={s.value} value={s.value}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 
   const pools = data?.pools ?? [];
   const total = data?.total ?? 0;
@@ -111,11 +138,14 @@ export default function PublicPools() {
           statusFilter={statusFilter}
           onStatusFilterChange={handleStatusFilterChange}
           rightElement={
-            <Link href="/create-pool">
-              <div className="btn-3d-primary min-h-11 px-6 py-2 text-sm flex items-center justify-center gap-2 cursor-pointer">
-                <Plus className="w-4 h-4" /> Create New Pool
-              </div>
-            </Link>
+            <div className="flex items-center gap-3 flex-wrap">
+              {sportFilter}
+              <Link href="/create-pool">
+                <div className="btn-3d-primary min-h-11 px-6 py-2 text-sm flex items-center justify-center gap-2 cursor-pointer">
+                  <Plus className="w-4 h-4" /> Create New Pool
+                </div>
+              </Link>
+            </div>
           }
         />
 

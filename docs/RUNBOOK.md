@@ -645,3 +645,72 @@ platform can take money safely.
 - [ ] Vercel project decommissioned only after the VPS has served real traffic
 - [ ] *Bundled database only:* Postgres not internet-reachable, Studio not
       exposed, nightly dump running and **one restore rehearsed** (§2.1)
+
+## 8. Admin console (added 2026-09-06)
+
+The console lives at `/admin` on whichever deployment serves the app — production is
+`https://www.playsportspool.com/admin`. It is the operational control centre from the
+client's admin-dashboard specification: users, age reviews, pools, games, winners, finance,
+withdrawals, moderation, promotions, settings, administrators and the audit record.
+
+### 8.1 Roles
+
+`users.role = 'admin'` decides *whether* someone is an administrator; `users.admin_role`
+decides *which kind*. An admin with `admin_role` NULL is a **super admin** (every existing
+admin kept full access when roles arrived). Narrower roles — `finance_admin`,
+`operations_admin`, `support_admin`, `moderator` — map to permission sets in
+`src/lib/admin/permissions.ts`, and every `/api/admin/*` route checks its permission
+server-side through `requireAdmin({ permission })`. Hiding a button is a courtesy; the
+route is the control. Change roles under **Admins**; the last super admin can never be
+removed.
+
+Money-moving and privilege-changing actions additionally require a verified second factor
+(the existing `requireMfa`): approving/sending withdrawals, cancelling/completing/
+reopening pools, recalculating winners, recording refunds, saving platform settings,
+changing admin roles.
+
+### 8.2 What each override does
+
+| Action | Where | Effect | Refused when |
+|---|---|---|---|
+| Block / suspend / restore user | Users → user | `users.account_status`; sessions revoked; signin, money gates and chat refuse | acting on yourself; on another admin unless super admin |
+| Age review approve / reject | Users → user, Age Reviews | `user_compliance.age_review_status`; reject also blocks the account | — |
+| Signup refusal approve | Age Reviews | lifts the `blocked_signups` block for that email | — |
+| Pause / resume pool | Pools → pool | no purchases, no settlement while paused | not open/active |
+| Cancel pool | Pools → pool | marks paid entries `refund_required` (Finance → Refunds), cancels cards | winners already exist |
+| Complete pool | Pools → pool | forces completion, runs the normal winner calculation | — |
+| Settle now | Pools → pool | the cron's code path for one pool, now | paused/cancelled |
+| Recalculate winners | Pools → pool | `admin_reverse_pool_settlement()` reverses credits atomically, then re-scores | any winner already withdrew; a balance no longer covers its credit |
+| Approve / hold / reject / cancel / retry withdrawal | Finance → Withdrawals | status only; no money moves | wrong state |
+| Send withdrawal | Finance → Withdrawals | provider send (PayPal) — debits balance, records reference | provider unconfigured; identifier invalid |
+| Mark manual transfer completed | Finance → Withdrawals | Revolut / bank rails: debits balance with the operator's reference | not processing |
+| Mark refunded | Finance → transaction | records the Stripe refund id; cancels the card | already refunded |
+| Hide / delete / restore / flag comment, warn, suspend author | Moderation | soft moderation; RLS hides non-visible rows from players | — |
+| Approve / reject / pause / resume / extend / cancel promotion | Promotions | `pool_promotions`; active windows float pools to the top of the marketplace | wrong state |
+| Save settings | Settings | `platform_settings` / `compliance_settings`; fee changes apply to NEW pools only | not super admin |
+
+Every row above writes `admin_audit_log` with actor, target, before/after and the reason
+the admin typed. The log records these actions and nothing else.
+
+### 8.3 New user-facing behaviour the console assumes
+
+- **Pool window**: `pools.starts_at` / `ends_at`, ≤ `platform_settings.max_pool_duration_days`
+  (≤ 7 by constraint). Checkout refuses outside the window.
+- **Pool password + share link**: `/p/<share_slug>`; a correct password inserts the
+  `pool_participants` row (it *is* the join). Hash is scrypt, never exposed.
+- **Chat**: posting requires accepting the rules version in `platform_settings.chat_rules_version`
+  (bump to re-prompt everyone); slow mode is `chat_slow_mode_seconds`; players can report a
+  message; hidden/deleted messages are invisible at the RLS layer.
+- **Under-age**: a signup under the local minimum is refused and queued in `blocked_signups`;
+  an existing account found under the local minimum at a money boundary is queued
+  (`age_review_status = pending`) and blocked from paid play until decided.
+- **Live game state**: `games.period / display_clock / possession / down_distance /
+  yard_line / is_red_zone / last_synced_at`, refreshed by the settle job and manual sync.
+- **Scheduled jobs** report their last outcome to `system_jobs` (one row per job).
+
+### 8.4 Branded auth emails
+
+`supabase/templates/*.html` (confirmation, recovery, magic link, email change, invite,
+reauthentication) are wired in `supabase/config.toml` for the CLI. The hosted project does
+not read the repo: paste each into Supabase Dashboard → Authentication → Email Templates
+with the subject from `config.toml`. See `supabase/templates/_base.md`.

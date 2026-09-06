@@ -1,9 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import {
+  hasPermission,
+  permissionsFor,
+  resolveAdminRole,
+  type AdminRole,
+  type Permission,
+} from "@/lib/admin/permissions";
 
-export type RequireAdminResult =
-  | { user: { id: string; app_metadata?: Record<string, unknown> } }
-  | NextResponse;
+export type AdminIdentity = {
+  user: { id: string; app_metadata?: Record<string, unknown> };
+  /** Effective admin role; null never escapes this helper (it is a 403). */
+  adminRole: AdminRole;
+  permissions: readonly Permission[];
+};
+
+export type RequireAdminResult = AdminIdentity | NextResponse;
 
 export interface RequireAdminOptions {
   /**
@@ -14,6 +26,11 @@ export interface RequireAdminOptions {
    * an admin can still see the dashboard while they enrol.
    */
   requireMfa?: boolean;
+  /**
+   * Permission(s) the caller's admin role must hold. Omitted means "any
+   * admin", which is what the pre-roles routes meant and still mean.
+   */
+  permission?: Permission | readonly Permission[];
 }
 
 export async function requireAdmin(
@@ -29,7 +46,7 @@ export async function requireAdmin(
   }
   const { data: profile } = await supabase
     .from("users")
-    .select("role")
+    .select("role, admin_role, account_status")
     .eq("id", user.id)
     .single();
   /*
@@ -46,10 +63,36 @@ export async function requireAdmin(
    * Both writers keep the table in step: the role route updates users.role and
    * app_metadata together, and seedAdminUser() writes the users row too.
    */
-  const isAdmin = (profile?.role as string) === "admin";
-  if (!isAdmin) {
+  const adminRole = resolveAdminRole({
+    role: profile?.role as string | null | undefined,
+    admin_role: profile?.admin_role as string | null | undefined,
+  });
+  if (!adminRole) {
     return NextResponse.json(
       { error: "Forbidden. Admin only." },
+      { status: 403 }
+    );
+  }
+
+  // A blocked or suspended admin is not an admin. The status is what the
+  // console itself sets, so an offboarded operator loses the console the
+  // moment their account is closed, not when their token expires.
+  if ((profile?.account_status as string | undefined) && profile?.account_status !== "active") {
+    return NextResponse.json(
+      { error: "Forbidden. This account is not active.", code: "account_inactive" },
+      { status: 403 }
+    );
+  }
+
+  if (options.permission && !hasPermission(adminRole, options.permission)) {
+    return NextResponse.json(
+      {
+        error: "Forbidden. Your admin role does not include this action.",
+        code: "permission_denied",
+        required: Array.isArray(options.permission)
+          ? options.permission
+          : [options.permission],
+      },
       { status: 403 }
     );
   }
@@ -113,5 +156,30 @@ export async function requireAdmin(
     }
   }
 
-  return { user };
+  return { user, adminRole, permissions: permissionsFor(adminRole) };
+}
+
+/**
+ * Read an admin reason out of a parsed body. Consequential actions require one
+ * so the audit row explains itself; the minimum length stops "x".
+ */
+export function requireReason(
+  body: unknown,
+  minLength = 5
+): { reason: string } | NextResponse {
+  const raw = (body as { reason?: unknown } | null)?.reason;
+  const reason = typeof raw === "string" ? raw.trim() : "";
+  if (reason.length < minLength) {
+    return NextResponse.json(
+      { error: `A reason of at least ${minLength} characters is required.`, code: "reason_required" },
+      { status: 400 }
+    );
+  }
+  if (reason.length > 1000) {
+    return NextResponse.json(
+      { error: "Reason is too long (max 1000 characters).", code: "reason_too_long" },
+      { status: 400 }
+    );
+  }
+  return { reason };
 }

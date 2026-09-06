@@ -11,8 +11,6 @@ import {
   Mail,
   ShieldCheck,
   Trophy,
-  RefreshCw,
-  DollarSign,
   Wallet,
   UserCircle,
 } from "lucide-react";
@@ -73,17 +71,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { href: "/white-label", label: "White Label", icon: Briefcase },
       ];
       if (isAdmin) {
-        items.push({ href: "/admin/users", label: "Users", icon: ShieldCheck });
-        items.push({
-          href: "/admin/games",
-          label: "Games & Pools",
-          icon: RefreshCw,
-        });
-        items.push({
-          href: "/admin/payouts",
-          label: "Payouts",
-          icon: DollarSign,
-        });
+        items.push({ href: "/admin", label: "Admin console", icon: ShieldCheck });
       }
       return items;
     } else {

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { PoolTypeSelector } from "@/components/create-pool/pool-type-selector";
 import { PoolSettingsForm } from "@/components/create-pool/pool-settings-form";
+import { PoolWindowForm } from "@/components/create-pool/pool-window-form";
 import { GameSelectionSection } from "@/components/create-pool/game-selection-section";
 import { InviteByEmailSection } from "@/components/create-pool/invite-by-email-section";
 import { PoolSummaryCard } from "@/components/create-pool/pool-summary-card";
@@ -51,6 +52,9 @@ export default function CreatePool() {
     selectedGames: [],
     invitedFriends: [],
     invitedEmails: [],
+    startsAt: "",
+    endsAt: "",
+    password: "",
   });
 
   const groupedGames = useMemo(() => {
@@ -143,6 +147,9 @@ export default function CreatePool() {
           ? null
           : parseInt(formData.maxParticipants);
 
+      const toIso = (local: string) =>
+        local ? new Date(local).toISOString() : undefined;
+
       await createPoolMutation.mutateAsync({
         name: formData.name,
         type: formData.type,
@@ -152,6 +159,12 @@ export default function CreatePool() {
         selectedGames: formData.selectedGames,
         invitedEmails:
           formData.type === "private" ? formData.invitedEmails : undefined,
+        startsAt: toIso(formData.startsAt),
+        endsAt: toIso(formData.endsAt),
+        password:
+          formData.type === PoolType.PRIVATE && formData.password.trim()
+            ? formData.password.trim()
+            : undefined,
       });
 
       toast.success("Pool created successfully!");
@@ -286,6 +299,16 @@ export default function CreatePool() {
                   onMaxParticipantsChange={(value) =>
                     setFormData({ ...formData, maxParticipants: value })
                   }
+                />
+
+                <PoolWindowForm
+                  startsAt={formData.startsAt}
+                  endsAt={formData.endsAt}
+                  password={formData.password}
+                  isPrivate={formData.type === PoolType.PRIVATE}
+                  onStartsAtChange={(value) => setFormData({ ...formData, startsAt: value })}
+                  onEndsAtChange={(value) => setFormData({ ...formData, endsAt: value })}
+                  onPasswordChange={(value) => setFormData({ ...formData, password: value })}
                 />
 
                 <GameSelectionSection

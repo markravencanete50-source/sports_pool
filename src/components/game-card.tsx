@@ -6,6 +6,7 @@ import { Card3D } from "./ui/3d-card";
 import { cn } from "@/lib/utils";
 import { GameCardProps } from "@/lib/interfaces";
 import { Check, X, AlertCircle } from "lucide-react";
+import { LiveGamePanel } from "@/components/pool-detail/live-game-panel";
 
 type TeamLike = {
   id: string;
@@ -32,6 +33,14 @@ type ApiGameFields = {
   away_team?: { name?: string } | null;
   home_score?: number | null;
   away_score?: number | null;
+  // Live-state columns, present on games rows once the sync has run.
+  period?: number | null;
+  display_clock?: string | null;
+  possession?: string | null;
+  down_distance?: string | null;
+  yard_line?: number | null;
+  is_red_zone?: boolean | null;
+  last_synced_at?: string | null;
 };
 
 export function GameCard({
@@ -41,6 +50,7 @@ export function GameCard({
   selectedPrediction,
   disabled,
   gameResult,
+  showLivePanel = true,
 }: GameCardProps) {
   const g = game as Game & ApiGameFields;
   const homeId = g.home_team_id ?? game.homeTeamId;
@@ -66,6 +76,7 @@ export function GameCard({
   const homeScore = gameResult?.homeScore ?? g.home_score ?? g.homeScore;
   const awayScore = gameResult?.awayScore ?? g.away_score ?? g.awayScore;
   const hasScores = typeof homeScore === "number" && typeof awayScore === "number";
+  const isLive = String(game.status ?? "").toLowerCase() === "live";
 
   return (
     <Card3D className="h-full min-h-[220px]" intensity={10}>
@@ -107,10 +118,29 @@ export function GameCard({
                 ? `${awayScore} - ${homeScore}`
                 : game.status === "scheduled"
                   ? game.odds
-                  : "FINAL"}
+                  : isLive
+                    ? "LIVE"
+                    : "FINAL"}
             </span>
           </div>
         </div>
+
+        {isLive && showLivePanel && (
+          <LiveGamePanel
+            className="w-full mb-4"
+            homeAbbr={homeTeam.abbreviation}
+            awayAbbr={awayTeam.abbreviation}
+            homeScore={homeScore}
+            awayScore={awayScore}
+            period={g.period}
+            displayClock={g.display_clock}
+            possession={g.possession}
+            downDistance={g.down_distance}
+            yardLine={g.yard_line}
+            isRedZone={g.is_red_zone}
+            lastSyncedAt={g.last_synced_at}
+          />
+        )}
 
         <div className="flex items-center justify-between w-full gap-2 min-w-0">
           <button

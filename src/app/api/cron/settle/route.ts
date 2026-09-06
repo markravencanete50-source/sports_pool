@@ -30,7 +30,15 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   try {
-    const report = await runSettlement();
+    const { recordJobRun } = await import("@/lib/system-jobs");
+    const report = await recordJobRun("settle", runSettlement, (r) => ({
+      gamesUpdated: r.gamesUpdated,
+      gamesChecked: r.gamesChecked,
+      poolsCompleted: r.poolsCompleted,
+      poolsPaid: r.poolsPaid,
+      winnersCreated: r.winnersCreated,
+      warnings: r.warnings.length,
+    }));
 
     // Surface anything that needs a human: a completed pool with no winner is
     // holding player money. Log loudly rather than only returning it, because

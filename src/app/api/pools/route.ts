@@ -9,7 +9,7 @@ import {
 } from "@/lib/pool-financials";
 import { NextResponse } from "next/server";
 import { logDbError } from "@/lib/error-utils";
-import { PoolStatus } from "@/lib/enums";
+import { PoolStatus, PoolType } from "@/lib/enums";
 
 // SECURITY: never embed `users(*)` — that table carries email, role and balance,
 // and shipped with `select using (true)` RLS. This list endpoint has no auth
@@ -38,6 +38,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");
     const status = searchParams.get("status");
+    const sport = searchParams.get("sport")?.trim().toLowerCase() || "";
     const search = searchParams.get("search")?.trim() || "";
     const page = Math.max(1, parseInt(searchParams.get("page") || String(DEFAULT_PAGE), 10) || DEFAULT_PAGE);
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get("limit") || String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT));
@@ -49,6 +50,10 @@ export async function GET(request: Request) {
 
     if (type) {
       query = query.eq("type", type);
+    }
+
+    if (sport && /^[a-z0-9_]{2,20}$/.test(sport)) {
+      query = query.eq("sport", sport);
     }
 
     if (status === "open") {
@@ -77,8 +82,29 @@ export async function GET(request: Request) {
     const poolIds = rawPools.map((p: { id: string }) => p.id);
     // get_pools_financials EXECUTE is revoked from client roles; it returns
     // per-pool aggregates this endpoint already exposes publicly.
-    const financialsMap = await getPoolsFinancials(createAdminClient(), poolIds);
-    const pools = attachFinancialsToPools(rawPools, financialsMap);
+    const adminForList = createAdminClient();
+    const financialsMap = await getPoolsFinancials(adminForList, poolIds);
+
+    // Paid placement: an approved promotion whose window is open marks the
+    // pool and floats it to the top of its page. Read with the service role
+    // (promotions carry no anon grant) and never expose the promotion row
+    // itself — only the fact of it.
+    const promoted = new Set<string>();
+    if (poolIds.length > 0) {
+      const nowIso = new Date().toISOString();
+      const { data: promos } = await adminForList
+        .from("pool_promotions")
+        .select("pool_id, placement")
+        .in("pool_id", poolIds)
+        .eq("status", "active")
+        .or(`starts_at.is.null,starts_at.lte.${nowIso}`)
+        .or(`ends_at.is.null,ends_at.gte.${nowIso}`);
+      for (const p of promos ?? []) promoted.add(p.pool_id as string);
+    }
+
+    const pools = attachFinancialsToPools(rawPools, financialsMap)
+      .map((p) => ({ ...p, is_promoted: promoted.has(p.id) }))
+      .sort((a, b) => Number(b.is_promoted) - Number(a.is_promoted));
 
     return NextResponse.json(
       { pools, total: total ?? pools.length, page, limit },
@@ -130,6 +156,64 @@ export async function POST(request: Request) {
     // ownership and column allow-listing must all be enforced in this route.
     const admin = createAdminClient();
 
+    /*
+     * Entry window and password — the brief's "custom pools".
+     *
+     * The window is optional. When an end is given without a start, the
+     * window opens now. Its length is capped by platform_settings (an admin
+     * setting) and, independently, by the database constraint at seven days —
+     * so this check can only ever be tighter than the schema, never looser.
+     *
+     * A password is only meaningful on a private pool: a public pool with a
+     * password would be neither. Refuse rather than silently drop it.
+     */
+    const { data: platform } = await admin
+      .from("platform_settings")
+      .select("max_pool_duration_days, supported_sports")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const maxDays = Number(platform?.max_pool_duration_days ?? 7);
+    const supportedSports = (platform?.supported_sports as string[] | null) ?? ["nfl"];
+
+    const sport = validatedData.sport ?? "nfl";
+    if (!supportedSports.includes(sport)) {
+      return NextResponse.json(
+        { error: `Sport "${sport}" is not enabled on this platform` },
+        { status: 400 }
+      );
+    }
+
+    let startsAt: string | null = validatedData.startsAt ?? null;
+    const endsAt: string | null = validatedData.endsAt ?? null;
+    if (endsAt && !startsAt) startsAt = new Date().toISOString();
+    if (startsAt && endsAt) {
+      const span = Date.parse(endsAt) - Date.parse(startsAt);
+      if (!(span > 0)) {
+        return NextResponse.json({ error: "The pool must end after it starts" }, { status: 400 });
+      }
+      if (span > maxDays * 24 * 3600_000) {
+        return NextResponse.json(
+          { error: `A pool can run for at most ${maxDays} day${maxDays === 1 ? "" : "s"}` },
+          { status: 400 }
+        );
+      }
+      if (Date.parse(endsAt) < Date.now()) {
+        return NextResponse.json({ error: "The pool window has already ended" }, { status: 400 });
+      }
+    }
+
+    if (validatedData.password && validatedData.type !== PoolType.PRIVATE) {
+      return NextResponse.json(
+        { error: "Only private pools can have a password" },
+        { status: 400 }
+      );
+    }
+    const { hashPoolPassword } = await import("@/lib/pool-password");
+    const accessPasswordHash = validatedData.password
+      ? hashPoolPassword(validatedData.password)
+      : null;
+
     const { data: pool, error: poolError } = await admin
       .from("pools")
       .insert({
@@ -142,6 +226,10 @@ export async function POST(request: Request) {
         created_by: user.id,
         participants: 0,
         prize_pot: 0,
+        sport,
+        starts_at: startsAt ? new Date(startsAt).toISOString() : null,
+        ends_at: endsAt ? new Date(endsAt).toISOString() : null,
+        access_password_hash: accessPasswordHash,
       })
       .select()
       .single();

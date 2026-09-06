@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       supabase,
       poolId,
       user.id,
-      "id, status, max_participants, entry_fee"
+      "id, status, max_participants, entry_fee, starts_at, ends_at"
     );
 
     if (!pool) {
@@ -53,7 +53,29 @@ export async function POST(request: Request) {
 
     if (pool.status !== "open" && pool.status !== "active") {
       return NextResponse.json(
-        { error: "Pool is not accepting new cards" },
+        {
+          error:
+            pool.status === "paused"
+              ? "This pool is paused by an administrator. Purchases will reopen when it resumes."
+              : "Pool is not accepting new cards",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Entry window (custom pool duration). Checked here, at the money
+    // boundary, not only in the UI: a stale tab must not buy into a closed pool.
+    const windowPool = pool as typeof pool & { starts_at?: string | null; ends_at?: string | null };
+    const nowMs = Date.now();
+    if (windowPool.starts_at && Date.parse(windowPool.starts_at) > nowMs) {
+      return NextResponse.json(
+        { error: `Entry opens on ${new Date(windowPool.starts_at).toLocaleString("en-US", { timeZone: "UTC" })} UTC` },
+        { status: 400 }
+      );
+    }
+    if (windowPool.ends_at && Date.parse(windowPool.ends_at) < nowMs) {
+      return NextResponse.json(
+        { error: "The entry window for this pool has closed" },
         { status: 400 }
       );
     }

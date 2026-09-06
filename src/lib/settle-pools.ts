@@ -127,9 +127,15 @@ export async function refreshGameScores(
     );
   }
 
+  const { extractLiveState } = await import("@/lib/espn-live");
   const espnById = new Map<
     string,
-    { status: string; home: number | null; away: number | null }
+    {
+      status: string;
+      home: number | null;
+      away: number | null;
+      live: ReturnType<typeof extractLiveState>;
+    }
   >();
 
   for (const { season, week } of slateList) {
@@ -144,6 +150,7 @@ export async function refreshGameScores(
           status: mapEspnStatus(competition),
           home: parseScore(home?.score),
           away: parseScore(away?.score),
+          live: extractLiveState(competition),
         });
       }
     } catch (e) {
@@ -162,10 +169,14 @@ export async function refreshGameScores(
     const live = espnById.get(game.id);
     if (!live) continue;
 
+    // A game in progress is always rewritten: the clock, possession and down
+    // change between polls even when the score does not, and the live panel
+    // reads exactly those columns.
     const changed =
       live.status !== game.status ||
       live.home !== game.home_score ||
-      live.away !== game.away_score;
+      live.away !== game.away_score ||
+      live.status === GameStatus.LIVE;
     if (!changed) continue;
 
     // Never write a finished status without both scores — computePoolWinners
@@ -185,6 +196,7 @@ export async function refreshGameScores(
         status: live.status,
         home_score: live.home,
         away_score: live.away,
+        ...live.live,
         updated_at: new Date().toISOString(),
       })
       .eq("id", game.id);

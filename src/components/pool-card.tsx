@@ -20,8 +20,15 @@ export function PoolCard({ pool }: { pool: Pool }) {
 
             <div className="flex justify-between items-start gap-3 z-10">
               <div className="min-w-0">
-                <span className="inline-block px-2 py-1 rounded bg-white/5 border border-white/10 text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
-                  {pool.type} Pool
+                <span className="inline-flex items-center gap-2 mb-2">
+                  <span className="inline-block px-2 py-1 rounded bg-white/5 border border-white/10 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                    {pool.type} Pool
+                  </span>
+                  {pool.is_promoted && (
+                    <span className="inline-block px-2 py-1 rounded bg-accent/20 border border-accent/40 text-[10px] font-mono uppercase tracking-widest text-accent-foreground">
+                      Promoted
+                    </span>
+                  )}
                 </span>
                 <h3 className="text-xl font-bold truncate">{pool.name}</h3>
               </div>
@@ -49,7 +56,12 @@ export function PoolCard({ pool }: { pool: Pool }) {
             </div>
 
             <div className="flex justify-between items-center z-10">
-              <span className="text-xs font-mono text-muted-foreground">Week {pool.week} • {pool.status.toUpperCase()}</span>
+              <span className="text-xs font-mono text-muted-foreground">
+                {(pool.sport ?? "nfl").toUpperCase()} · Week {pool.week} • {pool.status.toUpperCase()}
+                {pool.ends_at && pool.status !== "completed" && pool.status !== "cancelled" && (
+                  <> • closes {new Date(pool.ends_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</>
+                )}
+              </span>
               <span className="flex items-center gap-1 text-sm font-bold text-primary group-hover:translate-x-1 transition-transform">
                 JOIN NOW <ArrowRight className="w-4 h-4" />
               </span>

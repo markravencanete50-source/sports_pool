@@ -65,6 +65,33 @@ export const newsletterSignupSchema = z.object({
     .refine((email) => email.length > 0, "Email is required"),
 });
 
+/** ISO timestamp the browser can produce from a datetime-local input. */
+const isoDateTime = z
+  .string()
+  .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date and time");
+
+/**
+ * Pool entry window. Both ends optional (null = the pre-window behaviour: open
+ * until the games start). When both are set the window must run forwards and
+ * fit the platform cap — the cap itself is read from platform_settings in the
+ * route, so this only enforces the absolute ceiling the schema constraint
+ * also enforces (seven days).
+ */
+export const POOL_WINDOW_MAX_DAYS = 7;
+
+function windowIsValid(data: { startsAt?: string | null; endsAt?: string | null }): boolean {
+  if (!data.startsAt || !data.endsAt) return true;
+  const start = Date.parse(data.startsAt);
+  const end = Date.parse(data.endsAt);
+  if (!(end > start)) return false;
+  return end - start <= POOL_WINDOW_MAX_DAYS * 24 * 3600_000;
+}
+
+export const poolPasswordSchema = z
+  .string()
+  .min(4, "Pool password must be at least 4 characters")
+  .max(64, "Pool password is too long");
+
 export const createPoolSchema = z
   .object({
     name: z.string().min(3, "Pool name must be at least 3 characters"),
@@ -81,8 +108,17 @@ export const createPoolSchema = z
       ),
     invitedFriends: z.array(z.string()).optional(),
     invitedEmails: z.array(z.string().email()).optional(),
+    sport: z.string().regex(/^[a-z0-9_]{2,20}$/).optional(),
+    startsAt: isoDateTime.nullable().optional(),
+    endsAt: isoDateTime.nullable().optional(),
+    /** Private pools only; ignored (and refused) for public ones in the route. */
+    password: poolPasswordSchema.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine(windowIsValid, {
+    message: `The pool window must end after it starts and last at most ${POOL_WINDOW_MAX_DAYS} days`,
+    path: ["endsAt"],
+  });
 
 export const updatePoolSchema = z.object({
   name: z.string().min(3).optional(),
@@ -95,8 +131,16 @@ export const updatePoolWithGamesSchema = z
   .object({
     name: z.string().min(3).optional(),
     selectedGames: z.array(z.string()).optional(),
+    startsAt: isoDateTime.nullable().optional(),
+    endsAt: isoDateTime.nullable().optional(),
+    /** null clears the password; a string sets a new one. */
+    password: poolPasswordSchema.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine(windowIsValid, {
+    message: `The pool window must end after it starts and last at most ${POOL_WINDOW_MAX_DAYS} days`,
+    path: ["endsAt"],
+  });
 
 export const submitPickSchema = z
   .object({
@@ -123,6 +167,27 @@ export const createCommentSchema = z.object({
     .string()
     .min(1, "Comment cannot be empty")
     .max(500, "Comment too long"),
+  /** Optional: thread the comment under one of the pool's games. */
+  gameId: z.string().min(1).max(40).optional(),
+});
+
+export const contentReportSchema = z.object({
+  commentId: z.string().uuid("Invalid comment id").optional(),
+  reason: z.string().trim().min(3, "Tell us what is wrong").max(500, "Reason too long"),
+});
+
+export const acceptChatRulesSchema = z.object({
+  version: z.string().trim().min(1).max(40),
+});
+
+export const poolAccessSchema = z.object({
+  password: z.string().min(1, "Password is required").max(128),
+});
+
+export const promotionRequestSchema = z.object({
+  placement: z.enum(["featured", "boosted", "spotlight"]).default("featured"),
+  days: z.number().int().min(1).max(30).default(7),
+  note: z.string().trim().max(500).optional(),
 });
 
 const uuidSchema = z.string().uuid("Invalid pool ID format");

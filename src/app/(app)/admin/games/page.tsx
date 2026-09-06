@@ -1,219 +1,114 @@
 "use client";
 
-import Layout from "@/components/layout";
-import { useAuth } from "@/lib/hooks/use-auth";
-import { useRouter } from "next/navigation";
-import { DASHBOARD_PATH } from "@/lib/routes";
-import { useEffect } from "react";
-import {
-  Loader2,
-  RefreshCw,
-  Database,
-  CheckCircle,
-  Users,
-  Trophy,
-} from "lucide-react";
+import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { CalendarDays, RefreshCw, Users, CheckCircle, Trophy } from "lucide-react";
+import { useAdminList, useAdminOverview } from "@/lib/hooks/use-admin";
 import { useSyncNFLGames } from "@/lib/hooks/use-sync-nfl";
 import { useSyncTeams } from "@/lib/hooks/use-sync-teams";
 import { useCompletePools } from "@/lib/hooks/use-complete-pools";
-import { usePools } from "@/lib/hooks/use-pools";
-import Link from "next/link";
+import { AdminPageHeader, AdminTable, ActionButton, FilterTabs, SearchBox, Pager, StatusBadge, DateTime, type Column } from "@/components/admin/ui";
 
-type AuthUser = {
-  id?: string;
-  role?: string | null;
-  app_metadata?: { role?: string | null };
-};
-
-type AdminPoolListItem = {
+type Game = {
   id: string;
-  name: string;
-  week?: number;
-  status?: string;
+  home_team_id: string;
+  away_team_id: string;
+  date: string;
+  status: string;
+  home_score: number | null;
+  away_score: number | null;
+  week: number | null;
+  season: number | null;
+  period: number | null;
+  display_clock: string | null;
+  possession: string | null;
+  down_distance: string | null;
+  data_source: string;
+  last_synced_at: string | null;
+  pools: number;
 };
+type Job = { job: string; last_status: string | null; last_started_at: string | null; last_success_at: string | null; last_error: string | null; last_detail: Record<string, unknown> | null };
+type Status = "all" | "live" | "scheduled" | "finished" | "disrupted";
 
 export default function AdminGamesPage() {
-  const router = useRouter();
-  const { user: authUser, isLoadingUser } = useAuth();
-  const user = authUser as AuthUser | null | undefined;
-  const syncNFLMutation = useSyncNFLGames();
-  const syncTeamsMutation = useSyncTeams();
-  const completePoolsMutation = useCompletePools();
-  const { data: poolsData } = usePools({ limit: 100 });
-  const openPools = (poolsData?.pools ?? []).filter(
-    (p: AdminPoolListItem) => p.status === "open" || p.status === "active",
+  const params = useSearchParams();
+  const [status, setStatus] = useState<Status>((params.get("status") as Status) || "all");
+  const [search, setSearch] = useState(params.get("game") ?? "");
+  const [page, setPage] = useState(1);
+  const showSync = params.get("view") === "sync";
+  const overview = useAdminOverview();
+  const canSync = overview.data?.viewer.permissions.includes("games.sync") ?? false;
+
+  const { data, isLoading, error, refetch, isFetching } = useAdminList<{ games: Game[]; total: number; totalPages: number; sync: { source: string; jobs: Job[] } }>(
+    "/api/admin/games",
+    { status: status === "all" ? undefined : status, search, page, limit: 25 },
+    { refetchInterval: status === "live" ? 60_000 : undefined }
   );
+  const syncNFL = useSyncNFLGames();
+  const syncTeams = useSyncTeams();
+  const completePools = useCompletePools();
 
-  const isAdmin =
-    user?.app_metadata?.role === "admin" ||
-    user?.role === "admin";
+  const columns: Column<Game>[] = [
+    { key: "game", header: "Game", render: (g) => <span className="font-display font-bold">{g.away_team_id} @ {g.home_team_id}</span> },
+    { key: "date", header: "Kickoff", render: (g) => <DateTime value={g.date} /> },
+    { key: "status", header: "Status", render: (g) => <StatusBadge status={g.status} /> },
+    { key: "score", header: "Score", render: (g) => <span className="font-mono">{g.away_score ?? "–"} : {g.home_score ?? "–"}</span> },
+    { key: "q", header: "Quarter / clock", render: (g) => (g.status === "live" ? <span className="font-mono text-xs">{g.period ? `Q${g.period}` : "—"} {g.display_clock ?? ""}{g.down_distance ? ` · ${g.down_distance}` : ""}{g.possession ? ` · 🏈 ${g.possession}` : ""}</span> : "—"), secondary: true },
+    { key: "week", header: "Week", render: (g) => `${g.season ?? ""} wk ${g.week ?? "?"}`, secondary: true },
+    { key: "pools", header: "Pools", render: (g) => g.pools, secondary: true },
+    { key: "source", header: "Source", render: (g) => <span className="text-xs">{g.data_source}</span>, secondary: true },
+    { key: "sync", header: "Last sync", render: (g) => <DateTime value={g.last_synced_at} /> },
+  ];
 
-  useEffect(() => {
-    if (!isLoadingUser && !isAdmin && user !== undefined) {
-      router.replace(DASHBOARD_PATH);
-    }
-  }, [isLoadingUser, isAdmin, user, router]);
-
-  if (isLoadingUser || (!isAdmin && user !== undefined)) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      </Layout>
-    );
-  }
-
-  if (!isAdmin) {
-    return null;
-  }
+  const jobs = data?.sync.jobs ?? [];
 
   return (
-    <Layout>
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-4xl font-black font-display italic uppercase mb-2 flex items-center gap-2">
-            <Database className="w-10 h-10 text-primary" />
-            Games & Pools
-          </h1>
-          <p className="text-muted-foreground">
-            Sync NFL games, update pool scores, and mark pools completed.
-          </p>
+    <div className="space-y-6">
+      <AdminPageHeader
+        title="Games"
+        description={`Scores and live state from ${data?.sync.source ?? "ESPN"}. The settle job refreshes every 30 minutes; use the controls to sync now.`}
+        icon={<CalendarDays className="w-8 h-8" />}
+        actions={
+          canSync ? (
+            <>
+              <ActionButton tone="primary" onClick={() => syncNFL.mutate({})} disabled={syncNFL.isPending}><RefreshCw className={`w-3.5 h-3.5 inline mr-1 ${syncNFL.isPending ? "animate-spin" : ""}`} />Sync games now</ActionButton>
+              <ActionButton onClick={() => syncNFL.mutate({ createWeeklyPublicPool: true, entryFee: 20 })} disabled={syncNFL.isPending} title="Syncs this week and creates the featured public pool if missing"><Trophy className="w-3.5 h-3.5 inline mr-1" />Sync + weekly pool</ActionButton>
+              <ActionButton onClick={() => syncTeams.mutate()} disabled={syncTeams.isPending}><Users className="w-3.5 h-3.5 inline mr-1" />Sync teams</ActionButton>
+              <ActionButton onClick={() => completePools.mutate()} disabled={completePools.isPending}><CheckCircle className="w-3.5 h-3.5 inline mr-1" />Complete finished pools</ActionButton>
+            </>
+          ) : undefined
+        }
+      />
+
+      <div className="glass-panel rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Synchronisation status</h2>
+          <button type="button" onClick={() => refetch()} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><RefreshCw className={`w-3 h-3 ${isFetching ? "animate-spin" : ""}`} /> refresh</button>
         </div>
-
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="glass-panel p-6 rounded-xl space-y-4">
-            <h2 className="text-xl font-bold font-display uppercase flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" />
-              NFL Teams Sync
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              sync 32 NFL teams from ESPN (names, logos, colors).
-            </p>
-            <button
-              type="button"
-              onClick={() => syncTeamsMutation.mutate()}
-              disabled={syncTeamsMutation.isPending}
-              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50"
-            >
-              {syncTeamsMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )}
-              Sync NFL Teams
-            </button>
+        {jobs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No scheduled job has reported yet.</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {jobs.map((j) => (
+              <div key={j.job} className={`rounded-lg border p-3 text-sm space-y-1 ${j.last_status === "error" ? "border-red-500/40" : "border-white/10"}`}>
+                <div className="flex items-center justify-between"><span className="font-mono uppercase">{j.job}</span><StatusBadge status={j.last_status ?? "unknown"} /></div>
+                <p className="text-xs text-muted-foreground">Started <DateTime value={j.last_started_at} /></p>
+                <p className="text-xs text-muted-foreground">Last success <DateTime value={j.last_success_at} /></p>
+                {j.last_error && <p className="text-xs text-red-300 break-words">{j.last_error}</p>}
+                {j.last_detail && <p className="text-[11px] text-muted-foreground break-words">{JSON.stringify(j.last_detail)}</p>}
+              </div>
+            ))}
           </div>
-
-          <div className="glass-panel p-6 rounded-xl space-y-4">
-            <h2 className="text-xl font-bold font-display uppercase flex items-center gap-2">
-              <RefreshCw className="w-5 h-5 text-primary" />
-              NFL Games Sync
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Fetch and sync NFL games from ESPN.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => syncNFLMutation.mutate({})}
-                disabled={syncNFLMutation.isPending}
-                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50"
-              >
-                {syncNFLMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                Sync NFL Games
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  syncNFLMutation.mutate({
-                    createWeeklyPublicPool: true,
-                    entryFee: 20,
-                  })
-                }
-                disabled={syncNFLMutation.isPending}
-                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary/80 text-primary-foreground font-medium hover:bg-primary/70 disabled:opacity-50 border border-primary/50"
-              >
-                {syncNFLMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Trophy className="w-4 h-4" />
-                )}
-                Sync & Create Weekly Public Pool
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              &quot;Sync & Create Weekly Public Pool&quot; syncs the current
-              week&apos;s games and creates the main public pool only if one
-              doesn&apos;t already exist for this week ($20, 6–9 games).
-            </p>
-          </div>
-
-          <div className="glass-panel p-6 rounded-xl space-y-4">
-            <h2 className="text-xl font-bold font-display uppercase flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-primary" />
-              Complete Finished Pools
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Mark pools as completed when all their games are finished or
-              disrupted. Checks all open/active pools.
-            </p>
-            <button
-              type="button"
-              onClick={() => completePoolsMutation.mutate()}
-              disabled={completePoolsMutation.isPending}
-              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50"
-            >
-              {completePoolsMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <CheckCircle className="w-4 h-4" />
-              )}
-              Complete Finished Pools
-            </button>
-          </div>
-        </div>
-
-        <div className="glass-panel p-6 rounded-xl">
-          <h2 className="text-xl font-bold font-display uppercase mb-4 flex items-center gap-2">
-            <RefreshCw className="w-5 h-5 text-primary" />
-            Sync Pool Scores ({openPools.length} open pools)
-          </h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Sync game scores for a specific pool. Visit each pool and use the
-            &quot;Sync scores&quot; button on the pool detail page.
-          </p>
-          {openPools.length === 0 ? (
-            <p className="text-muted-foreground italic">
-              No open pools. All pools are either completed or not yet started.
-            </p>
-          ) : (
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-              {openPools.slice(0, 20).map((pool: AdminPoolListItem) => (
-                <Link
-                  key={pool.id}
-                  href={`/pool/${pool.id}`}
-                  className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 border border-white/5"
-                >
-                  <span className="font-medium truncate">{pool.name}</span>
-                  <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                    Week {pool.week}
-                  </span>
-                </Link>
-              ))}
-              {openPools.length > 20 && (
-                <p className="text-xs text-muted-foreground pt-2">
-                  +{openPools.length - 20} more pools
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+        )}
+        {showSync && <p className="text-xs text-muted-foreground mt-3">Retry a failed sync with “Sync games now”. Disrupted games (postponed / cancelled) are listed under the Disrupted filter and count as a correct pick for everyone at settlement.</p>}
       </div>
-    </Layout>
+
+      <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <FilterTabs value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={[{ value: "all", label: "All" }, { value: "live", label: "Live" }, { value: "scheduled", label: "Upcoming" }, { value: "finished", label: "Completed" }, { value: "disrupted", label: "Disrupted" }]} />
+        <SearchBox value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Team abbreviation or game id" />
+      </div>
+      <AdminTable columns={columns} rows={data?.games ?? []} isLoading={isLoading} error={error?.message ?? null} onRetry={() => refetch()} emptyTitle="No games match" />
+      <Pager page={page} totalPages={data?.totalPages ?? 1} total={data?.total ?? 0} onPageChange={setPage} />
+    </div>
   );
 }

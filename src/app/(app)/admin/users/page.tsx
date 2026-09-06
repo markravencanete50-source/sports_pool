@@ -1,201 +1,131 @@
 "use client";
 
-import Layout from "@/components/layout";
-import {
-  useAdminUsers,
-  useUpdateUserRole,
-  type UserRole,
-} from "@/lib/hooks/use-admin-users";
-import { useAuth } from "@/lib/hooks/use-auth";
-import { useRouter } from "next/navigation";
-import { DASHBOARD_PATH } from "@/lib/routes";
-import { useState, useEffect } from "react";
-import { Loader2, Search, Users } from "lucide-react";
-import { Pagination } from "@/components/pools/pagination";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Users } from "lucide-react";
+import { useAdminList } from "@/lib/hooks/use-admin";
+import { AdminPageHeader, AdminTable, FilterTabs, SearchBox, Pager, StatusBadge, Money, DateTime, type Column } from "@/components/admin/ui";
 
-const PAGE_SIZE = 20;
-
-type AuthUser = {
-  id?: string;
-  role?: string | null;
-  app_metadata?: { role?: string | null };
+type Row = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  admin_role: string | null;
+  account_status: string;
+  balance: number;
+  created_at: string;
+  last_active_at: string | null;
+  age_verified: boolean;
+  age_review_status: string;
+  poolsJoined: number;
+  poolsCreated: number;
+  deposits: number;
+  winnings: number;
+  withdrawals: number;
 };
 
+type Filter = "all" | "active" | "blocked" | "suspended" | "review" | "verified" | "unverified";
+
 export default function AdminUsersPage() {
-  const router = useRouter();
-  const { user: authUser, isLoadingUser } = useAuth();
-  const user = authUser as AuthUser | null | undefined;
-  const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const params = useSearchParams();
+  const [filter, setFilter] = useState<Filter>((params.get("status") as Filter) || (params.get("review") ? "review" : "all"));
+  const [search, setSearch] = useState("");
+  const [debounced, setDebounced] = useState("");
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-      // Reset pagination alongside the debounced search update (async, so it
-      // does not run synchronously within the effect body).
+      setDebounced(search);
       setPage(1);
-    }, 400);
+    }, 350);
     return () => clearTimeout(t);
-  }, [searchTerm]);
+  }, [search]);
 
-  const isAdmin =
-    user?.app_metadata?.role === "admin" ||
-    user?.role === "admin";
-  useEffect(() => {
-    if (!isLoadingUser && !isAdmin && user !== undefined) {
-      router.replace(DASHBOARD_PATH);
-    }
-  }, [isLoadingUser, isAdmin, user, router]);
-
-  const { data, isLoading, error } = useAdminUsers({
+  const query = {
     page,
-    limit: PAGE_SIZE,
-    search: debouncedSearch,
-  });
-  const updateRoleMutation = useUpdateUserRole();
+    limit: 25,
+    search: debounced,
+    status: ["active", "blocked", "suspended"].includes(filter) ? filter : undefined,
+    review: filter === "review" ? "pending" : undefined,
+    verified: filter === "verified" ? "yes" : filter === "unverified" ? "no" : undefined,
+  };
+  const { data, isLoading, error, refetch } = useAdminList<{ users: Row[]; total: number; totalPages: number }>("/api/admin/users", query);
 
-  const users = data?.users ?? [];
-  const total = data?.total ?? 0;
-  const totalPages = data?.totalPages ?? 1;
-
-  if (isLoadingUser || (!isAdmin && user !== undefined)) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      </Layout>
-    );
-  }
-
-  if (!isAdmin) {
-    return null;
-  }
+  const columns: Column<Row>[] = [
+    {
+      key: "user",
+      header: "User",
+      render: (u) => (
+        <span className="block">
+          <span className="block font-medium">{u.name ?? "—"}</span>
+          <span className="block text-xs text-muted-foreground">{u.email}</span>
+        </span>
+      ),
+    },
+    { key: "joined", header: "Registered", render: (u) => <DateTime value={u.created_at} />, secondary: true },
+    {
+      key: "status",
+      header: "Status",
+      render: (u) => (
+        <span className="flex flex-wrap gap-1">
+          <StatusBadge status={u.account_status} />
+          {u.role === "admin" && <StatusBadge status={u.admin_role ?? "super_admin"} />}
+        </span>
+      ),
+    },
+    {
+      key: "age",
+      header: "Age",
+      render: (u) => (
+        <span className="flex gap-1">
+          <StatusBadge status={u.age_verified ? "verified" : "unverified"} />
+          {u.age_review_status !== "none" && <StatusBadge status={u.age_review_status} />}
+        </span>
+      ),
+      secondary: true,
+    },
+    { key: "balance", header: "Balance", render: (u) => <Money value={u.balance} /> },
+    { key: "pools", header: "Pools (joined / created)", render: (u) => `${u.poolsJoined} / ${u.poolsCreated}`, secondary: true },
+    { key: "deposits", header: "Deposits", render: (u) => <Money value={u.deposits} />, secondary: true },
+    { key: "withdrawals", header: "Withdrawals", render: (u) => <Money value={u.withdrawals} />, secondary: true },
+    { key: "winnings", header: "Winnings", render: (u) => <Money value={u.winnings} />, secondary: true },
+    { key: "active", header: "Last active", render: (u) => <DateTime value={u.last_active_at} />, secondary: true },
+  ];
 
   return (
-    <Layout>
-      <div className="space-y-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-          <div>
-            <h1 className="text-4xl font-black font-display italic uppercase mb-2 flex items-center gap-2">
-              <Users className="w-10 h-10 text-primary" />
-              Users
-            </h1>
-            <p className="text-muted-foreground">
-              Manage and view all registered users.
-            </p>
-          </div>
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search by email or name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-black/20 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-          </div>
-        </div>
-
-        {error ? (
-          <div className="text-center py-12">
-            <p className="text-destructive">
-              {(error as Error).message}
-            </p>
-          </div>
-        ) : isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <>
-            <div className="rounded-xl border border-white/10 overflow-x-auto custom-scrollbar">
-              <table className="w-full min-w-[560px] text-left">
-                <thead>
-                  <tr className="border-b border-white/10 bg-white/5">
-                    <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                      Email
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                      Name
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                      Role
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                      Joined
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={4}
-                        className="px-4 py-12 text-center text-muted-foreground"
-                      >
-                        No users found.
-                      </td>
-                    </tr>
-                  ) : (
-                    users.map((u) => {
-                      const currentRole = (u.role === "admin" ? "admin" : "user") as UserRole;
-                      const isUpdating =
-                        updateRoleMutation.isPending &&
-                        (updateRoleMutation.variables as { userId: string })?.userId === u.id;
-                      const isSelf = user?.id === u.id;
-                      return (
-                        <tr
-                          key={u.id}
-                          className="border-b border-white/5 hover:bg-white/5"
-                        >
-                          <td className="px-4 py-3 text-sm">{u.email}</td>
-                          <td className="px-4 py-3 text-sm">
-                            {u.name ?? "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <select
-                              value={currentRole}
-                              onChange={(e) => {
-                                const role = e.target.value as UserRole;
-                                if (role === currentRole) return;
-                                if (isSelf && role === "user") return;
-                                updateRoleMutation.mutate({ userId: u.id, role });
-                              }}
-                              disabled={isUpdating || (isSelf && currentRole === "admin")}
-                              className="bg-black/20 border border-white/10 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-                            >
-                              <option value="user">User</option>
-                              <option value="admin">Admin</option>
-                            </select>
-                            {isUpdating && (
-                              <Loader2 className="inline-block w-4 h-4 ml-2 animate-spin text-primary" />
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-muted-foreground">
-                            {u.created_at
-                              ? new Date(u.created_at).toLocaleDateString()
-                              : "—"}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              limit={PAGE_SIZE}
-              onPageChange={setPage}
-              isLoading={isLoading}
-            />
-          </>
-        )}
+    <div>
+      <AdminPageHeader title="Users" description="Every registered account, with standing, verification and money at a glance." icon={<Users className="w-8 h-8" />} />
+      <div className="flex flex-col md:flex-row gap-3 md:items-center justify-between mb-4">
+        <FilterTabs
+          value={filter}
+          onChange={(v) => {
+            setFilter(v);
+            setPage(1);
+          }}
+          options={[
+            { value: "all", label: "All" },
+            { value: "active", label: "Active" },
+            { value: "blocked", label: "Blocked" },
+            { value: "suspended", label: "Suspended" },
+            { value: "review", label: "Age review" },
+            { value: "verified", label: "Verified" },
+            { value: "unverified", label: "Unverified" },
+          ]}
+        />
+        <SearchBox value={search} onChange={setSearch} placeholder="Name, email or user id" />
       </div>
-    </Layout>
+      <AdminTable
+        columns={columns}
+        rows={data?.users ?? []}
+        rowHref={(u) => `/admin/users/${u.id}`}
+        isLoading={isLoading}
+        error={error?.message ?? null}
+        onRetry={() => refetch()}
+        emptyTitle="No users match"
+        emptyDescription="Try another filter or search term."
+      />
+      <Pager page={page} totalPages={data?.totalPages ?? 1} total={data?.total ?? 0} onPageChange={setPage} />
+    </div>
   );
 }

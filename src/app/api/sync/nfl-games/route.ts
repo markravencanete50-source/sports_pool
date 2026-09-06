@@ -12,6 +12,7 @@ import { poolConfig } from "@/lib/config";
 import { completePoolIfAllGamesFinished } from "@/lib/pool-completion";
 import { materializePoolWinners } from "@/lib/materialize-winners";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { extractLiveState } from "@/lib/espn-live";
 
 function getGameStatus(competition: ESPNGame["competitions"][0]): GameStatus {
   const status = competition.status.type;
@@ -79,6 +80,7 @@ async function syncSpecificGames(supabase: SupabaseClient, gameIds: string[]) {
               home_score: homeScore,
               away_score: awayScore,
               odds: odds,
+              ...extractLiveState(competition),
             })
             .eq("id", gameId);
 
@@ -222,6 +224,7 @@ export async function POST(request: Request) {
         odds: odds,
         week: gameWeek,
         season: gameSeason,
+        ...extractLiveState(competition),
       };
 
       const { data: existingGame } = await supabase

@@ -61,6 +61,9 @@ export async function GET(request: Request) {
   // named in the response) and still run the checks that need no processor.
   const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
 
+  const { markJobStarted, markJobFinished } = await import("@/lib/system-jobs");
+  await markJobStarted("reconcile");
+
   try {
     const { data: ledgerRows, error: ledgerError } = await admin
       .from("pool_transactions")
@@ -159,6 +162,16 @@ export async function GET(request: Request) {
       mismatches: mismatches.length,
     });
 
+    await markJobFinished("reconcile", {
+      ok: true,
+      detail: {
+        stripeChecked: stripeConfigured,
+        stripeSessionsPaid: stripeSessions.size,
+        ledgerRows: ledgerRows?.length ?? 0,
+        mismatches: mismatches.length,
+      },
+    });
+
     return NextResponse.json({
       since: since.toISOString(),
       stripeChecked: stripeConfigured,
@@ -173,6 +186,7 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logEvent("error", "reconcile.fatal", { reason: message });
+    await markJobFinished("reconcile", { ok: false, error: message });
     await recordAppError({
       source: "server",
       message: `Reconciliation run failed: ${message}`,

@@ -7,6 +7,50 @@ export const PoolStatus = {
   OPEN: "open",
   ACTIVE: "active",
   COMPLETED: "completed",
+  /** Admin hold: no purchases, no settlement, picks frozen. Resumable. */
+  PAUSED: "paused",
+  /** Terminal admin decision. Paid entries are marked for refund. */
+  CANCELLED: "cancelled",
+} as const;
+
+/** Statuses in which a pool accepts card purchases. */
+export const PURCHASABLE_POOL_STATUSES: readonly string[] = [
+  PoolStatus.OPEN,
+  PoolStatus.ACTIVE,
+];
+
+export const AccountStatus = {
+  ACTIVE: "active",
+  BLOCKED: "blocked",
+  SUSPENDED: "suspended",
+} as const;
+
+export const CommentModerationStatus = {
+  VISIBLE: "visible",
+  HIDDEN: "hidden",
+  FLAGGED: "flagged",
+  DELETED: "deleted",
+} as const;
+
+export const PromotionStatus = {
+  PENDING: "pending",
+  APPROVED: "approved",
+  ACTIVE: "active",
+  PAUSED: "paused",
+  REJECTED: "rejected",
+  CANCELLED: "cancelled",
+  EXPIRED: "expired",
+} as const;
+
+export const PayoutRequestStatus = {
+  PENDING: "pending",
+  APPROVED: "approved",
+  ON_HOLD: "on_hold",
+  PROCESSING: "processing",
+  COMPLETED: "completed",
+  FAILED: "failed",
+  REJECTED: "rejected",
+  CANCELLED: "cancelled",
 } as const;
 
 export const CardStatus = {
@@ -87,6 +131,12 @@ export const InvitationStatus = {
 
 export type PoolType = (typeof PoolType)[keyof typeof PoolType];
 export type PoolStatus = (typeof PoolStatus)[keyof typeof PoolStatus];
+export type AccountStatus = (typeof AccountStatus)[keyof typeof AccountStatus];
+export type CommentModerationStatus =
+  (typeof CommentModerationStatus)[keyof typeof CommentModerationStatus];
+export type PromotionStatus = (typeof PromotionStatus)[keyof typeof PromotionStatus];
+export type PayoutRequestStatus =
+  (typeof PayoutRequestStatus)[keyof typeof PayoutRequestStatus];
 export type CardStatus = (typeof CardStatus)[keyof typeof CardStatus];
 export type GamePrediction =
   (typeof GamePrediction)[keyof typeof GamePrediction];

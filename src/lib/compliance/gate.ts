@@ -33,6 +33,9 @@ import { meetsMinimumAge } from "./age";
 export type MoneyAction = "deposit" | "payout" | "play";
 
 export type ComplianceBlockCode =
+  | "account_blocked"
+  | "account_suspended"
+  | "age_review_pending"
   | "self_excluded"
   | "cooling_off"
   | "terms_not_accepted"
@@ -54,7 +57,13 @@ export type ComplianceVerdict =
       detail?: Record<string, unknown>;
     };
 
+interface StandingRow {
+  account_status: string | null;
+  suspended_until: string | null;
+}
+
 interface ComplianceRow {
+  age_review_status?: string | null;
   date_of_birth: string | null;
   tos_accepted_at: string | null;
   tos_version: string | null;
@@ -96,10 +105,10 @@ export async function evaluateCompliance(input: {
     // below sees current values without needing a scheduled job.
     await admin.rpc("apply_due_limit_increases", { p_user_id: userId });
 
-    const [complianceRes, settingsRes, rulesRes] = await Promise.all([
+    const [complianceRes, settingsRes, rulesRes, standingRes] = await Promise.all([
       admin
         .from("user_compliance")
-        .select("date_of_birth, tos_accepted_at, tos_version, kyc_status, self_excluded_until, cooling_off_until, deposit_limit_daily, deposit_limit_weekly, deposit_limit_monthly")
+        .select("age_review_status, date_of_birth, tos_accepted_at, tos_version, kyc_status, self_excluded_until, cooling_off_until, deposit_limit_daily, deposit_limit_weekly, deposit_limit_monthly")
         .eq("user_id", userId)
         .maybeSingle(),
       admin
@@ -110,6 +119,11 @@ export async function evaluateCompliance(input: {
       admin
         .from("jurisdiction_rules")
         .select("country_code, region_code, status, minimum_age, requires_license, notes"),
+      admin
+        .from("users")
+        .select("account_status, suspended_until")
+        .eq("id", userId)
+        .maybeSingle(),
     ]);
 
     if (settingsRes.error || !settingsRes.data) {
@@ -121,6 +135,30 @@ export async function evaluateCompliance(input: {
     const compliance = (complianceRes.data ?? null) as unknown as ComplianceRow | null;
     const rules = (rulesRes.data ?? []) as unknown as JurisdictionRule[];
     const now = new Date();
+
+    // ── 0. Account standing — an admin decision outranks every self-set state.
+    const standing = (standingRes.data ?? null) as unknown as StandingRow | null;
+    if (standing?.account_status === "blocked") {
+      return await block(userId, geo, "account_blocked", 403,
+        "This account has been blocked. Contact support if you believe this is a mistake.");
+    }
+    if (standing?.account_status === "suspended") {
+      const until = standing.suspended_until ? new Date(standing.suspended_until) : null;
+      if (!until || until > now) {
+        return await block(userId, geo, "account_suspended", 403,
+          `This account is suspended${until ? ` until ${until.toISOString().slice(0, 10)}` : ""}. ` +
+            `Contact support for details.`,
+          { until: standing.suspended_until });
+      }
+    }
+    if (compliance?.age_review_status === "pending" || compliance?.age_review_status === "rejected") {
+      return await block(userId, geo, "age_review_pending", 403,
+        compliance.age_review_status === "rejected"
+          ? "Your age verification was not approved. Paid contests are unavailable on this account."
+          : "Your account is under age review. Paid contests are unavailable until an administrator completes it — " +
+            "email support if you need to provide documents.",
+        { reviewStatus: compliance.age_review_status });
+    }
 
     // ── 1. Self-exclusion. Checked first, always, for every action. ─────────
     if (compliance?.self_excluded_until) {
@@ -188,6 +226,25 @@ export async function evaluateCompliance(input: {
         "Please confirm your date of birth before taking part in a paid contest.");
     }
     if (!meetsMinimumAge(compliance.date_of_birth, jurisdiction.minimumAge, now)) {
+      /*
+       * Under the LOCAL minimum (e.g. 20 in a 21+ state) but over the global
+       * floor that let them register. That is exactly the case the brief wants
+       * a human to look at: queue an age review so the admin console lists it,
+       * and keep blocking until it is decided. Best-effort write; the block
+       * below stands regardless.
+       */
+      if (!compliance.age_review_status || compliance.age_review_status === "none") {
+        await admin
+          .from("user_compliance")
+          .update({
+            age_review_status: "pending",
+            age_review_reason:
+              `Under the minimum age of ${jurisdiction.minimumAge} for ` +
+              `${geo.country ?? "unknown"}${geo.region ? `/${geo.region}` : ""} at a ${action} attempt`,
+          })
+          .eq("user_id", userId)
+          .eq("age_review_status", "none");
+      }
       return await block(userId, geo, "under_age", 403,
         `You must be at least ${jurisdiction.minimumAge} to take part in a paid contest ` +
           `in your location.`,

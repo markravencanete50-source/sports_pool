@@ -85,6 +85,9 @@ export async function GET(request: Request) {
 
   const since = new Date(Date.now() - LOOKBACK_MINUTES * 60_000);
 
+  const { markJobStarted, markJobFinished } = await import("@/lib/system-jobs");
+  await markJobStarted("alert");
+
   const { data, error } = await createAdminClient()
     .from("app_errors")
     .select("source, message, url, created_at")
@@ -95,6 +98,7 @@ export async function GET(request: Request) {
   if (error) {
     // The watcher itself is broken — that is its own alertable condition.
     logEvent("error", "alert.query_failed", { reason: error.message });
+    await markJobFinished("alert", { ok: false, error: error.message });
     return NextResponse.json({ error: "Could not read app_errors" }, { status: 500 });
   }
 
@@ -102,6 +106,7 @@ export async function GET(request: Request) {
 
   if (rows.length === 0) {
     logEvent("info", "alert.clean", { windowMinutes: LOOKBACK_MINUTES });
+    await markJobFinished("alert", { ok: true, detail: { errors: 0, windowMinutes: LOOKBACK_MINUTES } });
     return NextResponse.json({ ok: true, errors: 0, alerted: false });
   }
 
@@ -147,6 +152,12 @@ export async function GET(request: Request) {
     distinctIssues: ordered.length,
     truncated,
     top: ordered.slice(0, 10).map((g) => ({ source: g.source, count: g.count, sample: g.sample })),
+  });
+  // The job itself succeeded once the digest exists; webhook delivery below
+  // is reported on its own so a broken webhook never reads as a broken job.
+  await markJobFinished("alert", {
+    ok: true,
+    detail: { errors: rows.length, distinct: ordered.length, windowMinutes: LOOKBACK_MINUTES },
   });
 
   const webhook = process.env.ALERT_WEBHOOK_URL?.trim();

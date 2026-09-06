@@ -52,17 +52,37 @@ export async function GET(
     const admin = createAdminClient();
     const financials = await getPoolFinancials(admin, poolId);
 
-    const { count: joinedCount } = await admin
-      .from("parlay_cards")
-      .select("*", { count: "exact", head: true })
-      .eq("pool_id", poolId)
-      .in("status", ["pending", "active", "completed"]);
+    const [{ count: joinedCount }, { data: secretCols }, { data: activePromo }] = await Promise.all([
+      admin
+        .from("parlay_cards")
+        .select("*", { count: "exact", head: true })
+        .eq("pool_id", poolId)
+        .in("status", ["pending", "active", "completed"]),
+      // The hash itself is never returned — only whether one exists, so the
+      // UI can show the "password protected" badge to the owner.
+      admin.from("pools").select("access_password_hash").eq("id", poolId).maybeSingle(),
+      admin
+        .from("pool_promotions")
+        .select("id, status, placement, starts_at, ends_at")
+        .eq("pool_id", poolId)
+        .in("status", ["pending", "approved", "active", "paused"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    const { access_password_hash: _omit, ...publicData } = data as Record<string, unknown> & {
+      access_password_hash?: string | null;
+    };
+    void _omit;
 
     const pool = {
-      ...data,
+      ...publicData,
       prize_pot: financials.prize_pot,
       participants: financials.paid_participant_count,
       can_edit: (joinedCount ?? 0) === 0,
+      requires_password: Boolean(secretCols?.access_password_hash),
+      promotion: activePromo ?? null,
     };
 
     return NextResponse.json({ pool }, { status: 200 });
@@ -98,7 +118,7 @@ export async function PATCH(
 
     const { data: pool } = await supabase
       .from("pools")
-      .select("id, created_by, week, status")
+      .select("id, created_by, week, status, type")
       .eq("id", poolId)
       .single();
 
@@ -129,9 +149,11 @@ export async function PATCH(
     const body = await request.json();
     const validatedData = updatePoolWithGamesSchema.parse(body);
 
-    if (!validatedData.name && !validatedData.selectedGames) {
+    const touchesWindow = "startsAt" in validatedData || "endsAt" in validatedData;
+    const touchesPassword = "password" in validatedData;
+    if (!validatedData.name && !validatedData.selectedGames && !touchesWindow && !touchesPassword) {
       return NextResponse.json(
-        { error: "Provide name and/or selectedGames to update" },
+        { error: "Provide name, selectedGames, a window and/or a password to update" },
         { status: 400 }
       );
     }
@@ -147,6 +169,54 @@ export async function PATCH(
           { error: updateError.message },
           { status: 400 }
         );
+      }
+    }
+
+    // Window and password live on columns client roles cannot write, so they
+    // are set with the service role after the ownership + freeze checks above.
+    if (touchesWindow || touchesPassword) {
+      const patch: Record<string, unknown> = {};
+      if (touchesWindow) {
+        const { data: current } = await admin
+          .from("pools")
+          .select("starts_at, ends_at")
+          .eq("id", poolId)
+          .single();
+        const startsAt =
+          "startsAt" in validatedData ? validatedData.startsAt ?? null : (current?.starts_at as string | null);
+        const endsAt =
+          "endsAt" in validatedData ? validatedData.endsAt ?? null : (current?.ends_at as string | null);
+        if (startsAt && endsAt) {
+          const { data: platform } = await admin
+            .from("platform_settings")
+            .select("max_pool_duration_days")
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const maxDays = Number(platform?.max_pool_duration_days ?? 7);
+          const span = Date.parse(endsAt) - Date.parse(startsAt);
+          if (!(span > 0) || span > maxDays * 24 * 3600_000) {
+            return NextResponse.json(
+              { error: `The pool window must end after it starts and last at most ${maxDays} days` },
+              { status: 400 }
+            );
+          }
+        }
+        patch.starts_at = startsAt ? new Date(startsAt).toISOString() : null;
+        patch.ends_at = endsAt ? new Date(endsAt).toISOString() : null;
+      }
+      if (touchesPassword) {
+        if (validatedData.password && pool.type !== "private") {
+          return NextResponse.json({ error: "Only private pools can have a password" }, { status: 400 });
+        }
+        const { hashPoolPassword } = await import("@/lib/pool-password");
+        patch.access_password_hash = validatedData.password
+          ? hashPoolPassword(validatedData.password)
+          : null;
+      }
+      const { error: patchError } = await admin.from("pools").update(patch).eq("id", poolId);
+      if (patchError) {
+        return NextResponse.json({ error: patchError.message }, { status: 400 });
       }
     }
 

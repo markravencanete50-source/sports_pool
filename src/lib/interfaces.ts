@@ -35,6 +35,19 @@ export interface CommentSectionProps {
   requiresCard?: boolean;
   onPurchaseCard?: () => void;
   currentUserId?: string | null;
+  /**
+   * Click-to-message agreement. When `rules` is loaded and not accepted, the
+   * composer is replaced by the agreement; posting stays refused server-side
+   * regardless, this only makes the refusal understandable.
+   */
+  rules?: { version: string; accepted: boolean } | null;
+  onAcceptRules?: (version: string) => Promise<void> | void;
+  isAcceptingRules?: boolean;
+  /** Seconds the server told us to wait after the last post (slow mode). */
+  cooldownSeconds?: number;
+  /** Configured slow-mode interval, for the hint under the composer. */
+  slowModeSeconds?: number;
+  onReport?: (commentId: string, reason: string) => Promise<void> | void;
 }
 
 export type GameResultOutcome = "home_win" | "away_win" | "tie" | "disrupted";
@@ -53,6 +66,8 @@ export interface GameCardProps {
   selectedPrediction?: "home_win" | "away_win" | "tie";
   disabled?: boolean;
   gameResult?: GameResult | null;
+  /** Show the live field panel when the game is in progress. Default true. */
+  showLivePanel?: boolean;
 }
 
 export interface NavItemType {

@@ -22,9 +22,13 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { CardSelector as CardSelectorComponent } from "@/components/pool-detail/card-selector";
 import { PoolInviteByEmail } from "@/components/pool-detail/pool-invite-by-email";
 import { PoolEditModal } from "@/components/pool-detail/pool-edit-modal";
+import { SharePoolButton } from "@/components/pool-detail/share-pool-button";
+import { useAcceptChatRules, useChatRules, useReportComment } from "@/lib/hooks/use-chat-rules";
+import { apiRequest } from "@/lib/queryClient";
 import { GamePrediction } from "@/lib/types";
 import { DISRUPTED_STATUSES } from "@/lib/constants";
 import type { GameCardProps, GameResult } from "@/lib/interfaces";
+import { Lock, Megaphone } from "lucide-react";
 
 type PoolGameRow = {
   id: string;
@@ -50,6 +54,12 @@ type PoolDetail = {
   prizePot?: number;
   prize_pot?: number;
   pool_games?: Array<{ games?: PoolGameRow | null }>;
+  sport?: string | null;
+  share_slug?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  requires_password?: boolean;
+  promotion?: { id: string; status: string; placement: string } | null;
 };
 
 type PoolCommentRow = {
@@ -103,6 +113,13 @@ export default function PoolDetailPage() {
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [chatCooldown, setChatCooldown] = useState(0);
+  const [requestingPromotion, setRequestingPromotion] = useState(false);
+
+  // Click-to-message agreement + slow mode + reports (all enforced server-side).
+  const { data: chatRules } = useChatRules(!!user?.id);
+  const acceptChatRules = useAcceptChatRules();
+  const reportComment = useReportComment(poolId);
   const [pendingPicks, setPendingPicks] = useState<
     Record<string, { prediction: GamePrediction }>
   >({});
@@ -140,12 +157,21 @@ export default function PoolDetailPage() {
   }, [pool]);
 
   const endsLabel = useMemo(() => {
+    // An explicit entry window wins over the schedule-derived guess.
+    if (pool?.ends_at) {
+      const end = new Date(pool.ends_at);
+      return end.getTime() < Date.now()
+        ? `Entry closed ${format(end, "EEE, MMM d")}`
+        : `Entry closes ${format(end, "EEE, MMM d, h:mm a")}`;
+    }
     if (poolGames.length === 0) return "Schedule TBD";
     const lastGame = poolGames.reduce((latest, game) =>
       new Date(game.date) > new Date(latest.date) ? game : latest
     );
     return `Ends ${format(new Date(lastGame.date), "EEE, MMM d")}`;
-  }, [poolGames]);
+  }, [poolGames, pool?.ends_at]);
+
+  const entryNotYetOpen = !!pool?.starts_at && new Date(pool.starts_at).getTime() > Date.now();
 
   const cardPicks = useMemo(() => {
     if (!selectedCard?.card_picks) return {};
@@ -231,15 +257,54 @@ export default function PoolDetailPage() {
         poolId,
         text,
       });
-      toast.success("Comment added!");
+      if (chatRules?.slowModeSeconds) setChatCooldown(chatRules.slowModeSeconds);
     } catch (error) {
-      const errorMessage =
-        (error as Error | null)?.message || "Failed to add comment";
+      const err = error as (Error & { status?: number }) | null;
+      const errorMessage = err?.message || "Failed to add comment";
       if (errorMessage.includes("must purchase a card")) {
         toast.error("You must purchase a card to access chat");
+      } else if (err?.status === 429 || /slow mode/i.test(errorMessage)) {
+        const secs = Number(/(\d+)s/.exec(errorMessage)?.[1] ?? chatRules?.slowModeSeconds ?? 10);
+        setChatCooldown(secs);
+        toast.error(errorMessage);
+      } else if (/chat rules/i.test(errorMessage)) {
+        queryClient.invalidateQueries({ queryKey: ["/api/me/chat-rules"] });
+        toast.error("Please accept the chat rules first");
       } else {
         toast.error(errorMessage);
       }
+    }
+  };
+
+  const handleAcceptChatRules = async (version: string) => {
+    try {
+      await acceptChatRules.mutateAsync(version);
+      toast.success("Thanks — you can chat now");
+    } catch (error) {
+      toast.error((error as Error | null)?.message ?? "Could not save your acceptance");
+    }
+  };
+
+  const handleReportComment = async (commentId: string, reason: string) => {
+    try {
+      await reportComment.mutateAsync({ commentId, reason });
+      toast.success("Report sent to the moderators");
+    } catch (error) {
+      toast.error((error as Error | null)?.message ?? "Could not send the report");
+    }
+  };
+
+  const handleRequestPromotion = async () => {
+    if (!poolId) return;
+    setRequestingPromotion(true);
+    try {
+      await apiRequest("POST", `/api/pools/${poolId}/promotion`, { placement: "featured", days: 7 });
+      toast.success("Promotion requested — an admin will review it");
+      queryClient.invalidateQueries({ queryKey: ["/api/pools", poolId] });
+    } catch (error) {
+      toast.error((error as Error | null)?.message ?? "Could not request promotion");
+    } finally {
+      setRequestingPromotion(false);
     }
   };
 
@@ -342,13 +407,33 @@ export default function PoolDetailPage() {
 
           <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6">
             <div className="min-w-0">
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
                 <span className="px-2 py-0.5 bg-primary text-white text-[10px] font-bold uppercase tracking-widest rounded">
                   {pool.type}
                 </span>
                 <span className="text-sm text-muted-foreground font-mono uppercase">
-                  Week {pool.week}
+                  {(pool.sport ?? "nfl").toUpperCase()} · Week {pool.week}
                 </span>
+                {pool.requires_password && (
+                  <span className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                    <Lock className="w-3 h-3" /> Password protected
+                  </span>
+                )}
+                {pool.status === "paused" && (
+                  <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] font-bold uppercase tracking-widest rounded">
+                    Paused
+                  </span>
+                )}
+                {pool.status === "cancelled" && (
+                  <span className="px-2 py-0.5 bg-red-500/20 text-red-300 text-[10px] font-bold uppercase tracking-widest rounded">
+                    Cancelled
+                  </span>
+                )}
+                {pool.promotion?.status === "active" && (
+                  <span className="px-2 py-0.5 bg-accent/20 text-accent-foreground text-[10px] font-bold uppercase tracking-widest rounded">
+                    Promoted
+                  </span>
+                )}
               </div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-black font-display italic uppercase tracking-tight mb-4 break-words">
                 {pool.name}
@@ -404,11 +489,38 @@ export default function PoolDetailPage() {
                     )}
                     Sync scores
                   </button>
+                  {pool.type === "private" &&
+                    pool.created_by === user?.id &&
+                    !pool.promotion &&
+                    (pool.status === "open" || pool.status === "active") && (
+                      <button
+                        type="button"
+                        onClick={handleRequestPromotion}
+                        disabled={requestingPromotion}
+                        className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50"
+                        title="Ask to have this pool featured in the marketplace"
+                      >
+                        <Megaphone className="w-4 h-4" />
+                        {requestingPromotion ? "Requesting…" : "Promote pool"}
+                      </button>
+                    )}
+                  {pool.promotion && pool.promotion.status !== "active" && (
+                    <span className="text-xs text-muted-foreground self-center">
+                      Promotion {pool.promotion.status}
+                    </span>
+                  )}
                 </div>
               )}
+              <SharePoolButton shareSlug={pool.share_slug} poolName={pool.name} />
             </div>
           </div>
         </div>
+
+        {entryNotYetOpen && pool.starts_at && (
+          <div className="glass-panel p-4 rounded-xl text-sm text-muted-foreground">
+            Entry opens {format(new Date(pool.starts_at), "EEE, MMM d, h:mm a")}. You can look around until then.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
@@ -612,6 +724,12 @@ export default function PoolDetailPage() {
               onPurchaseCard={() => {
                 document.getElementById("purchase-card-trigger")?.click();
               }}
+              rules={chatRules ? { version: chatRules.version, accepted: chatRules.accepted } : null}
+              onAcceptRules={handleAcceptChatRules}
+              isAcceptingRules={acceptChatRules.isPending}
+              cooldownSeconds={chatCooldown}
+              slowModeSeconds={chatRules?.slowModeSeconds ?? 0}
+              onReport={handleReportComment}
             />
           </div>
         </div>

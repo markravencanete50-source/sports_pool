@@ -34,6 +34,56 @@ export async function POST(request: Request) {
       );
     }
 
+    /*
+     * ACCOUNT STANDING. A blocked or suspended account authenticates (the
+     * password is right) but must not get a session: the sign-in is undone
+     * before the cookie is useful. Read with the service role — users is
+     * own-row-only under RLS, but this check must not depend on the row being
+     * readable through the session that is being refused.
+     */
+    if (data.user && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const { data: standing } = await createAdminClient()
+        .from("users")
+        .select("account_status, suspended_until, status_reason")
+        .eq("id", data.user.id)
+        .maybeSingle();
+
+      const status = (standing?.account_status as string | undefined) ?? "active";
+      const suspendedUntil = standing?.suspended_until
+        ? new Date(standing.suspended_until as string)
+        : null;
+      const stillSuspended =
+        status === "suspended" && (!suspendedUntil || suspendedUntil > new Date());
+
+      if (status === "blocked" || stillSuspended) {
+        await supabase.auth.signOut();
+        const { logEvent } = await import("@/lib/log");
+        logEvent("warn", "auth.signin_refused_standing", {
+          userId: data.user.id,
+          status,
+        });
+        return NextResponse.json(
+          {
+            error:
+              status === "blocked"
+                ? "This account has been blocked. Contact support if you believe this is a mistake."
+                : `This account is suspended${
+                    suspendedUntil ? ` until ${suspendedUntil.toISOString().slice(0, 10)}` : ""
+                  }. Contact support for details.`,
+            code: status === "blocked" ? "account_blocked" : "account_suspended",
+          },
+          { status: 403 }
+        );
+      }
+
+      // Cheap "last activity" for the admin console. Fire-and-forget.
+      void createAdminClient()
+        .from("users")
+        .update({ last_active_at: new Date().toISOString() })
+        .eq("id", data.user.id);
+    }
+
     // Do NOT return `data.session`. It carries the refresh token, which is a
     // long-lived credential; echoing it into a JSON body puts it somewhere any
     // XSS or logging sink can reach, when the session is already delivered

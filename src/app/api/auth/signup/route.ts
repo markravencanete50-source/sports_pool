@@ -38,6 +38,110 @@ export async function POST(request: Request) {
     const supabase = await createClient();
 
     const normalizedEmail = validatedData.email.toLowerCase().trim();
+
+    /*
+     * AGE GATE, LOCAL MINIMUM. The schema above enforces the global floor (18).
+     * The brief also requires that an address refused for age is BLOCKED and
+     * queued for an administrator, so a second attempt with a corrected date
+     * of birth does not simply sail through. Resolve the caller's jurisdiction
+     * the same way the money gate does; if the local minimum is higher than
+     * the floor and this date of birth misses it, record the refusal and stop
+     * before an auth user exists.
+     *
+     * An address an administrator has APPROVED skips this check (the schema
+     * floor still applies). One that is pending or rejected is refused
+     * outright, whatever date of birth accompanies it.
+     */
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const { resolveGeo } = await import("@/lib/compliance/geo");
+      const { resolveJurisdiction } = await import("@/lib/compliance/jurisdiction");
+      const { ageInYears, meetsMinimumAge } = await import("@/lib/compliance/age");
+      const admin = createAdminClient();
+      const geo = resolveGeo(request.headers);
+
+      const [{ data: existingBlock }, { data: settings }, { data: rules }] = await Promise.all([
+        admin
+          .from("blocked_signups")
+          .select("id, status, attempts")
+          .eq("email_key", normalizedEmail)
+          .maybeSingle(),
+        admin
+          .from("compliance_settings")
+          .select("default_jurisdiction_status, default_minimum_age")
+          .eq("id", true)
+          .maybeSingle(),
+        admin
+          .from("jurisdiction_rules")
+          .select("country_code, region_code, status, minimum_age, requires_license, notes"),
+      ]);
+
+      const refusal = (message: string) =>
+        NextResponse.json(
+          {
+            error: message,
+            code: "signup_blocked",
+            support: process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? null,
+          },
+          { status: 403 }
+        );
+
+      if (existingBlock && existingBlock.status !== "approved") {
+        await admin
+          .from("blocked_signups")
+          .update({
+            attempts: (existingBlock.attempts as number) + 1,
+            last_attempt_at: new Date().toISOString(),
+          })
+          .eq("id", existingBlock.id);
+        return refusal(
+          "This email address cannot be used to register. If you believe this is a mistake, " +
+            "email support to request a review."
+        );
+      }
+
+      if (!existingBlock && settings) {
+        const jurisdiction = resolveJurisdiction(
+          (rules ?? []) as Parameters<typeof resolveJurisdiction>[0],
+          geo.country,
+          geo.region,
+          {
+            status: settings.default_jurisdiction_status as "allowed" | "blocked" | "review",
+            minimumAge: settings.default_minimum_age as number,
+          }
+        );
+        const localMinimum = jurisdiction.minimumAge;
+        if (!meetsMinimumAge(validatedData.dateOfBirth, localMinimum)) {
+          const { error: blockError } = await admin.from("blocked_signups").upsert(
+            {
+              email: normalizedEmail,
+              date_of_birth: validatedData.dateOfBirth,
+              computed_age: ageInYears(validatedData.dateOfBirth),
+              minimum_age: localMinimum,
+              country_code: geo.country,
+              region_code: geo.region,
+              reason: "under_minimum_age",
+              status: "pending",
+            },
+            { onConflict: "email_key" }
+          );
+          if (blockError) {
+            console.error("[signup] blocked_signups upsert failed:", blockError.message);
+          }
+          const { logEvent } = await import("@/lib/log");
+          logEvent("warn", "signup.refused_under_age", {
+            minimumAge: localMinimum,
+            country: geo.country,
+            region: geo.region,
+          });
+          return refusal(
+            `You must be at least ${localMinimum} to create an account where you are. ` +
+              "This email address has been placed under review; email support if you believe this is a mistake."
+          );
+        }
+      }
+    }
+
     const origin =
       process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
     const redirectTo = `${origin.replace(/\/$/, "")}/auth/callback`;

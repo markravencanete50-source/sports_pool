@@ -36,6 +36,11 @@ export interface PoolFormData {
   selectedGames: string[];
   invitedFriends: string[];
   invitedEmails?: string[];
+  /** datetime-local values; converted to ISO at submit. Empty = unset. */
+  startsAt: string;
+  endsAt: string;
+  /** Private pools only. Empty = no password. */
+  password: string;
 }
 
 export interface Pool {
@@ -49,6 +54,12 @@ export interface Pool {
   prize_pot?: number;
   week: number;
   status: PoolStatus;
+  sport?: string;
+  share_slug?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  /** Set by the list endpoint when an active paid placement covers the pool. */
+  is_promoted?: boolean;
 }
 
 export interface ParlayCard {
@@ -132,9 +143,16 @@ export interface ESPNGame {
     id: string;
     date: string;
     status: {
+      /** Quarter (1-4), 5+ for overtime. 0 before kickoff. */
+      period?: number;
+      /** "12:34" — the game clock as ESPN displays it. */
+      displayClock?: string;
       type: {
         completed: boolean;
         description: string;
+        state?: "pre" | "in" | "post";
+        detail?: string;
+        shortDetail?: string;
       };
     };
     competitors: Array<{
@@ -143,11 +161,37 @@ export interface ESPNGame {
       team: ESPNTeam;
       score?: string;
     }>;
+    /**
+     * Present only while a game is in progress. `possession` is the ESPN team
+     * id of the side with the ball (matches competitors[].id / team.id).
+     */
+    situation?: {
+      possession?: string;
+      downDistanceText?: string;
+      shortDownDistanceText?: string;
+      possessionText?: string;
+      yardLine?: number;
+      isRedZone?: boolean;
+      homeTimeouts?: number;
+      awayTimeouts?: number;
+    };
     odds?: Array<{
       details: string;
       overUnder?: number;
     }>;
   }>;
+}
+
+/** Live-state columns on public.games, filled from the ESPN situation block. */
+export interface GameLiveState {
+  period: number | null;
+  display_clock: string | null;
+  /** Our team id (abbreviation) of the side in possession, or null. */
+  possession: string | null;
+  down_distance: string | null;
+  yard_line: number | null;
+  is_red_zone: boolean;
+  last_synced_at: string | null;
 }
 
 export interface ESPNScoreboardResponse {
@@ -281,6 +325,7 @@ export interface UsePoolsParams {
   type?: "public" | "private";
   status?: PoolsListStatusFilter;
   search?: string;
+  sport?: string;
   page?: number;
   limit?: number;
 }

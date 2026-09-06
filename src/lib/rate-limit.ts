@@ -287,6 +287,22 @@ export const RATE_LIMITS = {
    * for a human, fatal to a script.
    */
   chatPost: { limit: 30, windowMs: 5 * 60_000 },
+  /** Accepting the chat rules is once per version; anything more is a script. */
+  chatRulesAccept: { limit: 10, windowMs: 60 * 60_000 },
+  /** Reporting content. Enough to flag a bad night, not enough to flood a queue. */
+  contentReport: { limit: 10, windowMs: 60 * 60_000 },
+  /**
+   * Pool password attempts. A private pool's password is a shared secret with
+   * low entropy by nature (people pick "gameday"), so guessing must be slow.
+   */
+  poolAccess: { limit: 10, windowMs: 15 * 60_000 },
+  /** Promotion requests from a pool owner. */
+  promotionRequest: { limit: 5, windowMs: 24 * 60 * 60_000 },
+  /**
+   * Admin console mutations. Admins are few and human; this exists so a
+   * compromised admin session cannot script thousands of overrides a minute.
+   */
+  adminAction: { limit: 120, windowMs: 5 * 60_000 },
   /**
    * Pool creation. Any authenticated user may create pools (the route does this
    * with the service role by design), so nothing else bounds how many a single

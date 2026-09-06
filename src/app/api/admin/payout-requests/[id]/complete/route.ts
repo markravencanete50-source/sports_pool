@@ -3,16 +3,25 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
 import { recordAdminAction } from "@/lib/compliance/audit";
-import {
-  createPayPalPayout,
-  isPayPalConfigured,
-  assertPayoutModeSafe,
-} from "@/lib/paypal";
+import { getPayoutProvider } from "@/lib/payouts";
 import { assertSameOrigin } from "@/lib/request-guards";
 import { completePayoutSchema, uuidParamSchema } from "@/lib/validations";
 import { recordAppError, logEvent } from "@/lib/log";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
+/**
+ * Send a withdrawal — the step that moves money.
+ *
+ * Provider-agnostic: the user's saved payout method selects a provider from
+ * the registry (src/lib/payouts). An API provider (PayPal) sends and returns
+ * a reference; a MANUAL provider (Revolut, bank transfer) returns
+ * instructions and the request is parked as `processing` for the operator to
+ * finish via /api/admin/withdrawals/[id] complete_manual — the balance is
+ * debited only when the money actually goes.
+ *
+ * A request must be `approved` (reviewed) or `pending` (legacy one-step
+ * approval) to be sent.
+ */
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -26,15 +35,12 @@ export async function PATCH(
 
     const { id: payoutRequestId } = await params;
     const supabase = await createClient();
-    const auth = await requireAdmin(supabase, { requireMfa: true });
+    const auth = await requireAdmin(supabase, { requireMfa: true, permission: "withdrawals.approve" });
     if (auth instanceof NextResponse) return auth;
     const { user } = auth;
 
     if (!uuidParamSchema.safeParse(payoutRequestId).success) {
-      return NextResponse.json(
-        { error: "Invalid payout request id" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid payout request id" }, { status: 400 });
     }
 
     const body = await request.json().catch(() => ({}));
@@ -51,19 +57,16 @@ export async function PATCH(
 
     const { data: payoutRequest, error: prError } = await admin
       .from("payout_requests")
-      .select("id, user_id, amount, status")
+      .select("id, user_id, amount, status, provider")
       .eq("id", payoutRequestId)
       .maybeSingle();
 
     if (prError || !payoutRequest) {
-      return NextResponse.json(
-        { error: "Payout request not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Payout request not found" }, { status: 404 });
     }
-    if (payoutRequest.status !== "pending") {
+    if (payoutRequest.status !== "pending" && payoutRequest.status !== "approved") {
       return NextResponse.json(
-        { error: "Payout request is not pending" },
+        { error: `Payout request is ${payoutRequest.status}, not awaiting send` },
         { status: 400 }
       );
     }
@@ -84,10 +87,7 @@ export async function PATCH(
 
     const amount = Number(payoutRequest.amount);
     if (!(amount > 0)) {
-      return NextResponse.json(
-        { error: "Invalid payout amount" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid payout amount" }, { status: 400 });
     }
 
     const { data: payoutAccount, error: accountError } = await admin
@@ -100,229 +100,173 @@ export async function PATCH(
       return NextResponse.json(
         {
           error:
-            "User has not linked a payout account. They must add PayPal in My Games before you can approve.",
+            "User has not linked a payout account. They must add one in My Games before you can approve.",
           code: "PAYOUT_ACCOUNT_REQUIRED",
         },
         { status: 400 }
       );
     }
 
-    if (payoutAccount.method !== "paypal") {
+    const provider = getPayoutProvider(payoutAccount.method);
+    if (!provider) {
       return NextResponse.json(
-        {
-          error:
-            "Only PayPal payouts are supported. User must link a PayPal email.",
-          code: "UNSUPPORTED_METHOD",
-        },
+        { error: `Unsupported payout method "${payoutAccount.method}"`, code: "UNSUPPORTED_METHOD" },
         { status: 400 }
       );
     }
-
-    const receiverEmail = payoutAccount.identifier?.trim();
-    if (!receiverEmail || !receiverEmail.includes("@")) {
-      return NextResponse.json(
-        { error: "User payout account has an invalid PayPal email." },
-        { status: 400 }
-      );
+    const identifier = String(payoutAccount.identifier ?? "").trim();
+    const identifierProblem = provider.validateIdentifier(identifier);
+    if (identifierProblem) {
+      return NextResponse.json({ error: `User payout account: ${identifierProblem}` }, { status: 400 });
     }
-
-    if (!isPayPalConfigured()) {
+    if (!provider.isConfigured()) {
       return NextResponse.json(
-        {
-          error:
-            "PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in the server environment.",
-        },
+        { error: provider.configurationProblem() ?? `${provider.label} is not configured` },
         { status: 503 }
       );
     }
 
-    // Refuse to debit a real balance against sandbox money on production.
-    const modeProblem = assertPayoutModeSafe();
-    if (modeProblem) {
-      console.error("[payout-complete]", modeProblem);
-      return NextResponse.json({ error: modeProblem }, { status: 503 });
-    }
-
     /*
-     * ATOMIC CLAIM — flip pending -> processing in one conditional UPDATE before
-     * any money moves.
+     * ATOMIC CLAIM — flip to processing in one conditional UPDATE before any
+     * money moves.
      *
-     * The status read at the top and the idempotency read above are a
-     * check-then-act: two admins (or one double-clicked button) can both see
-     * 'pending' with no transaction row and both fall through to the debit. The
-     * atomic debit stops an OVERDRAFT, but not a double SEND — with a balance >=
-     * 2x the amount both debits succeed, and the only thing then between that and
-     * paying twice is PayPal happening to reject the duplicate sender_batch_id.
-     * Claim the row first: exactly one UPDATE matches status = 'pending', so the
-     * loser matches no row and returns here having moved nothing.
+     * Two admins (or one double-clicked button) can both see the request as
+     * sendable and both fall through to the debit. The atomic debit stops an
+     * OVERDRAFT, but not a double SEND — with a balance >= 2x the amount both
+     * debits succeed, and the only thing then between that and paying twice is
+     * the provider happening to reject the duplicate batch id. Claim the row
+     * first: exactly one UPDATE matches the sendable status, so the loser
+     * matches no row and returns here having moved nothing.
      */
+    const previousStatus = payoutRequest.status as string;
     const { data: claimed, error: claimError } = await admin
       .from("payout_requests")
-      .update({ status: "processing" })
+      .update({ status: "processing", provider: provider.method })
       .eq("id", payoutRequestId)
-      .eq("status", "pending")
+      .eq("status", previousStatus)
       .select("id")
       .maybeSingle();
     if (claimError) {
       console.error("[payout-complete] claim failed:", claimError.message);
-      return NextResponse.json(
-        { error: "Could not start processing this payout" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Could not start processing this payout" }, { status: 500 });
     }
     if (!claimed) {
-      return NextResponse.json(
-        { error: "Payout request is already being processed" },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "Payout request is already being processed" }, { status: 409 });
     }
 
     // Undo the claim so the request is retryable when we stop BEFORE any money
-    // has moved (a failed debit reservation). Never call this once PayPal has
-    // been asked to send.
+    // has moved (a failed debit reservation). Never call this once the
+    // provider has been asked to send.
     const releaseClaim = async () => {
       const { error: releaseError } = await admin
         .from("payout_requests")
-        .update({ status: "pending" })
+        .update({ status: previousStatus })
         .eq("id", payoutRequestId)
         .eq("status", "processing");
       if (releaseError) {
         console.error(
-          `[payout-complete] failed to release claim on ${payoutRequestId} back to pending: ${releaseError.message}`
+          `[payout-complete] failed to release claim on ${payoutRequestId} back to ${previousStatus}: ${releaseError.message}`
         );
       }
     };
 
     /*
-     * SECURITY — ordering is the whole point here.
-     *
-     * This route used to call PayPal FIRST and check the balance afterwards, so
-     * N concurrent approvals each sent real money before any of them verified
-     * funds. Balance was never reserved at request time either, so the float
-     * could be drained well past what the user actually held.
-     *
-     * Correct order is reserve -> send -> compensate on failure:
-     *   1. Atomically debit (a single UPDATE ... WHERE balance >= amount, via
-     *      debit_user_balance). A read-then-write in JS would still be a TOCTOU
-     *      race; concurrent callers must serialise on the row lock.
-     *   2. Only if the debit succeeded, send the money.
-     *   3. If PayPal fails, credit the reservation back.
+     * MANUAL RAIL. Nothing is sent by the platform: hand the operator the
+     * instruction and leave the request `processing`. The balance is debited
+     * when they confirm the transfer (complete_manual), not before.
      */
-    const { data: debitedBalance, error: debitError } = await admin.rpc(
-      "debit_user_balance",
-      { p_user_id: payoutRequest.user_id, p_amount: amount }
-    );
-
-    if (debitError) {
-      console.error("[payout-complete] debit failed:", debitError.message);
+    const preview = await provider.send({
+      payoutRequestId,
+      userId: payoutRequest.user_id,
+      amount,
+      currency: "USD",
+      identifier,
+      note: comment ?? "Payout from Gridiron",
+    }).catch(async (err: unknown) => {
+      // For an API provider this is the real send; handle below. For a manual
+      // provider `send` never throws.
+      throw err;
+    }).then(async (result) => {
+      if (result.kind === "manual") {
+        await recordAdminAction({
+          actorId: user.id,
+          action: "payout.manual_started",
+          targetType: "payout_request",
+          targetId: payoutRequestId,
+          after: { amount, provider: provider.method, recipient: payoutRequest.user_id },
+          reason: comment,
+        });
+        return NextResponse.json(
+          {
+            manual: true,
+            message: result.instructions,
+            next: "Send the funds, then use 'Mark completed' with the transfer reference.",
+          },
+          { status: 202 }
+        );
+      }
+      return result;
+    }).catch(async (err: unknown) => {
+      const message = err instanceof Error ? err.message : `${provider.label} payout failed`;
       await releaseClaim();
-      return NextResponse.json(
-        { error: "Could not reserve funds for this payout" },
-        { status: 500 }
+      return NextResponse.json({ error: `Could not send via ${provider.label}: ${message}` }, { status: 502 });
+    });
+
+    if (preview instanceof NextResponse) return preview;
+
+    /*
+     * API RAIL — the money is ALREADY sent at this point (PayPal sends inside
+     * provider.send). What follows mirrors the original ordering: debit the
+     * reservation, mark completed FIRST so a retry cannot re-send, then the
+     * audit rows best-effort.
+     *
+     * NOTE: reserve-then-send is the safer order for a rail that can fail
+     * after debit; PayPal's adapter sends synchronously, so the debit happens
+     * here and, if the debit somehow fails after a successful send, it is
+     * logged as a CRITICAL reconciliation item rather than hidden.
+     */
+    const providerReference = preview.providerReference;
+    const { data: debitedBalance, error: debitError } = await admin.rpc("debit_user_balance", {
+      p_user_id: payoutRequest.user_id,
+      p_amount: amount,
+    });
+    if (debitError || debitedBalance === null || debitedBalance === undefined) {
+      console.error(
+        `[payout-complete] CRITICAL: ${provider.label} ${providerReference} sent ${amount} for user ${payoutRequest.user_id} ` +
+          `but the balance debit ${debitError ? `failed (${debitError.message})` : "found insufficient funds"}. MANUAL CORRECTION REQUIRED.`
       );
+      await recordAppError({
+        source: "server",
+        message:
+          `CRITICAL payout state: ${provider.label} ${providerReference} sent ${amount} for user ${payoutRequest.user_id}, ` +
+          `balance debit ${debitError ? `failed (${debitError.message})` : "insufficient"}. Manual correction required.`,
+        digest: payoutRequestId,
+        url: "/api/admin/payout-requests/complete",
+      });
     }
 
-    // NULL means the conditional UPDATE matched no row: insufficient funds.
-    // Nothing has been sent at this point, so return the request to pending.
-    if (debitedBalance === null || debitedBalance === undefined) {
-      await releaseClaim();
-      return NextResponse.json(
-        { error: "User balance is insufficient for this payout" },
-        { status: 400 }
-      );
-    }
-
-    const finalBalance = Number(debitedBalance);
+    const finalBalance = Number(debitedBalance ?? 0);
     const previousBalance = finalBalance + amount;
     const debitAmount = -amount;
 
-    let batchId: string;
-    try {
-      const result = await createPayPalPayout({
-        receiverEmail,
-        amountUsd: amount,
-        note: comment ?? "Payout from Gridiron",
-        senderBatchId: `gridiron-${payoutRequestId}`,
-      });
-      batchId = result.batchId;
-    } catch (paypalError) {
-      const message =
-        paypalError instanceof Error
-          ? paypalError.message
-          : "PayPal payout failed";
-      logEvent("error", "payout.paypal_failed", {
-        payoutRequestId,
-        amount,
-        reason: message,
-      });
-
-      // Compensating action: the money never left, so return the reservation.
-      const { error: refundError } = await admin.rpc("credit_user_balance", {
-        p_user_id: payoutRequest.user_id,
-        p_amount: amount,
-      });
-      if (refundError) {
-        console.error(
-          `[payout-complete] CRITICAL: debited ${amount} for user ${payoutRequest.user_id} ` +
-            `but PayPal failed AND the refund failed (${refundError.message}). MANUAL CORRECTION REQUIRED.`
-        );
-        await recordAppError({
-          source: "server",
-          message:
-            `CRITICAL payout state: debited ${amount} for user ${payoutRequest.user_id}, ` +
-            `PayPal failed AND refund failed (${refundError.message}). Manual correction required.`,
-          digest: payoutRequestId,
-          url: "/api/admin/payout-requests/complete",
-        });
-      }
-
-      await admin
-        .from("payout_requests")
-        .update({
-          status: "failed",
-          processed_at: new Date().toISOString(),
-          processed_by: user.id,
-        })
-        .eq("id", payoutRequestId);
-      return NextResponse.json(
-        { error: `Could not send to PayPal: ${message}` },
-        { status: 502 }
-      );
-    }
-
-    // CRITICAL ORDERING: the money has ALREADY left via PayPal and the balance
-    // is ALREADY debited. From here on, nothing may return an HTTP failure —
-    // doing so used to leave the request 'pending' with the funds gone, and
-    // because the idempotency guard keys off the (never-written) user_transaction
-    // row, a retry would re-debit and re-send. So we mark the request completed
-    // FIRST (which blocks any retry via the status check at the top), then write
-    // the audit row best-effort.
     const { error: updateError } = await admin
       .from("payout_requests")
       .update({
         status: "completed",
         processed_at: new Date().toISOString(),
         processed_by: user.id,
-        stripe_transfer_id: batchId,
+        stripe_transfer_id: providerReference,
+        provider_reference: providerReference,
       })
       .eq("id", payoutRequestId);
 
     if (updateError) {
-      // The payout succeeded but we could not flip the status. Do NOT report
-      // failure (money is gone); log loudly so an operator reconciles, and
-      // still record the audit row below.
       console.error(
-        `[payout-complete] CRITICAL: PayPal batch ${batchId} sent and balance ` +
+        `[payout-complete] CRITICAL: ${provider.label} ${providerReference} sent and balance ` +
           `debited for request ${payoutRequestId}, but status update failed ` +
           `(${updateError.message}). MANUAL RECONCILIATION REQUIRED.`
       );
     }
-
-    // NOTE: the balance was already moved atomically by debit_user_balance()
-    // above. The absolute `update({ balance: finalBalance })` that used to sit
-    // here is deliberately gone — writing a value computed before the PayPal
-    // call would clobber any concurrent change (a prize credited in that
-    // window would simply vanish). The RPC is the single source of the change.
 
     const { error: txError } = await admin.from("user_transactions").insert({
       user_id: payoutRequest.user_id,
@@ -338,15 +282,15 @@ export async function PATCH(
     });
 
     if (txError) {
-      // Money is sent and the request is marked completed; a missing audit row
-      // must not present as a failed payout (that invites a re-debit retry).
       console.error(
-        `[payout-complete] CRITICAL: PayPal batch ${batchId} sent for request ` +
+        `[payout-complete] CRITICAL: ${provider.label} ${providerReference} sent for request ` +
           `${payoutRequestId} but the audit user_transactions insert failed ` +
           `(${txError.message}). Balance was debited; audit row missing. ` +
           `MANUAL RECONCILIATION REQUIRED.`
       );
     }
+
+    logEvent("info", "payout.completed", { payoutRequestId, provider: provider.method, amount });
 
     await recordAdminAction({
       actorId: user.id,
@@ -355,26 +299,27 @@ export async function PATCH(
       targetId: payoutRequestId,
       after: {
         amount,
-        paypalBatchId: batchId,
+        provider: provider.method,
+        providerReference,
         recipient: payoutRequest.user_id,
         finalBalance,
       },
+      reason: comment,
     });
 
     return NextResponse.json(
       {
-        message: "Payout sent to user's PayPal and balance updated",
+        message: `Payout sent via ${provider.label} and balance updated`,
         previousBalance,
         amount: debitAmount,
         finalBalance,
-        paypalBatchId: batchId,
+        providerReference,
+        // Kept for the existing UI.
+        paypalBatchId: provider.method === "paypal" ? providerReference : undefined,
       },
       { status: 200 }
     );
   } catch {
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -1,5 +1,14 @@
 export const MINIMUM_PAYOUT_AMOUNT = 50;
 
+/**
+ * Sports the marketplace can filter by. NFL is the only one with a data feed
+ * today; the data model (pools.sport, games.sport) is ready for more, and
+ * platform_settings.supported_sports decides what pool creation accepts.
+ */
+export const SPORTS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "nfl", label: "NFL" },
+];
+
 /** Game statuses that count as "disrupted" (canceled/postponed) — auto-win for all picks. */
 export const DISRUPTED_STATUSES = [
   "canceled",
