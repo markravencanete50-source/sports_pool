@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       .from("users")
       .select(
         "id, email, name, avatar, role, admin_role, account_status, status_reason, suspended_until, balance, created_at, updated_at, last_active_at, " +
-          "user_compliance(date_of_birth, age_verified_at, age_review_status, kyc_status, self_excluded_until)",
+          "user_compliance!user_compliance_user_id_fkey(date_of_birth, age_verified_at, age_review_status, kyc_status, self_excluded_until)",
         { count: "exact" }
       )
       .order("created_at", { ascending: false });

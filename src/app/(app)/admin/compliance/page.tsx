@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { useAdminList, useAdminAction, useAdminOverview } from "@/lib/hooks/use-admin";
@@ -30,7 +31,8 @@ type Item = {
 type View = "pending" | "underage" | "blocked" | "approved" | "rejected" | "all";
 
 export default function AdminCompliancePage() {
-  const [view, setView] = useState<View>("pending");
+  const params = useSearchParams();
+  const [view, setView] = useState<View>((params.get("view") as View) || "pending");
   const [page, setPage] = useState(1);
   const { data, isLoading, error, refetch } = useAdminList<{ items: Item[]; total: number; totalPages: number }>("/api/admin/compliance", { view, page, limit: 25 });
   const overview = useAdminOverview();

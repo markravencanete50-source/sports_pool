@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     // Account reviews.
     let accountQuery = admin
       .from("user_compliance")
-      .select("user_id, date_of_birth, age_verified_at, age_review_status, age_review_reason, age_review_note, age_reviewed_by, age_reviewed_at, registration_country, registration_region, users!inner(id, email, name, account_status, status_reason, created_at)", { count: "exact" })
+      .select("user_id, date_of_birth, age_verified_at, age_review_status, age_review_reason, age_review_note, age_reviewed_by, age_reviewed_at, registration_country, registration_region, users!user_compliance_user_id_fkey!inner(id, email, name, account_status, status_reason, created_at)", { count: "exact" })
       .order("age_reviewed_at", { ascending: false, nullsFirst: true });
     if (view === "pending") accountQuery = accountQuery.eq("age_review_status", "pending");
     else if (view === "approved") accountQuery = accountQuery.eq("age_review_status", "approved");

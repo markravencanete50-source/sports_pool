@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       .from("pool_promotions")
       .select(
         "id, pool_id, requested_by, status, placement, pricing_model, amount, currency, payment_provider, payment_reference, paid_at, starts_at, ends_at, approved_by, approved_at, review_note, created_at, " +
-          "pools(id, name, type, status), owner:profiles!pool_promotions_requested_by_fkey(id, name)",
+          "pools(id, name, type, status), owner:users!pool_promotions_requested_by_fkey(id, name)",
         { count: "exact" }
       )
       .order("created_at", { ascending: false });

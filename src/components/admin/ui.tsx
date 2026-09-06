@@ -21,15 +21,15 @@ export function AdminPageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
-      <div className="min-w-0">
+    <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-6">
+      <div className="min-w-0 flex-1">
         <h1 className="text-3xl md:text-4xl font-black font-display italic uppercase flex items-center gap-3">
-          {icon && <span className="text-primary">{icon}</span>}
+          {icon && <span className="text-primary shrink-0">{icon}</span>}
           <span className="truncate">{title}</span>
         </h1>
-        {description && <p className="text-muted-foreground mt-1">{description}</p>}
+        {description && <p className="text-muted-foreground mt-1 max-w-3xl">{description}</p>}
       </div>
-      {actions && <div className="flex flex-wrap gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex flex-wrap gap-2 xl:justify-end xl:max-w-[55%]">{actions}</div>}
     </div>
   );
 }

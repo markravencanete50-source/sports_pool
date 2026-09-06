@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     const [financials, { data: winnerRows }, { data: ownerEmails }] = await Promise.all([
       getPoolsFinancials(admin, ids),
       ids.length
-        ? admin.from("pool_winners").select("pool_id, user_id, amount, users:profiles!pool_winners_user_id_fkey(name)").in("pool_id", ids)
+        ? admin.from("pool_winners").select("pool_id, user_id, amount, users!pool_winners_user_id_fkey(name)").in("pool_id", ids)
         : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
       ownerIds.length
         ? admin.from("users").select("id, email").in("id", ownerIds)

@@ -20,7 +20,7 @@ export async function GET(request: Request) {
       .from("content_reports")
       .select(
         "id, reason, status, action_taken, resolved_at, resolution_note, created_at, comment_id, pool_id, reporter_id, reported_user_id, " +
-          "reporter:profiles!content_reports_reporter_id_fkey(id, name), reported:profiles!content_reports_reported_user_id_fkey(id, name), " +
+          "reporter:users!content_reports_reporter_id_fkey(id, name), reported:users!content_reports_reported_user_id_fkey(id, name), " +
           "comments(id, text, moderation_status), pools(id, name)",
         { count: "exact" }
       )

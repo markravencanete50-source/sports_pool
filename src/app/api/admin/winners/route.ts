@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       .from("pool_winners")
       .select(
         "id, pool_id, user_id, winning_card_id, correct, total, amount, total_score_diff, approved_at, created_at, " +
-          "pools(id, name, status, entry_fee, platform_fee_percentage), users:profiles!pool_winners_user_id_fkey(id, name)",
+          "pools(id, name, status, entry_fee, platform_fee_percentage), users!pool_winners_user_id_fkey(id, name)",
         { count: "exact" }
       )
       .order("created_at", { ascending: false });

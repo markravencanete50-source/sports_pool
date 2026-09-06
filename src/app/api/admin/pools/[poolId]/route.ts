@@ -44,7 +44,7 @@ export async function GET(
       admin.from("users").select("id, email, account_status").eq("id", pool.created_by).maybeSingle(),
       admin.from("pool_participants").select("user_id, created_at, users:profiles!pool_participants_user_id_profiles_fkey(id, name, avatar)").eq("pool_id", poolId),
       admin.from("parlay_cards").select("id, user_id, card_number, status, entry_fee_paid, created_at").eq("pool_id", poolId).order("created_at"),
-      admin.from("pool_winners").select("id, user_id, winning_card_id, correct, total, amount, total_score_diff, approved_at, created_at, users:profiles!pool_winners_user_id_fkey(name)").eq("pool_id", poolId),
+      admin.from("pool_winners").select("id, user_id, winning_card_id, correct, total, amount, total_score_diff, approved_at, created_at, users!pool_winners_user_id_fkey(name)").eq("pool_id", poolId),
       admin.from("payout_approvals").select("id, user_id, amount, status, approved_at, claimed_at").eq("pool_id", poolId),
       admin.from("pool_transactions").select("id, user_id, card_id, amount, platform_fee, net_amount, status, payment_provider, stripe_session_id, payment_id, refund_status, refunded_at, created_at").eq("pool_id", poolId).order("created_at", { ascending: false }),
       admin.from("payout_requests").select("id, user_id, amount, status, provider, created_at, processed_at").eq("pool_id", poolId),
