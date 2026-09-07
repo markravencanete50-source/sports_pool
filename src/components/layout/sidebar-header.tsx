@@ -4,7 +4,6 @@ import Link from "next/link";
 import { SportPoolLogo } from "@/components/ui/sport-pool-logo";
 import { cn } from "@/lib/utils";
 import { SidebarHeaderProps } from "@/lib/interfaces";
-import { DASHBOARD_PATH } from "@/lib/routes";
 
 export function SidebarHeader({
   isCollapsed,
@@ -12,7 +11,7 @@ export function SidebarHeader({
 }: SidebarHeaderProps & { onNavigate?: () => void }) {
   return (
     <Link
-      href={DASHBOARD_PATH}
+      href="/"
       onClick={onNavigate}
       prefetch={false}
       className="h-20 px-2 flex items-center justify-center gap-2 border-b border-white/5 overflow-hidden cursor-pointer hover:bg-white/5 transition-colors duration-200"

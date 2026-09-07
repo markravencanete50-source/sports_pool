@@ -91,7 +91,7 @@ export function PoolEditModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80">
       <div
         className="absolute inset-0"
         onClick={onClose}
@@ -100,7 +100,7 @@ export function PoolEditModal({
         tabIndex={0}
         aria-label="Close modal"
       />
-      <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto pr-2 custom-scrollbar glass-panel rounded-2xl p-6 border border-white/10">
+      <div className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto pr-2 custom-scrollbar bg-background/95 rounded-2xl p-6 border border-white/10 shadow-xl">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold font-display uppercase italic">
             Edit Pool

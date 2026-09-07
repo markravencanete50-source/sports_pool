@@ -59,12 +59,12 @@ export function CardPurchaseButton({
            * this wrapper out of the a11y tree rather than faking a button.
            */
           role="presentation"
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsOpen(false);
           }}
         >
-          <div className="bg-card text-card-foreground border border-border rounded-xl p-6 max-w-md w-full max-h-[85dvh] overflow-y-auto space-y-4 shadow-xl animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-300">
+          <div className="bg-card text-card-foreground border border-border rounded-xl p-6 max-w-md w-full max-h-[85dvh] overflow-y-auto space-y-4 shadow-xl">
             <h3 className="text-xl font-bold">Purchase Parlay Card</h3>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">

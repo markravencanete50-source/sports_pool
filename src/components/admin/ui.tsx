@@ -430,8 +430,8 @@ function ConfirmDialog({ request, onClose }: { request: ConfirmRequest; onClose:
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-      <button type="button" aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative w-full max-w-md glass-panel rounded-2xl p-6 space-y-4 border-white/15">
+      <button type="button" aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/70" />
+      <div className="relative w-full max-w-md bg-background/95 rounded-2xl p-6 space-y-4 border border-white/15 shadow-xl">
         <div className="flex items-start justify-between gap-3">
           <h2 id="confirm-title" className="text-lg font-bold flex items-center gap-2">
             {request.danger && <ShieldAlert className="w-5 h-5 text-red-400" />}

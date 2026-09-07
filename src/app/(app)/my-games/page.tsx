@@ -437,8 +437,8 @@ export default function MyGamesPage() {
         )}
 
         {showLinkPayoutModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="glass-panel rounded-xl border border-white/10 p-6 w-full max-w-md max-h-[85dvh] overflow-y-auto shadow-xl animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-300">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80">
+            <div className="bg-background/95 rounded-xl border border-white/10 p-6 w-full max-w-md max-h-[85dvh] overflow-y-auto shadow-xl">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold flex items-center gap-2">
                   <Wallet className="w-5 h-5 text-primary" />
