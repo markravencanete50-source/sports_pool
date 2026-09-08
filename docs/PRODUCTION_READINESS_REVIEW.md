@@ -25,3 +25,9 @@ No real Stripe charge, PayPal payout, or destructive production-data test was ex
 Before enabling real-money traffic, run a controlled Stripe test checkout/webhook delivery and a PayPal sandbox or approved live payout with isolated accounts, then reconcile the resulting transaction, balance, card, withdrawal, and provider records. Confirm Stripe live keys and the production webhook endpoint/signing secret independently. Do not certify payment readiness from the static checks alone.
 
 No `robots.txt` change was made.
+
+## Follow-up verification
+
+- Created the isolated Supabase preview branch `sports-pool-payment-test` (project ref `zayaxfofsnfldfcaeggn`); production was not changed. The branch reached Healthy status, although its dashboard later reported a transient database-process health alert while provisioning.
+- Resend dashboard reports `houseoflettings.uk` as Verified. One authorized, non-transactional delivery test to the project owner's Gmail was attempted; Resend rejected it with HTTP 403 because the API key is not authorized to send from that domain. No retry or live email configuration change was made.
+- PayPal sandbox testing was intentionally excluded, as requested. No live payout was attempted.
