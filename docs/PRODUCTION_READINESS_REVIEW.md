@@ -31,5 +31,5 @@ No `robots.txt` change was made.
 ## Follow-up verification
 
 - Created the isolated Supabase preview branch `sports-pool-payment-test` (project ref `zayaxfofsnfldfcaeggn`); production was not changed. The branch reached Healthy status, although its dashboard later reported a transient database-process health alert while provisioning.
-- Resend dashboard reports `houseoflettings.uk` as Verified. One authorized, non-transactional delivery test to the project owner's Gmail was attempted; Resend rejected it with HTTP 403 because the API key is not authorized to send from that domain. No retry or live email configuration change was made.
+- The connected Resend dashboard was a personal workspace, not a confirmed client workspace, so its domain status and API result are not valid client verification. One authorized, non-transactional test was sent from that session to the project owner's Gmail; it was rejected with HTTP 403 because the key was not authorized for the selected domain. No retry was made. Client Vercel environment metadata contains no `RESEND_API_KEY` or SMTP variables, so no client-configured Resend delivery test could be completed and no live email configuration was changed.
 - PayPal sandbox testing was intentionally excluded by the user's decision. No live payout was attempted.
