@@ -259,6 +259,7 @@ export async function POST(request: Request) {
       const { mapESPNTeamToDB } = await import("@/lib/constants");
       const { GameStatus } = await import("@/lib/enums");
       const { getNflScoreboard } = await import("@/lib/fetch-nfl-scoreboard");
+      const { filterRegularSeasonSlate } = await import("@/lib/nfl-slate");
       const currentYear = new Date().getFullYear();
 
       // Fetch the POOL's week, not just ESPN's current week. /api/games (which
@@ -267,7 +268,11 @@ export async function POST(request: Request) {
       // returns — they'd fall through unstored and FK-fail the pool_games
       // insert, making the whole pool un-creatable for any non-current week.
       const espnData = await getNflScoreboard(currentYear, poolWeek);
-      const allGames = espnData.events || [];
+      const allGames = filterRegularSeasonSlate(
+        espnData.events || [],
+        currentYear,
+        poolWeek,
+      );
       const officialGameIds = new Set(
         allGames
           .map((game) => game.competitions?.[0]?.id)
@@ -287,7 +292,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const seasonYear = espnData.season?.year || new Date().getFullYear();
+      const seasonYear = currentYear;
 
       const gamesToStore = [];
       const poolGames = [];

@@ -9,7 +9,9 @@ import {
 } from "../src/lib/admin/permissions";
 import { hashPoolPassword, verifyPoolPassword, SHARE_SLUG_PATTERN } from "../src/lib/pool-password";
 import { extractLiveState, isCompetitionInProgress } from "../src/lib/espn-live";
+import { filterRegularSeasonSlate } from "../src/lib/nfl-slate";
 import { createPoolSchema, updatePoolWithGamesSchema, contentReportSchema } from "../src/lib/validations";
+import type { ESPNGame } from "../src/lib/types";
 
 /**
  * Pins for the release that added the client-brief features and the admin
@@ -107,6 +109,31 @@ describe("ESPN live state", () => {
     assert.equal(live.down_distance, null);
     assert.equal(live.yard_line, null);
     assert.equal(live.period, 4);
+  });
+});
+
+describe("NFL weekly slate filtering", () => {
+  const game = (id: string, season: number, seasonType: number, week: number) =>
+    ({
+      id,
+      date: "2026-09-13T17:00:00Z",
+      season: { year: season, type: seasonType },
+      week: { number: week },
+      competitions: [],
+    }) as ESPNGame;
+
+  test("keeps only the requested regular-season week", () => {
+    const mixedScoreboard = [
+      game("current", 2026, 2, 1),
+      game("preseason", 2026, 1, 1),
+      game("historical", 2025, 2, 1),
+      game("next-week", 2026, 2, 2),
+    ];
+
+    assert.deepEqual(
+      filterRegularSeasonSlate(mixedScoreboard, 2026, 1).map(({ id }) => id),
+      ["current"],
+    );
   });
 });
 

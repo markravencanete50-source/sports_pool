@@ -3,6 +3,7 @@ import { ESPNGame, GameStatus } from "@/lib/types";
 import { mapESPNTeamToDB } from "@/lib/constants";
 import { GameStatus as GameStatusEnum } from "@/lib/enums";
 import { getNflScoreboard } from "@/lib/fetch-nfl-scoreboard";
+import { filterRegularSeasonSlate } from "@/lib/nfl-slate";
 
 function getGameStatus(competition: ESPNGame["competitions"][0]): GameStatus {
   const status = competition.status.type;
@@ -29,10 +30,13 @@ export async function GET(request: Request) {
 
     if (weekNum != null) {
       const espnData = await getNflScoreboard(seasonNum, weekNum);
-      espnGames = espnData.events || [];
-      weekNumber = espnData.week?.number ?? espnGames[0]?.week?.number ?? null;
-      seasonYear =
-        espnData.season?.year ?? espnGames[0]?.season?.year ?? seasonNum;
+      espnGames = filterRegularSeasonSlate(
+        espnData.events || [],
+        seasonNum,
+        weekNum,
+      );
+      weekNumber = weekNum;
+      seasonYear = seasonNum;
     } else {
       const currentWeekData = await getNflScoreboard(seasonNum, null);
       const currentWeek =
@@ -40,8 +44,16 @@ export async function GET(request: Request) {
         currentWeekData.events?.[0]?.week?.number ??
         1;
       const nextWeekData = await getNflScoreboard(seasonNum, currentWeek + 1);
-      const currentEvents = currentWeekData.events || [];
-      const nextEvents = nextWeekData.events || [];
+      const currentEvents = filterRegularSeasonSlate(
+        currentWeekData.events || [],
+        seasonNum,
+        currentWeek,
+      );
+      const nextEvents = filterRegularSeasonSlate(
+        nextWeekData.events || [],
+        seasonNum,
+        currentWeek + 1,
+      );
       const seen = new Set<string>();
       espnGames = [...currentEvents, ...nextEvents].filter((g) => {
         const id = g.competitions?.[0]?.id ?? g.id;
@@ -50,10 +62,7 @@ export async function GET(request: Request) {
         return true;
       });
       weekNumber = currentWeek;
-      seasonYear =
-        currentWeekData.season?.year ??
-        currentWeekData.events?.[0]?.season?.year ??
-        seasonNum;
+      seasonYear = seasonNum;
     }
 
     let games = espnGames
