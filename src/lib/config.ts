@@ -14,9 +14,4 @@ function readPositiveInt(value: string | undefined, fallback: number): number {
 
 export const poolConfig = {
   minGames: readPositiveInt(process.env.NEXT_PUBLIC_POOL_MIN_GAMES, 6),
-  maxGames: readPositiveInt(process.env.NEXT_PUBLIC_POOL_MAX_GAMES, 9),
 } as const;
-
-if (poolConfig.maxGames < poolConfig.minGames) {
-  throw new Error("NEXT_PUBLIC_POOL_MAX_GAMES must be greater than or equal to NEXT_PUBLIC_POOL_MIN_GAMES");
-}

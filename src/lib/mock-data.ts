@@ -1,11 +1,12 @@
 import { addDays } from "date-fns";
+import { getTeamLogoUrl } from "@/lib/constants";
 
 export type Team = {
   id: string;
   name: string;
   city: string;
   abbreviation: string;
-  logo: string; // Using generic placeholders or lucide icons mapping
+  logo: string;
   primaryColor: string;
   secondaryColor: string;
 };
@@ -50,18 +51,18 @@ export type Pool = {
 };
 
 export const TEAMS: Record<string, Team> = {
-  KC: { id: "KC", name: "Chiefs", city: "Kansas City", abbreviation: "KC", logo: "🛡️", primaryColor: "#E31837", secondaryColor: "#FFB81C" },
-  SF: { id: "SF", name: "49ers", city: "San Francisco", abbreviation: "SF", logo: "⛏️", primaryColor: "#AA0000", secondaryColor: "#B3995D" },
-  BAL: { id: "BAL", name: "Ravens", city: "Baltimore", abbreviation: "BAL", logo: "🐦", primaryColor: "#241773", secondaryColor: "#9E7C0C" },
-  DET: { id: "DET", name: "Lions", city: "Detroit", abbreviation: "DET", logo: "🦁", primaryColor: "#0076B6", secondaryColor: "#B0B7BC" },
-  BUF: { id: "BUF", name: "Bills", city: "Buffalo", abbreviation: "BUF", logo: "🦬", primaryColor: "#00338D", secondaryColor: "#C60C30" },
-  PHI: { id: "PHI", name: "Eagles", city: "Philadelphia", abbreviation: "PHI", logo: "🦅", primaryColor: "#004C54", secondaryColor: "#A5ACAF" },
-  CIN: { id: "CIN", name: "Bengals", city: "Cincinnati", abbreviation: "CIN", logo: "🐯", primaryColor: "#FB4F14", secondaryColor: "#000000" },
-  MIA: { id: "MIA", name: "Dolphins", city: "Miami", abbreviation: "MIA", logo: "🐬", primaryColor: "#008E97", secondaryColor: "#FC4C02" },
-  GB: { id: "GB", name: "Packers", city: "Green Bay", abbreviation: "GB", logo: "🧀", primaryColor: "#203731", secondaryColor: "#FFB612" },
-  LAR: { id: "LAR", name: "Rams", city: "Los Angeles", abbreviation: "LAR", logo: "🐏", primaryColor: "#003594", secondaryColor: "#FFA300" },
-  NYJ: { id: "NYJ", name: "Jets", city: "New York", abbreviation: "NYJ", logo: "✈️", primaryColor: "#125740", secondaryColor: "#000000" },
-  CLE: { id: "CLE", name: "Browns", city: "Cleveland", abbreviation: "CLE", logo: "🐶", primaryColor: "#311D00", secondaryColor: "#FF3C00" },
+  KC: { id: "KC", name: "Chiefs", city: "Kansas City", abbreviation: "KC", logo: getTeamLogoUrl("KC"), primaryColor: "#E31837", secondaryColor: "#FFB81C" },
+  SF: { id: "SF", name: "49ers", city: "San Francisco", abbreviation: "SF", logo: getTeamLogoUrl("SF"), primaryColor: "#AA0000", secondaryColor: "#B3995D" },
+  BAL: { id: "BAL", name: "Ravens", city: "Baltimore", abbreviation: "BAL", logo: getTeamLogoUrl("BAL"), primaryColor: "#241773", secondaryColor: "#9E7C0C" },
+  DET: { id: "DET", name: "Lions", city: "Detroit", abbreviation: "DET", logo: getTeamLogoUrl("DET"), primaryColor: "#0076B6", secondaryColor: "#B0B7BC" },
+  BUF: { id: "BUF", name: "Bills", city: "Buffalo", abbreviation: "BUF", logo: getTeamLogoUrl("BUF"), primaryColor: "#00338D", secondaryColor: "#C60C30" },
+  PHI: { id: "PHI", name: "Eagles", city: "Philadelphia", abbreviation: "PHI", logo: getTeamLogoUrl("PHI"), primaryColor: "#004C54", secondaryColor: "#A5ACAF" },
+  CIN: { id: "CIN", name: "Bengals", city: "Cincinnati", abbreviation: "CIN", logo: getTeamLogoUrl("CIN"), primaryColor: "#FB4F14", secondaryColor: "#000000" },
+  MIA: { id: "MIA", name: "Dolphins", city: "Miami", abbreviation: "MIA", logo: getTeamLogoUrl("MIA"), primaryColor: "#008E97", secondaryColor: "#FC4C02" },
+  GB: { id: "GB", name: "Packers", city: "Green Bay", abbreviation: "GB", logo: getTeamLogoUrl("GB"), primaryColor: "#203731", secondaryColor: "#FFB612" },
+  LAR: { id: "LAR", name: "Rams", city: "Los Angeles", abbreviation: "LAR", logo: getTeamLogoUrl("LAR"), primaryColor: "#003594", secondaryColor: "#FFA300" },
+  NYJ: { id: "NYJ", name: "Jets", city: "New York", abbreviation: "NYJ", logo: getTeamLogoUrl("NYJ"), primaryColor: "#125740", secondaryColor: "#000000" },
+  CLE: { id: "CLE", name: "Browns", city: "Cleveland", abbreviation: "CLE", logo: getTeamLogoUrl("CLE"), primaryColor: "#311D00", secondaryColor: "#FF3C00" },
 };
 
 export const UPCOMING_GAMES: Game[] = [

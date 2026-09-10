@@ -1,36 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { format } from "date-fns";
 import { Card3D } from "@/components/ui/3d-card";
 import { getTeamLogoUrl } from "@/lib/constants";
 import { Clock, Trophy } from "lucide-react";
 import { ScheduleGameCardProps } from "@/lib/interfaces";
-
-const LogoOrPlaceholder = ({ src }: { src: string | null }) => {
-  const [failed, setFailed] = useState(false);
-  const showImg = src && !failed;
-  return (
-    <div className="w-12 h-12 flex-shrink-0 flex items-center justify-center">
-      {showImg ? (
-        // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions -- remote host not allow-listed for the image optimizer; onError is a resource-load event (fallback swap), not a user interaction
-        <img
-          src={src}
-          alt=""
-          className="w-12 h-12 object-contain"
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        <div
-          className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-2xl border border-white/10"
-          aria-hidden="true"
-        >
-          🏈
-        </div>
-      )}
-    </div>
-  );
-};
+import { TeamLogo } from "@/components/team-logo";
 
 export function ScheduleGameCard({ game }: ScheduleGameCardProps) {
   const homeTeamId = game.home_team_id || game.homeTeamId;
@@ -96,7 +71,12 @@ export function ScheduleGameCard({ game }: ScheduleGameCardProps) {
         <div className="flex-1 flex flex-col gap-6">
           {/* Away Team */}
           <div className="flex items-center gap-4">
-            <LogoOrPlaceholder src={awayLogoUrl} />
+            <TeamLogo
+              abbreviation={awayTeamId || "NFL"}
+              name={awayTeam.name}
+              src={awayLogoUrl}
+              size={48}
+            />
             <div className="flex-1 min-w-0">
               <div className="font-bold text-xl leading-none truncate">
                 {awayTeam.name || awayTeamId}
@@ -116,7 +96,12 @@ export function ScheduleGameCard({ game }: ScheduleGameCardProps) {
 
           {/* Home Team */}
           <div className="flex items-center gap-4">
-            <LogoOrPlaceholder src={homeLogoUrl} />
+            <TeamLogo
+              abbreviation={homeTeamId || "NFL"}
+              name={homeTeam.name}
+              src={homeLogoUrl}
+              size={48}
+            />
             <div className="flex-1 min-w-0">
               <div className="font-bold text-xl leading-none truncate">
                 {homeTeam.name || homeTeamId}

@@ -15,12 +15,17 @@ export function useStripeCheckout() {
         {
           poolId: params.poolId,
           entryFee: params.entryFee,
+          picks: params.picks,
         }
       );
       const data = (await res.json()) as { url: string; sessionId?: string };
       if (!data.url || typeof data.url !== "string") {
         throw new Error("Invalid checkout session response");
       }
+      sessionStorage.setItem(
+        `card-draft-v1-${params.poolId}`,
+        JSON.stringify(params.picks),
+      );
       return data.url;
     },
   });

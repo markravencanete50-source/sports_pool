@@ -19,13 +19,6 @@ export interface CardSelectorProps {
   entryFee: number;
 }
 
-export interface CardPurchaseButtonProps {
-  poolId: string;
-  entryFee: number;
-  onPurchaseSuccess?: () => void;
-  disabled?: boolean;
-}
-
 export interface CommentSectionProps {
   comments: Comment[];
   onAddComment: (text: string) => void;
@@ -186,6 +179,7 @@ export interface GameSelectionSectionProps {
   isLoadingGames?: boolean;
   gamesError?: Error | null;
   pickEnabled?: boolean;
+  maxGamesForWeek?: number;
 }
 
 export interface GameSelectionItemProps {

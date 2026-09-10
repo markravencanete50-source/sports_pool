@@ -109,6 +109,16 @@ export default function CreatePool() {
     return null;
   }, [selectedGamesWeeks]);
 
+  const selectedWeekGameCount = useMemo(() => {
+    const selectedWeek = selectedGamesWeeks[0] ?? currentWeek;
+    if (!selectedWeek) return 0;
+    return new Set(
+      allGames
+        .filter((game) => game.week === selectedWeek)
+        .map((game) => game.id),
+    ).size;
+  }, [allGames, currentWeek, selectedGamesWeeks]);
+
   const sortedDates = Object.keys(groupedGames).sort();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -126,13 +136,7 @@ export default function CreatePool() {
     }
 
     if (formData.selectedGames.length < poolConfig.minGames) {
-      toast.error(
-        `Please select at least ${poolConfig.minGames} games (maximum ${poolConfig.maxGames})`
-      );
-      return;
-    }
-    if (formData.selectedGames.length > poolConfig.maxGames) {
-      toast.error(`Maximum ${poolConfig.maxGames} games per pool`);
+      toast.error(`Please select at least ${poolConfig.minGames} games`);
       return;
     }
 
@@ -323,6 +327,7 @@ export default function CreatePool() {
                   isLoadingGames={isLoadingGames}
                   gamesError={gamesError}
                   pickEnabled={false}
+                  maxGamesForWeek={selectedWeekGameCount}
                 />
 
                 {formData.type === PoolType.PRIVATE && (
@@ -347,7 +352,10 @@ export default function CreatePool() {
             platformFee={platformFee}
             netPot={netPot}
             isSubmitting={createPoolMutation.isPending}
-            canSubmit={formData.selectedGames.length > 0}
+            canSubmit={
+              formData.selectedGames.length >= poolConfig.minGames &&
+              !weekValidationError
+            }
             formatCurrency={formatCurrency}
           />
         </div>

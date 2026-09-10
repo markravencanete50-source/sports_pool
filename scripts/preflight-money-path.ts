@@ -193,13 +193,13 @@ async function main() {
 
   console.log(
     "\n  Credentials are good. Now run the chain (docs/RUNBOOK.md):\n\n" +
-      "    1. Create a pool and buy a card through Stripe Checkout (test card\n" +
+      "    1. Create a pool, pick every game, then pay and submit through Stripe Checkout (test card\n" +
       "       4242 4242 4242 4242, any future expiry, any CVC).\n" +
       "    2. In the Stripe dashboard, RESEND the checkout.session.completed\n" +
       "       event. Fulfilment is idempotent; a second delivery must NOT issue\n" +
       "       a second card. This is the single most important assertion in the\n" +
       "       run and the reason it cannot be replaced by inspection.\n" +
-      "    3. Submit picks, set final scores, let settlement run.\n" +
+      "    3. Confirm the paid card is already locked with every pick, then set final scores and let settlement run.\n" +
       "    4. Request a payout and approve it (PayPal sandbox).\n" +
       "    5. Assert the database landed correctly:\n" +
       "         npx tsx scripts/verify-money-path.ts <poolId>\n" +

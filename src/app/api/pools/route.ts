@@ -268,6 +268,24 @@ export async function POST(request: Request) {
       // insert, making the whole pool un-creatable for any non-current week.
       const espnData = await getNflScoreboard(currentYear, poolWeek);
       const allGames = espnData.events || [];
+      const officialGameIds = new Set(
+        allGames
+          .map((game) => game.competitions?.[0]?.id)
+          .filter(
+            (gameId): gameId is string =>
+              typeof gameId === "string" && gameId.length > 0,
+          ),
+      );
+      const unknownGameIds = validatedData.selectedGames.filter(
+        (gameId) => !officialGameIds.has(gameId),
+      );
+      if (unknownGameIds.length > 0) {
+        await rollbackPool(admin, pool.id);
+        return NextResponse.json(
+          { error: "One or more selected games are not in the official weekly schedule" },
+          { status: 400 },
+        );
+      }
 
       const seasonYear = espnData.season?.year || new Date().getFullYear();
 
@@ -346,11 +364,6 @@ export async function POST(request: Request) {
               game_id: gameId,
             });
           }
-        } else {
-          poolGames.push({
-            pool_id: pool.id,
-            game_id: gameId,
-          });
         }
       }
 

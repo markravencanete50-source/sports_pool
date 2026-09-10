@@ -342,6 +342,11 @@ export interface PoolsListResult {
 export interface CreateCheckoutSessionParams {
   poolId: string;
   entryFee: number;
+  picks: Array<{
+    gameId: string;
+    prediction: GamePrediction;
+    totalScorePrediction?: number;
+  }>;
 }
 
 // ——— Teams seed (DB row shape for teams table) ———

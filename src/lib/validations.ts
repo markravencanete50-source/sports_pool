@@ -102,9 +102,9 @@ export const createPoolSchema = z
     selectedGames: z
       .array(z.string())
       .min(poolConfig.minGames, `Select at least ${poolConfig.minGames} games`)
-      .max(
-        poolConfig.maxGames,
-        `Maximum ${poolConfig.maxGames} games per pool`
+      .refine(
+        (gameIds) => new Set(gameIds).size === gameIds.length,
+        "Each game can only be selected once",
       ),
     invitedFriends: z.array(z.string()).optional(),
     invitedEmails: z.array(z.string().email()).optional(),
@@ -192,9 +192,29 @@ export const promotionRequestSchema = z.object({
 
 const uuidSchema = z.string().uuid("Invalid pool ID format");
 
+export const checkoutPickSchema = z.object({
+  gameId: z.string().min(1).max(40),
+  prediction: z.enum([
+    GamePrediction.HOME_WIN,
+    GamePrediction.AWAY_WIN,
+    GamePrediction.TIE,
+  ]),
+  totalScorePrediction: z.number().int().positive().max(200).optional(),
+});
+
+export const checkoutCardPicksSchema = z
+  .array(checkoutPickSchema)
+  .min(1, "Make a pick for every game before paying")
+  .max(32, "Too many games on this card")
+  .refine(
+    (picks) => new Set(picks.map((pick) => pick.gameId)).size === picks.length,
+    "Each game can only have one pick",
+  );
+
 export const createCheckoutSessionSchema = z.object({
   poolId: uuidSchema,
   entryFee: z.number().min(20, "Entry fee must be at least $20").max(99999),
+  picks: checkoutCardPicksSchema,
 });
 
 export const confirmPaymentSchema = z.object({
@@ -263,3 +283,4 @@ export type CreateCheckoutSessionInput = z.infer<
   typeof createCheckoutSessionSchema
 >;
 export type ConfirmPaymentInput = z.infer<typeof confirmPaymentSchema>;
+export type CheckoutPickInput = z.infer<typeof checkoutPickSchema>;

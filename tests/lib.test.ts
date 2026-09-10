@@ -26,7 +26,13 @@ import {
   claimPayoutSchema,
   updateUserRoleSchema,
   uuidParamSchema,
+  createPoolSchema,
+  checkoutCardPicksSchema,
 } from "../src/lib/validations";
+import {
+  decodeCheckoutPicks,
+  encodeCheckoutPicks,
+} from "../src/lib/checkout-picks";
 import { checkPasswordBreached } from "../src/lib/password-breach";
 import { assertPayoutModeSafe } from "../src/lib/paypal";
 import { readImageDimensions } from "../src/lib/image-dimensions";
@@ -271,6 +277,44 @@ test("production CSP carries the nonce and never 'unsafe-inline' in script-src",
 });
 
 // ─── validations: password policy + money schemas ────────────────────────────
+
+test("pool creation accepts every game in a full weekly slate", () => {
+  const selectedGames = Array.from({ length: 16 }, (_, index) => `game-${index}`);
+  const result = createPoolSchema.safeParse({
+    name: "Full weekly slate",
+    type: "public",
+    entryFee: 20,
+    maxParticipants: null,
+    week: 1,
+    selectedGames,
+  });
+  assert.ok(result.success, "a 16-game NFL week must not be capped at nine");
+});
+
+test("pool creation rejects duplicate game ids", () => {
+  const selectedGames = ["a", "b", "c", "d", "e", "e"];
+  assert.ok(
+    !createPoolSchema.safeParse({
+      name: "Duplicate slate",
+      type: "public",
+      entryFee: 20,
+      maxParticipants: null,
+      week: 1,
+      selectedGames,
+    }).success,
+  );
+});
+
+test("checkout picks survive Stripe metadata chunking", () => {
+  const picks = Array.from({ length: 16 }, (_, index) => ({
+    gameId: `401772${String(index).padStart(3, "0")}`,
+    prediction: index % 2 === 0 ? "home_win" as const : "away_win" as const,
+  }));
+  const encoded = encodeCheckoutPicks(picks);
+  assert.ok(Object.values(encoded).every((value) => value.length <= 500));
+  assert.deepEqual(decodeCheckoutPicks(encoded), picks);
+  assert.ok(checkoutCardPicksSchema.safeParse(picks).success);
+});
 
 test("signup password policy enforces length, case mix and digit", () => {
   // An adult DOB and accepted terms, so only the password varies.

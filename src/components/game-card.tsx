@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { GameCardProps } from "@/lib/interfaces";
 import { Check, X, AlertCircle } from "lucide-react";
 import { LiveGamePanel } from "@/components/pool-detail/live-game-panel";
+import { TeamLogo } from "@/components/team-logo";
+import { getTeamLogoUrl } from "@/lib/constants";
 
 type TeamLike = {
   id: string;
@@ -18,8 +20,13 @@ type TeamLike = {
 function getTeam(abbr: string | undefined): TeamLike | null {
   if (!abbr) return null;
   const fromTEAMS = TEAMS[abbr];
-  if (fromTEAMS) return fromTEAMS;
-  return { id: abbr, abbreviation: abbr, logo: "🏈", primaryColor: "#333" };
+  if (fromTEAMS) return { ...fromTEAMS, logo: getTeamLogoUrl(abbr) };
+  return {
+    id: abbr,
+    abbreviation: abbr,
+    logo: getTeamLogoUrl(abbr),
+    primaryColor: "#333",
+  };
 }
 
 const TIE_PICK_VALUE = "tie";
@@ -167,17 +174,19 @@ export function GameCard({
                 Winner
               </span>
             )}
-            <div
-              className="w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-3xl sm:text-4xl shadow-lg bg-gradient-to-br from-gray-800 to-black border border-white/10 transition-transform duration-200"
+            <TeamLogo
+              abbreviation={awayTeam.abbreviation}
+              name={awayName}
+              src={awayTeam.logo}
+              size={64}
+              className="h-12 w-12 shadow-lg transition-transform duration-200 sm:h-16 sm:w-16"
               style={{
                 boxShadow:
                   selectedTeamId === awayTeam.id
                     ? `0 0 20px ${awayTeam.primaryColor}60`
                     : "",
               }}
-            >
-              {awayTeam.logo}
-            </div>
+            />
             <div className="text-center min-w-0 w-full">
               <span
                 className="block font-display font-bold text-lg sm:text-xl tracking-wide truncate"
@@ -252,17 +261,19 @@ export function GameCard({
                 Winner
               </span>
             )}
-            <div
-              className="w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-3xl sm:text-4xl shadow-lg bg-gradient-to-br from-gray-800 to-black border border-white/10 transition-transform duration-200"
+            <TeamLogo
+              abbreviation={homeTeam.abbreviation}
+              name={homeName}
+              src={homeTeam.logo}
+              size={64}
+              className="h-12 w-12 shadow-lg transition-transform duration-200 sm:h-16 sm:w-16"
               style={{
                 boxShadow:
                   selectedTeamId === homeTeam.id
                     ? `0 0 20px ${homeTeam.primaryColor}60`
                     : "",
               }}
-            >
-              {homeTeam.logo}
-            </div>
+            />
             <div className="text-center min-w-0 w-full">
               <span
                 className="block font-display font-bold text-lg sm:text-xl tracking-wide truncate"

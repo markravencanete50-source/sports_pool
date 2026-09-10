@@ -1,33 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { format } from "date-fns";
 import { getTeamLogoUrl } from "@/lib/constants";
 import { Check, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GameSelectionItemProps } from "@/lib/interfaces";
-
-const LogoOrPlaceholder = ({ src }: { src: string | null }) => {
-  const [failed, setFailed] = useState(false);
-  const showImg = src && !failed;
-  return (
-    <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center">
-      {showImg ? (
-        // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/no-noninteractive-element-interactions -- remote host not allow-listed for the image optimizer; onError is a resource-load event (fallback swap), not a user interaction
-        <img
-          src={src}
-          alt=""
-          className="w-10 h-10 object-contain"
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-lg border border-white/10">
-          🏈
-        </div>
-      )}
-    </div>
-  );
-};
+import { TeamLogo } from "@/components/team-logo";
 
 export function GameSelectionItem({
   game,
@@ -119,7 +97,12 @@ export function GameSelectionItem({
               }
             }}
           >
-            <LogoOrPlaceholder src={awayLogoUrl} />
+            <TeamLogo
+              abbreviation={awayTeamId || "NFL"}
+              name={awayTeam.name}
+              src={awayLogoUrl}
+              size={40}
+            />
             <div className="flex-1 min-w-0">
               <div className="font-bold text-base leading-none">
                 {awayTeam.name || awayTeamId} WINS
@@ -194,7 +177,12 @@ export function GameSelectionItem({
               }
             }}
           >
-            <LogoOrPlaceholder src={homeLogoUrl} />
+            <TeamLogo
+              abbreviation={homeTeamId || "NFL"}
+              name={homeTeam.name}
+              src={homeLogoUrl}
+              size={40}
+            />
             <div className="flex-1 min-w-0">
               <div className="font-bold text-base leading-none">
                 {homeTeam.name || homeTeamId} WINS

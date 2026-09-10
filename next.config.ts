@@ -34,6 +34,15 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "a.espncdn.com",
+        pathname: "/i/teamlogos/nfl/**",
+      },
+    ],
+  },
   turbopack: {
     root: process.cwd(),
   },

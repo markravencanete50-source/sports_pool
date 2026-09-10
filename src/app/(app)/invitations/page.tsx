@@ -66,7 +66,7 @@ export default function InvitationsPage() {
             Invitations
           </h1>
           <p className="text-muted-foreground">
-            Pool invites sent to you. Accept to join and buy a card.
+            Pool invites sent to you. Accept, make your picks, then pay to submit.
           </p>
         </div>
 

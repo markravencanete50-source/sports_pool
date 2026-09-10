@@ -8,6 +8,7 @@ import { assertSameOrigin } from "@/lib/request-guards";
 import { assertCompliance } from "@/lib/compliance";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { encodeCheckoutPicks } from "@/lib/checkout-picks";
 
 const getBaseUrl = (): string => {
   const url = process.env.NEXT_PUBLIC_APP_URL;
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
       const message = parsed.error.issues[0]?.message ?? "Validation error";
       return NextResponse.json({ error: message }, { status: 400 });
     }
-    const { poolId, entryFee } = parsed.data;
+    const { poolId, entryFee, picks } = parsed.data;
 
     const { data: pool } = await getPoolForUser(
       supabase,
@@ -91,6 +92,54 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Maximum 3 cards per user per pool" },
         { status: 400 }
+      );
+    }
+
+    const { data: poolGames, error: poolGamesError } = await supabase
+      .from("pool_games")
+      .select("game_id")
+      .eq("pool_id", poolId);
+    if (poolGamesError) {
+      return NextResponse.json(
+        { error: "Could not verify the pool schedule" },
+        { status: 500 },
+      );
+    }
+    const poolGameIds = (poolGames ?? []).map(
+      (poolGame: { game_id: string }) => poolGame.game_id,
+    );
+    const pickedGameIds = new Set(picks.map((pick) => pick.gameId));
+    if (
+      poolGameIds.length === 0 ||
+      pickedGameIds.size !== poolGameIds.length ||
+      poolGameIds.some((gameId) => !pickedGameIds.has(gameId))
+    ) {
+      return NextResponse.json(
+        { error: "Make one pick for every game before paying" },
+        { status: 400 },
+      );
+    }
+
+    const { data: games, error: gamesError } = await supabase
+      .from("games")
+      .select("id, date, status")
+      .in("id", poolGameIds);
+    if (gamesError || !games || games.length !== poolGameIds.length) {
+      return NextResponse.json(
+        { error: "Could not verify every game on this card" },
+        { status: 409 },
+      );
+    }
+    const lockedGame = games.find(
+      (game) =>
+        game.status !== "scheduled" ||
+        !Number.isFinite(Date.parse(game.date)) ||
+        Date.parse(game.date) <= Date.now(),
+    );
+    if (lockedGame) {
+      return NextResponse.json(
+        { error: "This card includes a game that has already started" },
+        { status: 409 },
       );
     }
 
@@ -187,9 +236,10 @@ export async function POST(request: Request) {
         // Must be the authoritative fee: fulfillCardPurchase() cross-checks this
         // against session.amount_total and rejects a mismatch.
         entryFee: String(authoritativeFee),
+        ...encodeCheckoutPicks(picks),
       },
       success_url: `${baseUrl}/pool/${poolId}?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/pool/${poolId}`,
+      cancel_url: `${baseUrl}/pool/${poolId}?new_card=1`,
       customer_email: user.email ?? undefined,
     });
 

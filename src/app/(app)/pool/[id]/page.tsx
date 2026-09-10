@@ -3,7 +3,7 @@
 import Layout from "@/components/layout";
 import { GameCard } from "@/components/game-card";
 import { CommentSection } from "@/components/comment-section";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { Users, Calendar, Loader2, RefreshCw, Pencil } from "lucide-react";
 import { ProgressCard } from "@/components/pool-detail/progress-card";
@@ -15,7 +15,6 @@ import {
   useLockCard,
 } from "@/lib/hooks/use-cards";
 import { useSyncPoolGames } from "@/lib/hooks/use-sync-pool-games";
-import { CardPurchaseButton } from "@/components/pool-detail/card-purchase-button";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/hooks/use-auth";
@@ -29,6 +28,7 @@ import { GamePrediction } from "@/lib/types";
 import { DISRUPTED_STATUSES } from "@/lib/constants";
 import type { GameCardProps, GameResult } from "@/lib/interfaces";
 import { Lock, Megaphone } from "lucide-react";
+import { useStripeCheckout } from "@/lib/hooks/use-stripe-checkout";
 
 type PoolGameRow = {
   id: string;
@@ -78,6 +78,7 @@ type AuthUser = {
 
 export default function PoolDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const poolId = params?.id as string;
   const { user: authUser } = useAuth();
@@ -108,10 +109,14 @@ export default function PoolDetailPage() {
   const addCommentMutation = useAddComment();
   const submitCardPickMutation = useSubmitCardPick();
   const lockCardMutation = useLockCard();
+  const stripeCheckout = useStripeCheckout();
   const syncPoolGamesMutation = useSyncPoolGames(poolId);
   const updatePoolMutation = useUpdatePool(poolId);
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [isDraftingNewCard, setIsDraftingNewCard] = useState(
+    () => searchParams.get("new_card") === "1",
+  );
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [chatCooldown, setChatCooldown] = useState(0);
   const [requestingPromotion, setRequestingPromotion] = useState(false);
@@ -122,11 +127,29 @@ export default function PoolDetailPage() {
   const reportComment = useReportComment(poolId);
   const [pendingPicks, setPendingPicks] = useState<
     Record<string, { prediction: GamePrediction }>
-  >({});
+  >(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const saved = JSON.parse(
+        sessionStorage.getItem(`card-draft-v1-${poolId}`) ?? "[]",
+      ) as Array<{ gameId: string; prediction: GamePrediction }>;
+      return Object.fromEntries(
+        saved.map((pick) => [pick.gameId, { prediction: pick.prediction }]),
+      );
+    } catch {
+      return {};
+    }
+  });
+
+  const isDraftCard =
+    cards.length < 3 &&
+    (isDraftingNewCard || (!isLoadingCards && cards.length === 0));
 
   // Derived instead of set in an effect: fall back to the first card until the
   // user explicitly selects one.
-  const effectiveCardId = selectedCardId ?? cards[0]?.id ?? null;
+  const effectiveCardId = isDraftCard
+    ? null
+    : selectedCardId ?? cards[0]?.id ?? null;
 
   const selectedCard = cards.find((c) => c.id === effectiveCardId);
   const hasSelectedCard = !!selectedCard;
@@ -137,14 +160,13 @@ export default function PoolDetailPage() {
       selectedCardStatus === "active" ||
       selectedCardStatus === "completed" ||
       selectedCardStatus === "cancelled";
-    const fromServer: Record<string, { prediction: GamePrediction }> = {};
     if (hasSelectedCard && !locked) {
+      const fromServer: Record<string, { prediction: GamePrediction }> = {};
       (selectedCardPicks ?? []).forEach((pick) => {
         fromServer[pick.game_id] = { prediction: pick.prediction };
       });
+      setPendingPicks(fromServer);
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-seeds the local draft picks from freshly fetched server card data; genuine server-state sync
-    setPendingPicks(fromServer);
   }, [effectiveCardId, hasSelectedCard, selectedCardStatus, selectedCardPicks]);
 
   const poolGames = useMemo(() => {
@@ -194,6 +216,7 @@ export default function PoolDetailPage() {
     selectedCard?.status === "cancelled";
   const effectivePicks = isCardLocked ? cardPicks : pendingPicks;
   const isPoolCompleted = pool?.status === "completed";
+  const entryFee = pool?.entryFee ?? pool?.entry_fee ?? 20;
 
   function getGameResult(
     game: PoolGameRow,
@@ -220,18 +243,45 @@ export default function PoolDetailPage() {
   }
   const canSubmitPicks =
     !isPoolCompleted &&
-    selectedCard?.status === "pending" &&
+    (isDraftCard || selectedCard?.status === "pending") &&
     poolGames.length > 0 &&
     poolGames.every((g) => pendingPicks[g.id]);
 
   const handlePick = (gameId: string, prediction: GamePrediction) => {
-    if (isCardLocked || !effectiveCardId) return;
+    if (isCardLocked || (!effectiveCardId && !isDraftCard)) return;
     setPendingPicks((prev) => ({ ...prev, [gameId]: { prediction } }));
   };
 
   const handleSubmitPicks = async () => {
-    if (!poolId || !effectiveCardId || !canSubmitPicks) return;
+    if (!poolId || !canSubmitPicks) return;
     try {
+      if (isDraftCard) {
+        if (!user?.id) {
+          sessionStorage.setItem(
+            `card-draft-v1-${poolId}`,
+            JSON.stringify(
+              poolGames.map((game) => ({
+                gameId: game.id,
+                prediction: pendingPicks[game.id].prediction,
+              })),
+            ),
+          );
+          router.push(
+            `/login?redirect=${encodeURIComponent(`/pool/${poolId}?new_card=1`)}`,
+          );
+          return;
+        }
+        await stripeCheckout.createCheckoutSession({
+          poolId,
+          entryFee,
+          picks: poolGames.map((game) => ({
+            gameId: game.id,
+            prediction: pendingPicks[game.id].prediction,
+          })),
+        });
+        return;
+      }
+      if (!effectiveCardId) return;
       await Promise.all(
         poolGames.map((game) =>
           submitCardPickMutation.mutateAsync({
@@ -308,8 +358,11 @@ export default function PoolDetailPage() {
     }
   };
 
-  const handlePurchaseSuccess = () => {
-    refetchCards();
+  const startNewCard = () => {
+    setSelectedCardId(null);
+    setPendingPicks({});
+    setIsDraftingNewCard(true);
+    window.history.replaceState({}, "", `/pool/${poolId}?new_card=1`);
   };
 
   const handleEditPoolSave = async (data: {
@@ -337,7 +390,6 @@ export default function PoolDetailPage() {
     confirmedSessionRef.current = sessionId;
     if (typeof window !== "undefined") sessionStorage.setItem(storageKey, "1");
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot Stripe redirect handler: the confirming flag must be raised before the async confirm call so the purchase UI never flashes
     setIsConfirmingPayment(true);
 
     (async () => {
@@ -362,8 +414,9 @@ export default function PoolDetailPage() {
           queryClient.invalidateQueries({ queryKey: ["/api/pools", poolId] }),
         ]);
         window.history.replaceState({}, "", `/pool/${poolId}`);
+        sessionStorage.removeItem(`card-draft-v1-${poolId}`);
         setIsConfirmingPayment(false);
-        if (!cancelled) toast.success("Payment confirmed! Your card is ready.");
+        if (!cancelled) toast.success("Payment confirmed! Your card was submitted.");
       } catch {
         if (!cancelled) {
           setIsConfirmingPayment(false);
@@ -396,7 +449,6 @@ export default function PoolDetailPage() {
     );
   }
 
-  const entryFee = pool.entryFee ?? pool.entry_fee ?? 20;
   const prizePot = pool.prizePot ?? pool.prize_pot ?? 0;
 
   return (
@@ -545,30 +597,29 @@ export default function PoolDetailPage() {
                 <CardSelectorComponent
                   cards={cards}
                   selectedCardId={effectiveCardId}
-                  onSelectCard={setSelectedCardId}
-                  onPurchaseNew={() => {
-                    document.getElementById("purchase-card-trigger")?.click();
+                  onSelectCard={(cardId) => {
+                    setIsDraftingNewCard(false);
+                    setSelectedCardId(cardId);
+                    window.history.replaceState({}, "", `/pool/${poolId}`);
                   }}
+                  onPurchaseNew={startNewCard}
                   entryFee={entryFee}
                 />
               </div>
             ) : (
               <div className="glass-panel p-6 rounded-xl text-center">
-                <p className="text-muted-foreground mb-4">
-                  Purchase a card to start making picks
+                <p className="font-semibold mb-1">Build your parlay card</p>
+                <p className="text-sm text-muted-foreground">
+                  Pick every matchup below. You will pay only when you submit.
                 </p>
-                <CardPurchaseButton
-                  poolId={poolId}
-                  entryFee={entryFee}
-                  onPurchaseSuccess={handlePurchaseSuccess}
-                  disabled={isConfirmingPayment}
-                />
               </div>
             )}
 
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-2xl font-bold font-display uppercase italic">
-                {effectiveCardId
+                {isDraftCard
+                  ? "New Card - "
+                  : effectiveCardId
                   ? `Card ${selectedCard?.card_number || ""} - `
                   : ""}
                 Week {pool.week} Matchups
@@ -586,7 +637,7 @@ export default function PoolDetailPage() {
                   No games selected for this pool yet.
                 </p>
               </div>
-            ) : effectiveCardId ? (
+            ) : effectiveCardId || isDraftCard ? (
               <div className="grid grid-cols-1 gap-6">
                 {poolGames.map((game) => {
                   const pick = effectivePicks[game.id];
@@ -642,7 +693,7 @@ export default function PoolDetailPage() {
               </div>
             )}
 
-            {effectiveCardId && (
+            {(effectiveCardId || isDraftCard) && (
               <div className="space-y-4">
                 {canSubmitPicks && (
                   <button
@@ -650,14 +701,22 @@ export default function PoolDetailPage() {
                     onClick={handleSubmitPicks}
                     disabled={
                       submitCardPickMutation.isPending ||
-                      lockCardMutation.isPending
+                      lockCardMutation.isPending ||
+                      stripeCheckout.isPending
                     }
                     className="w-full py-3 px-4 rounded-xl font-bold uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
                     {submitCardPickMutation.isPending ||
-                    lockCardMutation.isPending
-                      ? "Submitting…"
-                      : "Submit picks"}
+                    lockCardMutation.isPending ||
+                    stripeCheckout.isPending
+                      ? isDraftCard
+                        ? "Opening secure payment…"
+                        : "Submitting…"
+                      : isDraftCard
+                        ? user?.id
+                          ? `Pay $${entryFee.toFixed(2)} & Submit Card`
+                          : "Sign In to Pay & Submit"
+                        : "Submit picks"}
                   </button>
                 )}
                 {isPoolCompleted && selectedCard?.status === "pending" && (
@@ -675,7 +734,7 @@ export default function PoolDetailPage() {
           </div>
 
           <div className="space-y-6">
-            {effectiveCardId && (
+            {(effectiveCardId || isDraftCard) && (
               <ProgressCard
                 picksMade={Object.keys(effectivePicks).length}
                 totalGames={poolGames.length}
@@ -697,17 +756,6 @@ export default function PoolDetailPage() {
                 />
               )}
 
-            {cards.length > 0 && cards.length < 3 && (
-              <div className="glass-panel p-4 rounded-xl">
-                <CardPurchaseButton
-                  poolId={poolId}
-                  entryFee={entryFee}
-                  onPurchaseSuccess={handlePurchaseSuccess}
-                  disabled={isConfirmingPayment}
-                />
-              </div>
-            )}
-
             <CommentSection
               comments={comments.map((c: PoolCommentRow) => ({
                 id: c.id,
@@ -721,9 +769,7 @@ export default function PoolDetailPage() {
               isPosting={addCommentMutation.isPending}
               requiresCard={requiresCard}
               currentUserId={user?.id}
-              onPurchaseCard={() => {
-                document.getElementById("purchase-card-trigger")?.click();
-              }}
+              onPurchaseCard={startNewCard}
               rules={chatRules ? { version: chatRules.version, accepted: chatRules.accepted } : null}
               onAcceptRules={handleAcceptChatRules}
               isAcceptingRules={acceptChatRules.isPending}

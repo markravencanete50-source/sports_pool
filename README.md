@@ -34,11 +34,11 @@ pays the winners automatically.
 
 1. **Sign up** — Supabase Auth (email + password, min 10 chars with mixed case
    and a digit).
-2. **Join a pool** — pay the entry fee through Stripe Checkout. The price is set
-   by the pool server-side; the client cannot influence it.
-3. **Get a card** — issued only after Stripe confirms payment (webhook is the
-   source of truth). Up to 3 cards per user per pool.
-4. **Make picks** — predict each game. Picks for a game lock at its kickoff.
+2. **Build a card** — predict every game in the pool before paying.
+3. **Pay and submit** — Stripe Checkout charges the server-authoritative entry
+   fee. The signed webhook creates the card with its picks already locked. Up
+   to 3 cards per user per pool.
+4. **Games lock** — a card cannot be submitted after any selected game kicks off.
 5. **Games play** — final scores are pulled from the ESPN scoreboard feed.
 6. **Settle** — once every game in a pool is finished, cards are scored, winners
    are chosen (ties broken by closest total-score prediction) and the pot, less

@@ -38,7 +38,7 @@ export function CardSelector({
             onClick={onPurchaseNew}
             className="text-xs text-primary hover:text-primary/80 hover:bg-primary/10 active:scale-95 font-medium px-3 py-2 min-h-9 rounded-lg transition-all"
           >
-            + Buy Card ${entryFee}
+            + New Card ${entryFee}
           </button>
         )}
       </div>
@@ -77,8 +77,8 @@ export function CardSelector({
 
         {cards.length === 0 && (
           <div className="text-center py-6 text-muted-foreground text-sm">
-            <p className="mb-2">No cards purchased yet</p>
-            <p className="text-xs">Purchase a card to start making picks</p>
+            <p className="mb-2">No cards submitted yet</p>
+            <p className="text-xs">Make your picks, then pay to submit</p>
           </div>
         )}
       </div>

@@ -184,7 +184,7 @@ export function CommentSection({
 
       {requiresCard ? (
         <div className="p-4 border-t border-white/10 bg-yellow-500/10 border-yellow-500/20">
-          <p className="text-sm text-yellow-500 mb-2">🔒 You must purchase a card to access chat</p>
+          <p className="text-sm text-yellow-500 mb-2">Submit a paid card to access chat</p>
           {onPurchaseCard && (
             <button
               onClick={onPurchaseCard}

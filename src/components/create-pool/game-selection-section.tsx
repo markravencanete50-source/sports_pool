@@ -20,6 +20,7 @@ export function GameSelectionSection({
   isLoadingGames = false,
   gamesError = null,
   pickEnabled = true,
+  maxGamesForWeek = 0,
 }: GameSelectionSectionProps) {
   const totalGames = Object.values(groupedGames).flat().length;
 
@@ -31,8 +32,10 @@ export function GameSelectionSection({
             <Calendar className="w-5 h-5 text-primary" /> Select Games
           </h3>
           <p className="text-xs text-muted-foreground">
-            Select {poolConfig.minGames}-{poolConfig.maxGames} games for your
-            pool
+            Select at least {poolConfig.minGames} games from one week
+            {maxGamesForWeek > 0
+              ? ` — up to all ${maxGamesForWeek} games scheduled that week`
+              : ""}
           </p>
         </div>
 
@@ -156,8 +159,8 @@ export function GameSelectionSection({
       {selectedGames.length === 0 && totalGames > 0 && (
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
           <p className="text-xs text-yellow-500 text-center font-medium">
-            ⚠️ Please select {poolConfig.minGames}-{poolConfig.maxGames} games
-            to create your pool
+            Please select at least {poolConfig.minGames} games to create your
+            pool
           </p>
         </div>
       )}
@@ -171,11 +174,10 @@ export function GameSelectionSection({
             </p>
           </div>
         )}
-      {selectedGames.length >= poolConfig.maxGames && (
+      {maxGamesForWeek > 0 && selectedGames.length === maxGamesForWeek && (
         <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
           <p className="text-xs text-green-500 text-center font-medium">
-            ✓ Maximum games selected ({poolConfig.maxGames}/
-            {poolConfig.maxGames})
+            All scheduled games selected ({maxGamesForWeek}/{maxGamesForWeek})
           </p>
         </div>
       )}

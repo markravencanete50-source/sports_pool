@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
+import { decodeCheckoutPicks } from "@/lib/checkout-picks";
 
 /**
  * Single source of truth for turning a PAID Stripe Checkout Session into a
@@ -58,6 +59,13 @@ export async function fulfillCardPurchase(
     return { ok: false, status: 400, error: "Payment amount mismatch" };
   }
 
+  let checkoutPicks: ReturnType<typeof decodeCheckoutPicks>;
+  try {
+    checkoutPicks = decodeCheckoutPicks(session.metadata);
+  } catch {
+    return { ok: false, status: 400, error: "Invalid picks in session metadata" };
+  }
+
   const paymentId =
     typeof session.payment_intent === "string"
       ? session.payment_intent
@@ -93,6 +101,47 @@ export async function fulfillCardPurchase(
     };
   }
 
+  if (checkoutPicks) {
+    const { data: poolGames, error: poolGamesError } = await supabase
+      .from("pool_games")
+      .select("game_id")
+      .eq("pool_id", poolId);
+    const poolGameIds = (poolGames ?? []).map(
+      (poolGame: { game_id: string }) => poolGame.game_id,
+    );
+    const pickedGameIds = new Set(checkoutPicks.map((pick) => pick.gameId));
+    if (
+      poolGamesError ||
+      poolGameIds.length === 0 ||
+      pickedGameIds.size !== poolGameIds.length ||
+      poolGameIds.some((gameId) => !pickedGameIds.has(gameId))
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        error: `Pool schedule changed; payment ${session.id} needs a manual refund`,
+      };
+    }
+
+    const { data: games, error: gamesError } = await supabase
+      .from("games")
+      .select("id, date, status")
+      .in("id", poolGameIds);
+    const invalidGame = games?.find(
+      (game) =>
+        game.status !== "scheduled" ||
+        !Number.isFinite(Date.parse(game.date)) ||
+        Date.parse(game.date) <= Date.now(),
+    );
+    if (gamesError || !games || games.length !== poolGameIds.length || invalidGame) {
+      return {
+        ok: false,
+        status: 409,
+        error: `A selected game is no longer open; payment ${session.id} needs a manual refund`,
+      };
+    }
+  }
+
   const { data: existingCards } = await supabase
     .from("parlay_cards")
     .select("card_number")
@@ -118,7 +167,7 @@ export async function fulfillCardPurchase(
       user_id: userId,
       card_number: nextCardNumber,
       entry_fee_paid: entryFee,
-      status: "pending",
+      status: checkoutPicks ? "active" : "pending",
     })
     .select()
     .single();
@@ -129,6 +178,21 @@ export async function fulfillCardPurchase(
       status: 500,
       error: cardError?.message ?? "Failed to create card",
     };
+  }
+
+  if (checkoutPicks) {
+    const { error: picksError } = await supabase.from("card_picks").insert(
+      checkoutPicks.map((pick) => ({
+        card_id: card.id,
+        game_id: pick.gameId,
+        prediction: pick.prediction,
+        total_score_prediction: pick.totalScorePrediction,
+      })),
+    );
+    if (picksError) {
+      await supabase.from("parlay_cards").delete().eq("id", card.id);
+      return { ok: false, status: 500, error: "Failed to save paid card picks" };
+    }
   }
 
   // platform_fee and net_amount are deliberately not set here. They used to be
@@ -159,9 +223,11 @@ export async function fulfillCardPurchase(
   if (txError) {
     // (b) the other caller won the race — its card stands, ours is a duplicate.
     if ((txError as { code?: string }).code === UNIQUE_VIOLATION) {
+      await supabase.from("card_picks").delete().eq("card_id", card.id);
       await supabase.from("parlay_cards").delete().eq("id", card.id);
       return { ok: true, cardId: null, alreadyFulfilled: true };
     }
+    await supabase.from("card_picks").delete().eq("card_id", card.id);
     await supabase.from("parlay_cards").delete().eq("id", card.id);
     return { ok: false, status: 500, error: "Failed to record transaction" };
   }
