@@ -3,6 +3,8 @@ import { signupSchema } from "@/lib/validations";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { checkPasswordBreached } from "@/lib/password-breach";
 import { assertSameOrigin } from "@/lib/request-guards";
+import { sendSignupConfirmationEmail } from "@/lib/auth/confirmation-email";
+import type { AuthResponse } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -146,16 +148,84 @@ export async function POST(request: Request) {
       process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
     const redirectTo = `${origin.replace(/\/$/, "")}/auth/callback`;
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password: validatedData.password,
-      options: {
-        data: {
-          name: validatedData.name,
+    let authData: AuthResponse["data"];
+    let authError: AuthResponse["error"];
+
+    /*
+     * When Resend is configured on the server, generate the signup token with
+     * the service-role client and deliver it through Resend. This keeps email
+     * verification available independently of the provider-managed SMTP path
+     * without exposing either secret to the browser.
+     */
+    if (
+      process.env.RESEND_API_KEY?.trim() &&
+      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+    ) {
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const admin = createAdminClient();
+      const generated = await admin.auth.admin.generateLink({
+        type: "signup",
+        email: normalizedEmail,
+        password: validatedData.password,
+        options: {
+          data: { name: validatedData.name },
+          redirectTo,
         },
-        emailRedirectTo: redirectTo,
-      },
-    });
+      });
+
+      authError = generated.error;
+      authData = {
+        user: generated.data.user,
+        session: null,
+      };
+
+      if (!authError && generated.data.user) {
+        const confirmationUrl = new URL("/auth/callback", origin);
+        confirmationUrl.searchParams.set(
+          "token_hash",
+          generated.data.properties.hashed_token
+        );
+        confirmationUrl.searchParams.set("type", "email");
+
+        const delivery = await sendSignupConfirmationEmail({
+          to: normalizedEmail,
+          name: validatedData.name,
+          confirmationUrl: confirmationUrl.toString(),
+          userId: generated.data.user.id,
+        });
+
+        if (!delivery.ok) {
+          console.error(
+            `[signup] Resend confirmation delivery failed with HTTP ${delivery.status}`
+          );
+          const cleanup = await admin.auth.admin.deleteUser(
+            generated.data.user.id
+          );
+          if (cleanup.error) {
+            console.error(
+              `[signup] failed to clean up undeliverable auth user: ${cleanup.error.message}`
+            );
+          }
+          return NextResponse.json(
+            { error: "Could not create the account. Check your details and try again." },
+            { status: 400 }
+          );
+        }
+      }
+    } else {
+      const result = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password: validatedData.password,
+        options: {
+          data: {
+            name: validatedData.name,
+          },
+          emailRedirectTo: redirectTo,
+        },
+      });
+      authData = result.data;
+      authError = result.error;
+    }
 
     if (authError) {
       /*

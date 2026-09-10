@@ -30,17 +30,23 @@ function safeNextPath(raw: string | null): string {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
+  const tokenHash = searchParams.get("token_hash");
+  const type = searchParams.get("type");
   // `next` arrives via Supabase's redirect_to, i.e. attacker-influenceable.
   const nextPath = safeNextPath(searchParams.get("next"));
 
-  if (!code) {
+  if (!code && !tokenHash) {
     return NextResponse.redirect(
       new URL("/login?error=missing_code", request.url)
     );
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { error } = tokenHash
+    ? type === "email"
+      ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "email" })
+      : { error: new Error("Unsupported confirmation type") }
+    : await supabase.auth.exchangeCodeForSession(code!);
 
   if (error) {
     return NextResponse.redirect(
