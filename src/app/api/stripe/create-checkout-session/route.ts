@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getPoolForUser } from "@/lib/pool-access";
 import { getPoolFinancials } from "@/lib/pool-financials";
-import { getStripe } from "@/lib/stripe/config";
+import { checkoutConfigurationError, getStripe } from "@/lib/stripe/config";
+import { logEvent } from "@/lib/log";
 import { createCheckoutSessionSchema } from "@/lib/validations";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertSameOrigin } from "@/lib/request-guards";
@@ -40,6 +41,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
     const { poolId, entryFee, picks } = parsed.data;
+
+    const configurationError = checkoutConfigurationError();
+    if (configurationError) {
+      logEvent("error", "stripe.checkout_configuration_invalid");
+      return NextResponse.json(
+        { error: configurationError, code: "payment_configuration_error" },
+        { status: 503 },
+      );
+    }
 
     const { data: pool } = await getPoolForUser(
       supabase,
@@ -81,12 +91,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: existingCards } = await supabase
+    const { data: existingCards, error: existingCardsError } = await supabase
       .from("parlay_cards")
       .select("card_number")
       .eq("pool_id", poolId)
       .eq("user_id", user.id)
       .in("status", ["pending", "active", "completed"]);
+
+    if (existingCardsError) {
+      return NextResponse.json({ error: "Could not verify your existing cards. Please try again." }, { status: 503 });
+    }
 
     if (existingCards && existingCards.length >= 3) {
       return NextResponse.json(

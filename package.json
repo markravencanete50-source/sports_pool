@@ -31,6 +31,7 @@
     "docs:brief": "node scripts/gen-client-brief.cjs",
     "docs:transfer": "node scripts/gen-transfer-guide.cjs",
     "preflight:money": "tsx scripts/preflight-money-path.ts",
+    "diagnose:payments": "tsx scripts/diagnose-payments.ts",
     "auth:config": "tsx scripts/apply-auth-config.ts"
   },
   "dependencies": {

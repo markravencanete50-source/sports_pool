@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logEvent } from "@/lib/log";
 import { resolveRedisCreds } from "@/lib/rate-limit";
 import { hasTrustedEdge } from "@/lib/compliance/geo";
+import { checkoutConfigurationError } from "@/lib/stripe/config";
 
 /**
  * Health and readiness probe.
@@ -155,7 +156,12 @@ function checkConfig(): Component {
 /** Money-path provisioning, reported loudly but never as an outage. */
 function checkCapabilities(): Component {
   const missing = Object.keys(CAPABILITY_ENV).filter((k) => !process.env[k]?.trim());
-  if (missing.length === 0) return { status: "ok", hard: false, detail: "fully provisioned" };
+  if (missing.length === 0) {
+    const checkoutError = checkoutConfigurationError();
+    return checkoutError
+      ? { status: "degraded", hard: false, detail: checkoutError }
+      : { status: "ok", hard: false, detail: "fully provisioned" };
+  }
 
   return {
     status: "degraded",

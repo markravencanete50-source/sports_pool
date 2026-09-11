@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Share2, Copy, MessageSquare, Mail, QrCode, Check, X } from "lucide-react";
 import { toast } from "sonner";
+import Image from "next/image";
 
 /**
  * Share a pool: copy link, SMS, email, QR code — and the native share sheet
@@ -138,8 +139,9 @@ export function SharePoolButton({
           </div>
           <div className="flex justify-center">
             {qr ? (
-              <img
+              <Image
                 src={qr}
+                unoptimized
                 alt={`QR code linking to ${poolName}`}
                 width={180}
                 height={180}

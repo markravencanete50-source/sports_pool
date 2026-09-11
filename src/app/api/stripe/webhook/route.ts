@@ -70,6 +70,10 @@ export async function POST(request: Request) {
     const result = await fulfillCardPurchase(supabase, session);
 
     if (!result.ok) {
+      if (result.status >= 500) {
+        logEvent("error", "stripe.fulfilment_retry", { sessionId, reason: result.error });
+        return NextResponse.json({ error: "Processing error" }, { status: 500 });
+      }
       // A charge landed that we could not turn into a card (pool closed, card
       // limit hit). Retrying will not fix it — ACK so Stripe stops, and log
       // loudly for operator refund.

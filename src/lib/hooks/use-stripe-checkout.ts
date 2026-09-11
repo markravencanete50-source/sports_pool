@@ -22,10 +22,16 @@ export function useStripeCheckout() {
       if (!data.url || typeof data.url !== "string") {
         throw new Error("Invalid checkout session response");
       }
-      sessionStorage.setItem(
-        `card-draft-v1-${params.poolId}`,
-        JSON.stringify(params.picks),
-      );
+      // Browser privacy settings or a full storage quota must not strand a
+      // successfully created checkout. The server also stores picks in Stripe.
+      try {
+        sessionStorage.setItem(
+          `card-draft-v1-${params.poolId}`,
+          JSON.stringify(params.picks),
+        );
+      } catch {
+        // Draft recovery is optional; payment navigation is not.
+      }
       return data.url;
     },
   });

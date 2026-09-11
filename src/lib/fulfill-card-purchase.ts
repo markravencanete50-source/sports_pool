@@ -38,6 +38,9 @@ export async function fulfillCardPurchase(
   if (session.payment_status !== "paid") {
     return { ok: false, status: 400, error: "Payment not completed" };
   }
+  if (session.currency !== "usd") {
+    return { ok: false, status: 400, error: "Payment currency mismatch" };
+  }
 
   const poolId = session.metadata?.poolId;
   const userId = session.metadata?.userId;
@@ -72,21 +75,27 @@ export async function fulfillCardPurchase(
       : (session.payment_intent as { id?: string } | null)?.id ?? session.id;
 
   // (a) cheap idempotency check
-  const { data: existingTx } = await supabase
+  const { data: existingTx, error: existingTxError } = await supabase
     .from("pool_transactions")
     .select("id, card_id")
     .eq("stripe_session_id", session.id)
     .maybeSingle();
 
+  if (existingTxError) {
+    return { ok: false, status: 503, error: "Could not verify previous payment fulfilment" };
+  }
+
   if (existingTx) {
     return { ok: true, cardId: existingTx.card_id ?? null, alreadyFulfilled: true };
   }
 
-  const { data: pool } = await supabase
+  const { data: pool, error: poolError } = await supabase
     .from("pools")
     .select("id, status")
     .eq("id", poolId)
     .maybeSingle();
+
+  if (poolError) return { ok: false, status: 503, error: "Could not verify pool" };
 
   if (!pool) {
     return { ok: false, status: 404, error: "Pool not found" };
@@ -110,8 +119,8 @@ export async function fulfillCardPurchase(
       (poolGame: { game_id: string }) => poolGame.game_id,
     );
     const pickedGameIds = new Set(checkoutPicks.map((pick) => pick.gameId));
+    if (poolGamesError) return { ok: false, status: 503, error: "Could not verify pool schedule" };
     if (
-      poolGamesError ||
       poolGameIds.length === 0 ||
       pickedGameIds.size !== poolGameIds.length ||
       poolGameIds.some((gameId) => !pickedGameIds.has(gameId))
@@ -127,13 +136,14 @@ export async function fulfillCardPurchase(
       .from("games")
       .select("id, date, status")
       .in("id", poolGameIds);
+    if (gamesError) return { ok: false, status: 503, error: "Could not verify card games" };
     const invalidGame = games?.find(
       (game) =>
         game.status !== "scheduled" ||
         !Number.isFinite(Date.parse(game.date)) ||
         Date.parse(game.date) <= Date.now(),
     );
-    if (gamesError || !games || games.length !== poolGameIds.length || invalidGame) {
+    if (!games || games.length !== poolGameIds.length || invalidGame) {
       return {
         ok: false,
         status: 409,
@@ -142,12 +152,14 @@ export async function fulfillCardPurchase(
     }
   }
 
-  const { data: existingCards } = await supabase
+  const { data: existingCards, error: existingCardsError } = await supabase
     .from("parlay_cards")
     .select("card_number")
     .eq("pool_id", poolId)
     .eq("user_id", userId)
     .in("status", ["pending", "active", "completed"]);
+
+  if (existingCardsError) return { ok: false, status: 503, error: "Could not verify existing cards" };
 
   const taken = existingCards?.map((c) => c.card_number) ?? [];
   const nextCardNumber = [1, 2, 3].find((n) => !taken.includes(n));
@@ -173,6 +185,13 @@ export async function fulfillCardPurchase(
     .single();
 
   if (cardError || !card) {
+    if (cardError?.code === UNIQUE_VIOLATION) {
+      // A concurrent webhook or browser return may have won the card slot.
+      // Retry unless its transaction for THIS session can be verified.
+      const { data: winner } = await supabase.from("pool_transactions")
+        .select("card_id").eq("stripe_session_id", session.id).maybeSingle();
+      if (winner) return { ok: true, cardId: winner.card_id, alreadyFulfilled: true };
+    }
     return {
       ok: false,
       status: 500,
@@ -225,7 +244,10 @@ export async function fulfillCardPurchase(
     if ((txError as { code?: string }).code === UNIQUE_VIOLATION) {
       await supabase.from("card_picks").delete().eq("card_id", card.id);
       await supabase.from("parlay_cards").delete().eq("id", card.id);
-      return { ok: true, cardId: null, alreadyFulfilled: true };
+      const { data: winner } = await supabase.from("pool_transactions")
+        .select("card_id").eq("stripe_session_id", session.id).maybeSingle();
+      if (winner) return { ok: true, cardId: winner.card_id, alreadyFulfilled: true };
+      return { ok: false, status: 503, error: "Payment transaction conflict; retry fulfilment" };
     }
     await supabase.from("card_picks").delete().eq("card_id", card.id);
     await supabase.from("parlay_cards").delete().eq("id", card.id);
