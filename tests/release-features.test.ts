@@ -10,7 +10,13 @@ import {
 import { hashPoolPassword, verifyPoolPassword, SHARE_SLUG_PATTERN } from "../src/lib/pool-password";
 import { extractLiveState, isCompetitionInProgress } from "../src/lib/espn-live";
 import { filterRegularSeasonSlate } from "../src/lib/nfl-slate";
-import { createPoolSchema, updatePoolWithGamesSchema, contentReportSchema } from "../src/lib/validations";
+import {
+  createPoolSchema,
+  updatePoolWithGamesSchema,
+  contentReportSchema,
+  passwordResetCompleteSchema,
+  syncNFLGamesSchema,
+} from "../src/lib/validations";
 import type { ESPNGame } from "../src/lib/types";
 
 /**
@@ -164,5 +170,20 @@ describe("pool window validation", () => {
   test("a content report needs a real reason", () => {
     assert.ok(!contentReportSchema.safeParse({ reason: "x" }).success);
     assert.ok(contentReportSchema.safeParse({ reason: "sharing picks" }).success);
+  });
+});
+
+describe("password recovery and official pool validation", () => {
+  test("reset passwords share the signup strength policy and must match", () => {
+    assert.ok(passwordResetCompleteSchema.safeParse({ password: "StrongPass123", confirmPassword: "StrongPass123" }).success);
+    assert.ok(!passwordResetCompleteSchema.safeParse({ password: "short", confirmPassword: "short" }).success);
+    assert.ok(!passwordResetCompleteSchema.safeParse({ password: "StrongPass123", confirmPassword: "Different123" }).success);
+  });
+
+  test("official pool creation requires an audit reason and bounded inputs", () => {
+    assert.ok(syncNFLGamesSchema.safeParse({ createWeeklyPublicPool: true, entryFee: 20, reason: "Client requested weekly pool" }).success);
+    assert.ok(!syncNFLGamesSchema.safeParse({ createWeeklyPublicPool: true, entryFee: 20 }).success);
+    assert.ok(!syncNFLGamesSchema.safeParse({ createWeeklyPublicPool: true, entryFee: 10, reason: "Too cheap" }).success);
+    assert.ok(!syncNFLGamesSchema.safeParse({ week: 99 }).success);
   });
 });

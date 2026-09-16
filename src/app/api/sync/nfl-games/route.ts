@@ -13,6 +13,9 @@ import { completePoolIfAllGamesFinished } from "@/lib/pool-completion";
 import { materializePoolWinners } from "@/lib/materialize-winners";
 import { assertSameOrigin } from "@/lib/request-guards";
 import { extractLiveState } from "@/lib/espn-live";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { syncNFLGamesSchema } from "@/lib/validations";
+import { recordAdminAction } from "@/lib/compliance/audit";
 
 function getGameStatus(competition: ESPNGame["competitions"][0]): GameStatus {
   const status = competition.status.type;
@@ -129,11 +132,26 @@ export async function POST(request: Request) {
     const csrf = assertSameOrigin(request);
     if (csrf) return csrf;
 
+    const limited = await enforceRateLimit(
+      request,
+      "admin:games-sync",
+      RATE_LIMITS.gamesSync
+    );
+    if (limited) return limited;
+
     const supabase = await createClient();
-    const auth = await requireAdmin(supabase);
+    const auth = await requireAdmin(supabase, { permission: "games.sync" });
     if (auth instanceof NextResponse) return auth;
 
-    const body = (await request.json().catch(() => ({}))) || {};
+    const parsed = syncNFLGamesSchema.safeParse(
+      (await request.json().catch(() => ({}))) || {}
+    );
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid sync request" },
+        { status: 400 }
+      );
+    }
     const {
       gameIds,
       week,
@@ -141,7 +159,8 @@ export async function POST(request: Request) {
       createWeeklyPublicPool,
       poolName,
       entryFee,
-    } = body;
+      reason,
+    } = parsed.data;
 
     if (gameIds && Array.isArray(gameIds) && gameIds.length > 0) {
       return await syncSpecificGames(supabase, gameIds);
@@ -319,10 +338,11 @@ export async function POST(request: Request) {
       ];
 
       if (syncedGameIds.length >= poolConfig.minGames) {
-        const { data: existingSystemWeekly } = await supabase
+        const { data: existingSystemWeekly } = await admin
           .from("pools")
           .select("id, name")
           .eq("is_system_weekly_pool", true)
+          .eq("season", syncedSeason)
           .eq("week_id", syncedWeek)
           .limit(1)
           .maybeSingle();
@@ -346,6 +366,7 @@ export async function POST(request: Request) {
               entry_fee: entryFeeAmount,
               max_participants: null,
               week: syncedWeek,
+              season: syncedSeason,
               status: PoolStatus.OPEN,
               created_by: auth.user.id,
               participants: 0,
@@ -357,7 +378,22 @@ export async function POST(request: Request) {
             .single();
 
           if (poolError || !newPool) {
-            responsePayload.poolSkipped = `Could not create pool: ${poolError?.message ?? "unknown"}`;
+            if (poolError?.code === "23505") {
+              const { data: concurrentPool } = await admin
+                .from("pools")
+                .select("id, name")
+                .eq("is_system_weekly_pool", true)
+                .eq("season", syncedSeason)
+                .eq("week_id", syncedWeek)
+                .limit(1)
+                .maybeSingle();
+              responsePayload.pool = concurrentPool;
+              responsePayload.poolSkipped = concurrentPool
+                ? `System weekly pool for Week ${syncedWeek} already exists: ${concurrentPool.name}`
+                : `System weekly pool for Week ${syncedWeek} was created by another request.`;
+            } else {
+              responsePayload.poolSkipped = `Could not create pool: ${poolError?.message ?? "unknown"}`;
+            }
           } else {
             const poolGamesRows = syncedGameIds.map((gameId) => ({
               pool_id: newPool.id,
@@ -371,13 +407,33 @@ export async function POST(request: Request) {
               await admin.from("pools").delete().eq("id", newPool.id);
               responsePayload.poolSkipped = `Pool created but games failed: ${pgError.message}`;
             } else {
-              await admin.from("pool_participants").insert({
+              const { error: participantError } = await admin.from("pool_participants").insert({
                 pool_id: newPool.id,
                 user_id: auth.user.id,
               });
-              responsePayload.week = syncedWeek;
-              responsePayload.season = syncedSeason ?? undefined;
-              responsePayload.pool = newPool;
+              if (participantError) {
+                await admin.from("pool_games").delete().eq("pool_id", newPool.id);
+                await admin.from("pools").delete().eq("id", newPool.id);
+                responsePayload.poolSkipped = `Pool creation was rolled back: ${participantError.message}`;
+              } else {
+                responsePayload.week = syncedWeek;
+                responsePayload.season = syncedSeason ?? undefined;
+                responsePayload.pool = newPool;
+                await recordAdminAction({
+                  actorId: auth.user.id,
+                  action: "official_pool.create",
+                  targetType: "pool",
+                  targetId: newPool.id,
+                  after: {
+                    name: newPool.name,
+                    season: syncedSeason,
+                    week: syncedWeek,
+                    entryFee: entryFeeAmount,
+                    games: syncedGameIds.length,
+                  },
+                  reason,
+                });
+              }
             }
           }
         }

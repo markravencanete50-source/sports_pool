@@ -32,6 +32,7 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
+  const mode = searchParams.get("mode");
   // `next` arrives via Supabase's redirect_to, i.e. attacker-influenceable.
   const nextPath = safeNextPath(searchParams.get("next"));
 
@@ -42,16 +43,31 @@ export async function GET(request: Request) {
   }
 
   const supabase = await createClient();
-  const { error } = tokenHash
-    ? type === "email"
-      ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "email" })
-      : { error: new Error("Unsupported confirmation type") }
+  const result = tokenHash
+    ? type === "email" || type === "recovery"
+      ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
+      : { data: { user: null, session: null }, error: new Error("Unsupported confirmation type") }
     : await supabase.auth.exchangeCodeForSession(code!);
+  const { error } = result;
 
   if (error) {
     return NextResponse.redirect(
       new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url)
     );
+  }
+
+  const recoveryRequested = type === "recovery" || mode === "recovery";
+  if (recoveryRequested) {
+    const recoverySentAt = result.data.user?.recovery_sent_at;
+    const recoveryAge = recoverySentAt
+      ? Date.now() - new Date(recoverySentAt).getTime()
+      : Number.POSITIVE_INFINITY;
+    if (recoveryAge < 0 || recoveryAge > 30 * 60_000) {
+      await supabase.auth.signOut();
+      return NextResponse.redirect(
+        new URL("/login?error=invalid_recovery", request.url)
+      );
+    }
   }
 
   const requestUrl = new URL(request.url);
@@ -63,6 +79,16 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL(DASHBOARD_PATH, requestUrl.origin));
   }
 
-  url.searchParams.set("verified", "1");
-  return NextResponse.redirect(url);
+  url.searchParams.set(recoveryRequested ? "recovery" : "verified", "1");
+  const response = NextResponse.redirect(url);
+  if (recoveryRequested) {
+    response.cookies.set("sportspool-recovery", "1", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 15 * 60,
+    });
+  }
+  return response;
 }

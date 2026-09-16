@@ -3,6 +3,14 @@ import { poolConfig } from "./config";
 import { PoolType, PoolStatus, GamePrediction } from "./enums";
 import { isPlausibleDateOfBirth, meetsMinimumAge } from "./compliance/age";
 
+export const accountPasswordSchema = z
+  .string()
+  .min(10, "Password must be at least 10 characters")
+  .max(128, "Password must be 128 characters or fewer")
+  .regex(/[a-z]/, "Password must contain a lowercase letter")
+  .regex(/[A-Z]/, "Password must contain an uppercase letter")
+  .regex(/[0-9]/, "Password must contain a number");
+
 export const signupSchema = z.object({
   email: z
     .string()
@@ -20,12 +28,7 @@ export const signupSchema = z.object({
   // (Authentication -> Providers -> Email: minimum length + required
   // characters) applies to every path including password reset, is available
   // on the free plan, and should be set to match.
-  password: z
-    .string()
-    .min(10, "Password must be at least 10 characters")
-    .regex(/[a-z]/, "Password must contain a lowercase letter")
-    .regex(/[A-Z]/, "Password must contain an uppercase letter")
-    .regex(/[0-9]/, "Password must contain a number"),
+  password: accountPasswordSchema,
   name: z.string().min(2, "Name must be at least 2 characters"),
   /*
    * Age gate. 18 is the global floor enforced here; jurisdictions that require
@@ -55,6 +58,48 @@ export const signinSchema = z.object({
     .refine((email) => email.length > 0, "Email is required"),
   password: z.string().min(1, "Password is required"),
 });
+
+export const passwordResetRequestSchema = z
+  .object({
+    email: z.string().email("Invalid email address").toLowerCase().trim(),
+  })
+  .strict();
+
+export const passwordResetCompleteSchema = z
+  .object({
+    password: accountPasswordSchema,
+    confirmPassword: z.string(),
+  })
+  .strict()
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export const syncNFLGamesSchema = z
+  .object({
+    gameIds: z
+      .array(z.string().min(1).max(100))
+      .max(64, "Too many games requested")
+      .refine((ids) => new Set(ids).size === ids.length, "Game ids must be unique")
+      .optional(),
+    week: z.number().int().min(1).max(25).optional(),
+    season: z.number().int().min(2000).max(2100).optional(),
+    createWeeklyPublicPool: z.boolean().optional(),
+    poolName: z.string().trim().min(3).max(120).optional(),
+    entryFee: z.number().min(20).max(10_000).optional(),
+    reason: z.string().trim().max(1000).optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.createWeeklyPublicPool && (!data.reason || data.reason.length < 5)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "A reason of at least 5 characters is required",
+      });
+    }
+  });
 
 export const newsletterSignupSchema = z.object({
   email: z
@@ -271,6 +316,9 @@ export const uuidParamSchema = z.string().uuid("Invalid id format");
 
 export type SignupInput = z.infer<typeof signupSchema>;
 export type SigninInput = z.infer<typeof signinSchema>;
+export type PasswordResetRequestInput = z.infer<typeof passwordResetRequestSchema>;
+export type PasswordResetCompleteInput = z.infer<typeof passwordResetCompleteSchema>;
+export type SyncNFLGamesInput = z.infer<typeof syncNFLGamesSchema>;
 export type NewsletterSignupInput = z.infer<typeof newsletterSignupSchema>;
 export type CreatePoolInput = z.infer<typeof createPoolSchema>;
 export type UpdatePoolInput = z.infer<typeof updatePoolSchema>;

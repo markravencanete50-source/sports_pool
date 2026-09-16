@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { toast } from "sonner";
 
@@ -10,9 +10,11 @@ export type SyncNFLGamesParams = {
   createWeeklyPublicPool?: boolean;
   poolName?: string;
   entryFee?: number;
+  reason?: string;
 };
 
 export function useSyncNFLGames() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (params: SyncNFLGamesParams = {}) => {
       const {
@@ -21,6 +23,7 @@ export function useSyncNFLGames() {
         createWeeklyPublicPool,
         poolName,
         entryFee,
+        reason,
       } = params;
       const res = await apiRequest("POST", "/api/sync/nfl-games", {
         week,
@@ -28,10 +31,14 @@ export function useSyncNFLGames() {
         createWeeklyPublicPool,
         poolName,
         entryFee,
+        reason,
       });
       return res.json();
     },
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/games"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pools"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pools"] });
       const syncMsg = `Synced ${data.inserted || 0} new games, updated ${data.updated || 0} games`;
       if (data.pool && !data.poolSkipped) {
         const name = (data.pool as { name?: string }).name;

@@ -11,7 +11,7 @@ import { YourActivePoolsSection } from "@/components/home/your-active-pools-sect
 import { usePools } from "@/lib/hooks/use-pools";
 import { useGames } from "@/lib/hooks/use-games";
 import { useMemo } from "react";
-import { PoolType } from "@/lib/enums";
+import { PoolType, PoolsListStatusFilter } from "@/lib/enums";
 import type { Pool } from "@/lib/types";
 
 type ScheduleGame = { id: string; date: string };
@@ -31,6 +31,7 @@ function PoolGridSkeleton({ cards }: { cards: number }) {
 
 export default function DashboardPage() {
   const { data: poolsData, isLoading: isLoadingPools } = usePools({
+    status: PoolsListStatusFilter.OPEN,
     limit: 100,
   });
   const allPools = useMemo<Pool[]>(() => poolsData?.pools ?? [], [poolsData]);

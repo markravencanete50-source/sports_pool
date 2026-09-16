@@ -253,6 +253,10 @@ export const RATE_LIMITS = {
   authSignin: { limit: 10, windowMs: 5 * 60_000 },
   /** Account-creation floods. */
   authSignup: { limit: 6, windowMs: 30 * 60_000 },
+  /** Password-reset email floods and account-enumeration attempts. */
+  authPasswordResetRequest: { limit: 5, windowMs: 30 * 60_000 },
+  /** Repeated attempts to replace a password through a recovery session. */
+  authPasswordResetComplete: { limit: 10, windowMs: 30 * 60_000 },
   /** Newsletter subscription spam. */
   newsletter: { limit: 5, windowMs: 60 * 60_000 },
   /** Withdrawal-request flooding. */

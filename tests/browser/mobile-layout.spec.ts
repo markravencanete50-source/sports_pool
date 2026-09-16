@@ -31,6 +31,8 @@ import { test, expect } from "@playwright/test";
 const PAGES = [
   "/",
   "/login",
+  "/forgot-password",
+  "/reset-password",
   "/signup",
   "/terms",
   "/contest-rules",

@@ -405,7 +405,7 @@ function ConfirmDialog({ request, onClose }: { request: ConfirmRequest; onClose:
   const [busy, setBusy] = useState(false);
   const requireReason = request.requireReason ?? true;
   const missingField = (request.fields ?? []).some((f) => f.required && !values[f.name]?.trim());
-  const canConfirm = (!requireReason || reason.trim().length >= 3) && !missingField && !busy;
+  const canConfirm = (!requireReason || reason.trim().length >= 5) && !missingField && !busy;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

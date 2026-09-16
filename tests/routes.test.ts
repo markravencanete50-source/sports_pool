@@ -98,6 +98,8 @@ const IDENTITY_EXEMPT: Record<string, string> = {
     "This is the route that establishes identity, so it cannot demand one first. It is rate-limited instead, which is what protects it.",
   "/api/auth/signup":
     "Creates the identity, so there is none to require. Guarded by rate limiting, the age gate, the terms gate and a breached-password check.",
+  "/api/auth/password-reset/request":
+    "Starts account recovery before an identity exists. It is CSRF-protected, rate-limited, validated, and always returns the same response to prevent account enumeration.",
   "/api/auth/signout":
     "Clears whatever session was presented. There is nothing to authorise: the worst a forged call achieves is signing out someone who is already anonymous.",
   "/api/newsletter/subscribe":
@@ -116,7 +118,6 @@ const IDENTITY_EXEMPT: Record<string, string> = {
 const RATE_LIMIT_EXEMPT: Record<string, string> = {
   "/api/auth/signout": "Ends a session. Repeating it costs nothing and locking it could strand a user signed in.",
   "/api/pools/complete-finished": "requireAdmin + CSRF. Admins are a small set behind MFA.",
-  "/api/sync/nfl-games": "requireAdmin + CSRF, and bounded by the upstream ESPN feed.",
   "/api/seed-admin": "SETUP_SECRET gated and self-disabling after the first admin.",
   "/api/stripe/webhook": "Delivery rate is Stripe's; throttling it would drop fulfilment events.",
   "/api/pools/[poolId]/cards/purchase":

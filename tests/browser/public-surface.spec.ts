@@ -17,6 +17,8 @@ import { test, expect } from "@playwright/test";
 const PUBLIC_PAGES = [
   { path: "/", mustContain: /pool|nfl|gridiron/i },
   { path: "/login", mustContain: /sign in|log in|password/i },
+  { path: "/forgot-password", mustContain: /reset|email/i },
+  { path: "/reset-password", mustContain: /invalid|expired|reset/i },
   { path: "/signup", mustContain: /create account/i },
   { path: "/terms", mustContain: /terms/i },
   { path: "/contest-rules", mustContain: /rules|scoring|tie/i },

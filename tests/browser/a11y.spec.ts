@@ -65,8 +65,8 @@ test.describe("accessible naming", () => {
     await expect(page.locator("#accept-terms")).toBeVisible();
   });
 
-  test("no input anywhere on signup or login is left unnamed", async ({ page }) => {
-    for (const path of ["/signup", "/login"]) {
+  test("no input anywhere on the public auth forms is left unnamed", async ({ page }) => {
+    for (const path of ["/signup", "/login", "/forgot-password"]) {
       await gotoPublic(page, path);
 
       const unnamed = await page.evaluate(() => {
@@ -95,7 +95,7 @@ test.describe("accessible naming", () => {
   });
 
   test("the page has exactly one h1 and a document title", async ({ page }) => {
-    for (const path of ["/", "/signup", "/login", "/contest-rules", "/responsible-gaming"]) {
+    for (const path of ["/", "/signup", "/login", "/forgot-password", "/reset-password", "/contest-rules", "/responsible-gaming"]) {
       await gotoPublic(page, path);
       await expect(page).toHaveTitle(/.+/);
       const h1s = await page.locator("h1").count();

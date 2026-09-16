@@ -12,6 +12,7 @@ import { extractErrorMessage } from "@/lib/error-utils";
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { safeInternalPath } from "@/lib/routes";
+import Link from "next/link";
 
 function LoginForm() {
   const { signin, isSigningIn, signinError, isAuthenticated, isLoadingUser } =
@@ -80,6 +81,11 @@ function LoginForm() {
             Check your email to confirm your account before logging in.
           </p>
         )}
+        {searchParams.get("password_reset") === "1" && (
+          <p role="status" className="rounded-lg bg-primary/10 p-3 text-sm">
+            Password updated. Sign in with your new password.
+          </p>
+        )}
         {signinError && (
           <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg">
             {extractErrorMessage(signinError)}
@@ -99,9 +105,12 @@ function LoginForm() {
           {...register("password")}
           error={errors.password?.message}
           rightElement={
-            <span className="text-xs text-primary hover:underline cursor-pointer">
+            <Link
+              href="/forgot-password"
+              className="text-xs text-primary hover:underline"
+            >
               Forgot?
-            </span>
+            </Link>
           }
         />
         <button

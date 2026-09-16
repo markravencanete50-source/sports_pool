@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Trophy } from "lucide-react";
-import { useAdminList } from "@/lib/hooks/use-admin";
-import { AdminPageHeader, AdminTable, FilterTabs, SearchBox, Pager, StatusBadge, Money, DateTime, type Column } from "@/components/admin/ui";
+import { Plus, Trophy } from "lucide-react";
+import { useAdminList, useAdminOverview } from "@/lib/hooks/use-admin";
+import { useSyncNFLGames } from "@/lib/hooks/use-sync-nfl";
+import { AdminPageHeader, AdminTable, ActionButton, FilterTabs, SearchBox, Pager, StatusBadge, Money, DateTime, useConfirm, type Column } from "@/components/admin/ui";
 
 type Row = {
   id: string;
@@ -35,6 +36,10 @@ export default function AdminPoolsPage() {
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [page, setPage] = useState(1);
+  const overview = useAdminOverview();
+  const canCreateOfficial = overview.data?.viewer.permissions.includes("games.sync") ?? false;
+  const createOfficial = useSyncNFLGames();
+  const { confirm, dialog } = useConfirm();
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -77,7 +82,39 @@ export default function AdminPoolsPage() {
 
   return (
     <div>
-      <AdminPageHeader title="Pools" description="Every pool on the platform. Open one to pause, cancel, complete, settle or recalculate it." icon={<Trophy className="w-8 h-8" />} />
+      {dialog}
+      <AdminPageHeader
+        title="Pools"
+        description="Every pool on the platform. Create the official weekly pool here, or open one to manage it."
+        icon={<Trophy className="w-8 h-8" />}
+        actions={canCreateOfficial ? (
+          <ActionButton
+            tone="primary"
+            disabled={createOfficial.isPending}
+            onClick={() => confirm({
+              title: "Create official weekly pool",
+              description: "Syncs the selected NFL week and creates one public platform pool. If that season and week already exists, it will not create a duplicate.",
+              confirmLabel: "Create official pool",
+              fields: [
+                { name: "poolName", label: "Pool name (optional)", placeholder: "NFL Week … Public Pool" },
+                { name: "season", label: "Season (blank = current)", type: "number", min: 2000, max: 2100 },
+                { name: "week", label: "Week (blank = current)", type: "number", min: 1, max: 25 },
+                { name: "entryFee", label: "Entry fee in USD (blank = 20)", type: "number", min: 20, max: 10000 },
+              ],
+              onConfirm: ({ reason, poolName, season, week, entryFee }) => createOfficial.mutateAsync({
+                createWeeklyPublicPool: true,
+                reason,
+                poolName: poolName?.trim() || undefined,
+                season: season ? Number(season) : undefined,
+                week: week ? Number(week) : undefined,
+                entryFee: entryFee ? Number(entryFee) : 20,
+              }),
+            })}
+          >
+            <Plus className="w-3.5 h-3.5 inline mr-1" />Create Official Pool
+          </ActionButton>
+        ) : undefined}
+      />
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
         <div className="flex flex-wrap gap-2">
           <FilterTabs value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={[{ value: "all", label: "All" }, { value: "open", label: "Upcoming" }, { value: "active", label: "Active" }, { value: "paused", label: "Paused" }, { value: "completed", label: "Completed" }, { value: "cancelled", label: "Cancelled" }]} />

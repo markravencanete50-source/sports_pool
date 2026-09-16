@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CalendarDays, RefreshCw, Users, CheckCircle, Trophy } from "lucide-react";
+import { CalendarDays, RefreshCw, Users, CheckCircle } from "lucide-react";
 import { useAdminList, useAdminOverview } from "@/lib/hooks/use-admin";
 import { useSyncNFLGames } from "@/lib/hooks/use-sync-nfl";
 import { useSyncTeams } from "@/lib/hooks/use-sync-teams";
@@ -72,7 +72,6 @@ export default function AdminGamesPage() {
           canSync ? (
             <>
               <ActionButton tone="primary" onClick={() => syncNFL.mutate({})} disabled={syncNFL.isPending}><RefreshCw className={`w-3.5 h-3.5 inline mr-1 ${syncNFL.isPending ? "animate-spin" : ""}`} />Sync games now</ActionButton>
-              <ActionButton onClick={() => syncNFL.mutate({ createWeeklyPublicPool: true, entryFee: 20 })} disabled={syncNFL.isPending} title="Syncs this week and creates the featured public pool if missing"><Trophy className="w-3.5 h-3.5 inline mr-1" />Sync + weekly pool</ActionButton>
               <ActionButton onClick={() => syncTeams.mutate()} disabled={syncTeams.isPending}><Users className="w-3.5 h-3.5 inline mr-1" />Sync teams</ActionButton>
               <ActionButton onClick={() => completePools.mutate()} disabled={completePools.isPending}><CheckCircle className="w-3.5 h-3.5 inline mr-1" />Complete finished pools</ActionButton>
             </>
