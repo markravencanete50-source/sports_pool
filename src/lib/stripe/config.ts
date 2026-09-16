@@ -9,7 +9,7 @@ export function stripeKeyMode(key: string | undefined): "live" | "test" | "unset
 
 export function checkoutConfigurationError(
   key = process.env.STRIPE_SECRET_KEY,
-  environment = process.env.VERCEL_ENV,
+  environment = process.env.VERCEL_ENV ?? process.env.NODE_ENV,
 ): string | null {
   const mode = stripeKeyMode(key);
   if (mode === "unset") return "Card payments are temporarily unavailable. Please contact support.";
