@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { stripeAccountReady } from "@/lib/stripe/readiness";
 import { getPoolForUser } from "@/lib/pool-access";
 import { getPoolFinancials } from "@/lib/pool-financials";
 import { checkoutConfigurationError, getStripe } from "@/lib/stripe/config";
@@ -95,8 +97,7 @@ export async function POST(request: Request) {
       .from("parlay_cards")
       .select("card_number")
       .eq("pool_id", poolId)
-      .eq("user_id", user.id)
-      .in("status", ["pending", "active", "completed"]);
+      .eq("user_id", user.id);
 
     if (existingCardsError) {
       return NextResponse.json({ error: "Could not verify your existing cards. Please try again." }, { status: 503 });
@@ -158,7 +159,7 @@ export async function POST(request: Request) {
     }
 
     if (pool.max_participants != null) {
-      const financials = await getPoolFinancials(supabase, poolId);
+      const financials = await getPoolFinancials(createAdminClient(), poolId, { strict: true });
       const isNewPayer = !existingCards?.length;
       const paidCountAfter =
         financials.paid_participant_count + (isNewPayer ? 1 : 0);
@@ -226,8 +227,17 @@ export async function POST(request: Request) {
 
     const baseUrl = getBaseUrl();
     const amountCents = Math.round(authoritativeFee * 100);
+    if (!process.env.STRIPE_WEBHOOK_SECRET?.trim() || !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+      logEvent("error", "stripe.fulfilment_configuration_missing");
+      return NextResponse.json({ error: "Card payments are temporarily unavailable. No payment has been taken.", code: "payment_configuration_error" }, { status: 503 });
+    }
+    const stripe = getStripe();
+    if (!(await stripeAccountReady(stripe))) {
+      logEvent("error", "stripe.account_not_ready");
+      return NextResponse.json({ error: "Card payments are temporarily unavailable while the payment account is being activated. No payment has been taken.", code: "payment_account_not_ready" }, { status: 503 });
+    }
 
-    const session = await getStripe().checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       line_items: [

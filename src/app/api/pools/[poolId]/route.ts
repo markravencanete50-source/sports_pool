@@ -311,7 +311,7 @@ export async function PATCH(
       return NextResponse.json({ pool: { id: poolId } }, { status: 200 });
     }
 
-    const financials = await getPoolFinancials(supabase, poolId);
+    const financials = await getPoolFinancials(admin, poolId);
     const result = {
       ...updatedPool,
       prize_pot: financials.prize_pot,

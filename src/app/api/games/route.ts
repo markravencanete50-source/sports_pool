@@ -3,7 +3,7 @@ import { ESPNGame, GameStatus } from "@/lib/types";
 import { mapESPNTeamToDB } from "@/lib/constants";
 import { GameStatus as GameStatusEnum } from "@/lib/enums";
 import { getNflScoreboard } from "@/lib/fetch-nfl-scoreboard";
-import { filterRegularSeasonSlate } from "@/lib/nfl-slate";
+import { filterRegularSeasonSlate, nflSeasonYear, resolveRegularSeasonWeek } from "@/lib/nfl-slate";
 
 function getGameStatus(competition: ESPNGame["competitions"][0]): GameStatus {
   const status = competition.status.type;
@@ -19,10 +19,14 @@ export async function GET(request: Request) {
     const week = searchParams.get("week");
     const status = searchParams.get("status");
     const seasonParam =
-      searchParams.get("season") || new Date().getFullYear().toString();
-    const seasonNum = parseInt(seasonParam, 10);
+      searchParams.get("season") || nflSeasonYear().toString();
+    const seasonNum = Number(seasonParam);
     const weekNum =
-      week !== null && week !== "" ? parseInt(week, 10) : undefined;
+      week !== null && week !== "" ? Number(week) : undefined;
+    if (!Number.isInteger(seasonNum) || seasonNum < 2000 || seasonNum > 2100 ||
+        (weekNum !== undefined && (!Number.isInteger(weekNum) || weekNum < 1 || weekNum > 18))) {
+      return NextResponse.json({ error: "Invalid NFL season or regular-season week" }, { status: 400 });
+    }
 
     let espnGames: ESPNGame[] = [];
     let weekNumber: number | null = null;
@@ -39,13 +43,14 @@ export async function GET(request: Request) {
       seasonYear = seasonNum;
     } else {
       const currentWeekData = await getNflScoreboard(seasonNum, null);
-      const currentWeek =
-        currentWeekData.week?.number ??
-        currentWeekData.events?.[0]?.week?.number ??
-        1;
-      const nextWeekData = await getNflScoreboard(seasonNum, currentWeek + 1);
+      const currentWeek = resolveRegularSeasonWeek(currentWeekData, seasonNum);
+      if (currentWeek === null) return NextResponse.json({ games: [], week: null, season: seasonNum });
+      const [exactCurrentWeekData, nextWeekData] = await Promise.all([
+        getNflScoreboard(seasonNum, currentWeek),
+        currentWeek < 18 ? getNflScoreboard(seasonNum, currentWeek + 1) : Promise.resolve({ events: [] }),
+      ]);
       const currentEvents = filterRegularSeasonSlate(
-        currentWeekData.events || [],
+        exactCurrentWeekData.events || [],
         seasonNum,
         currentWeek,
       );

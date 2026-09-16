@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { getUserCardScore } from "@/lib/winners";
 import {
@@ -75,7 +76,7 @@ export async function GET(request: Request) {
     }
 
     const financialsMap = await getPoolsFinancials(
-      supabase,
+      createAdminClient(),
       (pools ?? []).map((p: { id: string }) => p.id)
     );
     const poolList = attachFinancialsToPools(pools ?? [], financialsMap);

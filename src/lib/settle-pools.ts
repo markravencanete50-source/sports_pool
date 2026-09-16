@@ -276,7 +276,7 @@ export async function settleReadyPools(
         .eq("pool_id", pool.id)
         .in("status", ["active", "completed"]);
 
-      const financials = await getPoolFinancials(admin, pool.id);
+      const financials = await getPoolFinancials(admin, pool.id, { strict: true });
       if ((cardCount ?? 0) > 0 && !(financials.prize_pot > 0)) {
         warnings.push(
           `pool ${pool.id} has ${cardCount} paid card(s) but a prize pot of ` +

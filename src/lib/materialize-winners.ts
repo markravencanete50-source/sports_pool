@@ -123,7 +123,7 @@ export async function materializePoolWinners(
   // MORE than the pot — minting money — and one above 100 would go negative.
   // The database constrains this column too; this is the second line of defence.
   platformFeePct = Math.min(Math.max(platformFeePct, 0), 100);
-  const financials = await getPoolFinancials(admin, poolId);
+  const financials = await getPoolFinancials(admin, poolId, { strict: true });
   const prizePot = financials.prize_pot ?? 0;
 
   const winners = computePoolWinners({

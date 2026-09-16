@@ -195,6 +195,11 @@ export interface GameLiveState {
 }
 
 export interface ESPNScoreboardResponse {
+  leagues?: Array<{ calendar?: Array<{
+    value: string;
+    startDate?: string;
+    entries?: Array<{ value: string; startDate: string; endDate: string }>;
+  }> }>;
   week: {
     number: number;
   };

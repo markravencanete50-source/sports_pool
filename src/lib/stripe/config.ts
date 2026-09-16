@@ -16,6 +16,9 @@ export function checkoutConfigurationError(
   if (environment === "production" && mode !== "live") {
     return "Card payments are temporarily unavailable because the payment service is in test mode. No payment has been taken. Please contact support.";
   }
+  if (environment !== "production" && mode === "live") {
+    return "Live payments are disabled outside production. Configure Stripe test keys for this environment.";
+  }
   return null;
 }
 
@@ -35,6 +38,8 @@ export function getStripe(): Stripe {
       // rather than drifting silently. Moving the SDK major moves this line.
       apiVersion: "2026-08-26.dahlia",
       typescript: true,
+      maxNetworkRetries: 2,
+      timeout: 15_000,
     });
   }
   return stripeInstance;

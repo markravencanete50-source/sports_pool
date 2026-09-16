@@ -122,7 +122,8 @@ async function getPoolFeePcts(
 
 export async function getPoolFinancials(
   supabase: SupabaseClient,
-  poolId: string
+  poolId: string,
+  options: { strict?: boolean } = {},
 ): Promise<PoolFinancials> {
   const [{ data, error }, feeMap] = await Promise.all([
     supabase.rpc("get_pool_financials", { p_pool_id: poolId }).single(),
@@ -131,6 +132,7 @@ export async function getPoolFinancials(
   const feePct = feeMap.get(poolId) ?? DEFAULT_PLATFORM_FEE_PCT;
 
   if (error || !data) {
+    if (options.strict) throw new Error("Could not verify pool financials");
     // Falling back to zero is the safe display default, but it must never be
     // silent again: a zero pot that comes from a failed call looks exactly like
     // a pool nobody has entered.

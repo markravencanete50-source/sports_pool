@@ -15,7 +15,7 @@ import {
   useLockCard,
 } from "@/lib/hooks/use-cards";
 import { useSyncPoolGames } from "@/lib/hooks/use-sync-pool-games";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { CardSelector as CardSelectorComponent } from "@/components/pool-detail/card-selector";
@@ -29,6 +29,7 @@ import { DISRUPTED_STATUSES } from "@/lib/constants";
 import type { GameCardProps, GameResult } from "@/lib/interfaces";
 import { Lock, Megaphone } from "lucide-react";
 import { useStripeCheckout } from "@/lib/hooks/use-stripe-checkout";
+import { confirmCheckout } from "@/lib/confirm-checkout";
 
 type PoolGameRow = {
   id: string;
@@ -84,7 +85,6 @@ export default function PoolDetailPage() {
   const { user: authUser } = useAuth();
   const user = authUser as AuthUser | null | undefined;
   const queryClient = useQueryClient();
-  const confirmedSessionRef = useRef<string | null>(null);
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
 
   const {
@@ -382,31 +382,15 @@ export default function PoolDetailPage() {
 
   const sessionId = searchParams.get("session_id");
   useEffect(() => {
-    if (!sessionId || !poolId) return;
-    const storageKey = `confirm-payment-${sessionId}`;
-    if (typeof window !== "undefined" && sessionStorage.getItem(storageKey))
-      return;
-    if (confirmedSessionRef.current === sessionId) return;
-    confirmedSessionRef.current = sessionId;
-    if (typeof window !== "undefined") sessionStorage.setItem(storageKey, "1");
+    if (!sessionId || !poolId || !user?.id) return;
+    const controller = new AbortController();
     let cancelled = false;
     setIsConfirmingPayment(true);
 
     (async () => {
       try {
-        const res = await fetch("/api/stripe/confirm-payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
-          credentials: "include",
-        });
-        const data = await res.json();
+        await confirmCheckout(sessionId, controller.signal);
         if (cancelled) return;
-        if (!res.ok) {
-          setIsConfirmingPayment(false);
-          toast.error(data.error ?? "Payment confirmation failed");
-          return;
-        }
         await Promise.all([
           queryClient.invalidateQueries({
             queryKey: ["/api/pools", poolId, "cards"],
@@ -414,20 +398,21 @@ export default function PoolDetailPage() {
           queryClient.invalidateQueries({ queryKey: ["/api/pools", poolId] }),
         ]);
         window.history.replaceState({}, "", `/pool/${poolId}`);
-        sessionStorage.removeItem(`card-draft-v1-${poolId}`);
+        try { sessionStorage.removeItem(`card-draft-v1-${poolId}`); } catch { /* Storage is optional. */ }
         setIsConfirmingPayment(false);
         if (!cancelled) toast.success("Payment confirmed! Your card was submitted.");
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setIsConfirmingPayment(false);
-          toast.error("Failed to confirm payment");
+          toast.error(error instanceof Error ? error.message : "Payment confirmation is delayed. Refresh to retry; do not pay again.");
         }
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [sessionId, poolId, queryClient]);
+  }, [sessionId, poolId, queryClient, user?.id]);
 
   if (isLoadingPool) {
     return (

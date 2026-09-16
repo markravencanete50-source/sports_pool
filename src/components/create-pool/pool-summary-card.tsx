@@ -3,6 +3,7 @@
 import { Trophy } from "lucide-react";
 import { Card3D } from "@/components/ui/3d-card";
 import { PoolSummaryCardProps } from "@/lib/interfaces";
+import { poolConfig } from "@/lib/config";
 
 export function PoolSummaryCard({
   poolName,
@@ -92,7 +93,7 @@ export function PoolSummaryCard({
           </button>
           {!canSubmit && (
             <p className="text-xs text-center text-muted-foreground">
-              Select at least 1 game to create pool
+              Enter a pool name and select at least {poolConfig.minGames} games from one week
             </p>
           )}
         </div>

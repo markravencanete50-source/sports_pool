@@ -94,16 +94,17 @@ export async function evaluateCompliance(input: {
   headers: Headers;
   action: MoneyAction;
   amount?: number;
-}): Promise<ComplianceVerdict> {
+}, client?: ReturnType<typeof createAdminClient>): Promise<ComplianceVerdict> {
   const { userId, headers, action, amount } = input;
   const geo = resolveGeo(headers);
 
   try {
-    const admin = createAdminClient();
+    const admin = client ?? createAdminClient();
 
     // Promote any limit increase whose cooling-off has elapsed, so the read
     // below sees current values without needing a scheduled job.
-    await admin.rpc("apply_due_limit_increases", { p_user_id: userId });
+    const { error: limitsError } = await admin.rpc("apply_due_limit_increases", { p_user_id: userId });
+    if (limitsError) return failClosed(userId, "evaluation_failed", geo, "deposit limits unreadable");
 
     const [complianceRes, settingsRes, rulesRes, standingRes] = await Promise.all([
       admin
@@ -129,6 +130,13 @@ export async function evaluateCompliance(input: {
     if (settingsRes.error || !settingsRes.data) {
       return failClosed(userId, "evaluation_failed", geo,
         `settings unreadable: ${settingsRes.error?.message ?? "missing"}`);
+    }
+    if (complianceRes.error || rulesRes.error || !rulesRes.data || standingRes.error || !standingRes.data) {
+      return failClosed(userId, "evaluation_failed", geo, "eligibility lookup failed");
+    }
+    if (!["active", "blocked", "suspended"].includes(standingRes.data.account_status) ||
+        (standingRes.data.suspended_until && !Number.isFinite(Date.parse(standingRes.data.suspended_until)))) {
+      return failClosed(userId, "evaluation_failed", geo, "invalid account standing");
     }
 
     const settings = settingsRes.data as unknown as SettingsRow;

@@ -19,7 +19,7 @@ export async function getNflScoreboard(
   });
   if (week != null) params.set("week", String(week));
   const url = `${base}${path}?${params.toString()}`;
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(
