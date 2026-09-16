@@ -76,9 +76,12 @@ export async function POST(request: Request) {
     errorMessage = error?.message ?? null;
   }
 
-  // Never disclose whether the address exists. Log only the provider's message,
-  // not the submitted email, so application logs do not become an account list.
-  if (errorMessage) console.error("[password-reset/request]", errorMessage);
+  // Never disclose whether the address exists. A missing account is expected
+  // here and stays out of error monitoring; other provider failures are logged
+  // without the submitted email, so logs do not become an account list.
+  if (errorMessage && !/user.*not found/i.test(errorMessage)) {
+    console.error("[password-reset/request]", errorMessage);
+  }
 
   return NextResponse.json({ message: GENERIC_MESSAGE }, { status: 200 });
 }
