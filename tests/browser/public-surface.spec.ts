@@ -126,3 +126,23 @@ test("a protected page sends an anonymous visitor to login, not to a crash", asy
     .poll(async () => (await page.locator("body").innerText()).trim().length, { timeout: 15_000 })
     .toBeGreaterThan(80);
 });
+
+test("anonymous visitors can browse a pool but cannot select teams", async ({ page }) => {
+  const response = await page.request.get("/api/pools?status=open&limit=1");
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as { pools?: Array<{ id: string }> };
+  const pool = body.pools?.[0];
+  test.skip(!pool, "This environment has no open public pool fixture.");
+
+  await page.goto(`/pool/${pool!.id}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("Sign in before making picks")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create Account" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Log In" })).toBeVisible();
+
+  const pickOptions = page.locator("button[data-pick-option]");
+  await expect(pickOptions.first()).toBeVisible();
+  expect(await pickOptions.count()).toBeGreaterThan(0);
+  for (let index = 0; index < (await pickOptions.count()); index += 1) {
+    await expect(pickOptions.nth(index)).toBeDisabled();
+  }
+});

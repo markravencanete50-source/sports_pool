@@ -30,6 +30,7 @@ import type { GameCardProps, GameResult } from "@/lib/interfaces";
 import { Lock, Megaphone } from "lucide-react";
 import { useStripeCheckout } from "@/lib/hooks/use-stripe-checkout";
 import { confirmCheckout } from "@/lib/confirm-checkout";
+import Link from "next/link";
 
 type PoolGameRow = {
   id: string;
@@ -82,7 +83,7 @@ export default function PoolDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const poolId = params?.id as string;
-  const { user: authUser } = useAuth();
+  const { user: authUser, isLoadingUser } = useAuth();
   const user = authUser as AuthUser | null | undefined;
   const queryClient = useQueryClient();
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
@@ -127,19 +128,7 @@ export default function PoolDetailPage() {
   const reportComment = useReportComment(poolId);
   const [pendingPicks, setPendingPicks] = useState<
     Record<string, { prediction: GamePrediction }>
-  >(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const saved = JSON.parse(
-        sessionStorage.getItem(`card-draft-v1-${poolId}`) ?? "[]",
-      ) as Array<{ gameId: string; prediction: GamePrediction }>;
-      return Object.fromEntries(
-        saved.map((pick) => [pick.gameId, { prediction: pick.prediction }]),
-      );
-    } catch {
-      return {};
-    }
-  });
+  >({});
 
   const isDraftCard =
     cards.length < 3 &&
@@ -242,12 +231,19 @@ export default function PoolDetailPage() {
     return { actualOutcome, pickCorrect, homeScore, awayScore };
   }
   const canSubmitPicks =
+    !!user?.id &&
     !isPoolCompleted &&
     (isDraftCard || selectedCard?.status === "pending") &&
     poolGames.length > 0 &&
     poolGames.every((g) => pendingPicks[g.id]);
 
   const handlePick = (gameId: string, prediction: GamePrediction) => {
+    if (!user?.id) {
+      router.push(
+        `/login?redirect=${encodeURIComponent(`/pool/${poolId}?new_card=1`)}`,
+      );
+      return;
+    }
     if (isCardLocked || (!effectiveCardId && !isDraftCard)) return;
     setPendingPicks((prev) => ({ ...prev, [gameId]: { prediction } }));
   };
@@ -257,15 +253,6 @@ export default function PoolDetailPage() {
     try {
       if (isDraftCard) {
         if (!user?.id) {
-          sessionStorage.setItem(
-            `card-draft-v1-${poolId}`,
-            JSON.stringify(
-              poolGames.map((game) => ({
-                gameId: game.id,
-                prediction: pendingPicks[game.id].prediction,
-              })),
-            ),
-          );
           router.push(
             `/login?redirect=${encodeURIComponent(`/pool/${poolId}?new_card=1`)}`,
           );
@@ -359,6 +346,12 @@ export default function PoolDetailPage() {
   };
 
   const startNewCard = () => {
+    if (!user?.id) {
+      router.push(
+        `/login?redirect=${encodeURIComponent(`/pool/${poolId}?new_card=1`)}`,
+      );
+      return;
+    }
     setSelectedCardId(null);
     setPendingPicks({});
     setIsDraftingNewCard(true);
@@ -591,6 +584,29 @@ export default function PoolDetailPage() {
                   entryFee={entryFee}
                 />
               </div>
+            ) : !isLoadingUser && !user?.id ? (
+              <div className="glass-panel p-6 rounded-xl text-center space-y-4">
+                <div>
+                  <p className="font-semibold mb-1">Sign in before making picks</p>
+                  <p className="text-sm text-muted-foreground">
+                    Create an account or log in before selecting teams or building a parlay card.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <Link
+                    href="/signup"
+                    className="btn-3d-primary inline-flex min-h-11 items-center justify-center px-5 py-2"
+                  >
+                    Create Account
+                  </Link>
+                  <Link
+                    href={`/login?redirect=${encodeURIComponent(`/pool/${poolId}?new_card=1`)}`}
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/15 px-5 py-2 text-sm font-bold hover:bg-white/10"
+                  >
+                    Log In
+                  </Link>
+                </div>
+              </div>
             ) : (
               <div className="glass-panel p-6 rounded-xl text-center">
                 <p className="font-semibold mb-1">Build your parlay card</p>
@@ -636,7 +652,7 @@ export default function PoolDetailPage() {
                     <div key={game.id} className="min-h-[240px]">
                       <GameCard
                         game={game as unknown as GameCardProps["game"]}
-                        disabled={isCardLocked}
+                        disabled={isLoadingUser || !user?.id || isCardLocked}
                         onPick={(teamIdOrTie) => {
                           const prediction: GamePrediction | undefined =
                             teamIdOrTie === "tie"
@@ -678,7 +694,7 @@ export default function PoolDetailPage() {
               </div>
             )}
 
-            {(effectiveCardId || isDraftCard) && (
+            {!!user?.id && (effectiveCardId || isDraftCard) && (
               <div className="space-y-4">
                 {canSubmitPicks && (
                   <button
@@ -719,7 +735,7 @@ export default function PoolDetailPage() {
           </div>
 
           <div className="space-y-6">
-            {(effectiveCardId || isDraftCard) && (
+            {!!user?.id && (effectiveCardId || isDraftCard) && (
               <ProgressCard
                 picksMade={Object.keys(effectivePicks).length}
                 totalGames={poolGames.length}

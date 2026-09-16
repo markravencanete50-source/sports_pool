@@ -151,6 +151,10 @@ export function GameCard({
 
         <div className="flex items-center justify-between w-full gap-2 min-w-0">
           <button
+            type="button"
+            data-pick-option="away"
+            disabled={disabled}
+            aria-disabled={disabled}
             onClick={() => !disabled && onPick?.(awayTeam.id)}
             className={cn(
               "flex-1 min-w-0 flex flex-col items-center gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-lg transition-all duration-200 relative",
@@ -201,6 +205,10 @@ export function GameCard({
           </button>
 
           <button
+            type="button"
+            data-pick-option="tie"
+            disabled={disabled}
+            aria-disabled={disabled}
             onClick={() => !disabled && onPick?.(TIE_PICK_VALUE)}
             className={cn(
               "flex flex-col items-center justify-center gap-1 px-2 sm:px-3 py-4 rounded-lg transition-all duration-200 min-w-[56px] sm:min-w-[72px] shrink-0 relative",
@@ -238,6 +246,10 @@ export function GameCard({
           </button>
 
           <button
+            type="button"
+            data-pick-option="home"
+            disabled={disabled}
+            aria-disabled={disabled}
             onClick={() => !disabled && onPick?.(homeTeam.id)}
             className={cn(
               "flex-1 min-w-0 flex flex-col items-center gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-lg transition-all duration-200 relative",
