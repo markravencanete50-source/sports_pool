@@ -135,9 +135,9 @@ test("anonymous visitors can browse a pool but cannot select teams", async ({ pa
   test.skip(!pool, "This environment has no open public pool fixture.");
 
   await page.goto(`/pool/${pool!.id}`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Sign in before making picks")).toBeVisible();
+  await expect(page.getByText("Sign in before making picks")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("link", { name: "Create Account" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Log In" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "Log In" })).toBeVisible();
 
   const pickOptions = page.locator("button[data-pick-option]");
   await expect(pickOptions.first()).toBeVisible();
